@@ -1,0 +1,54 @@
+# There is a table called as_of_dates
+
+target: patients
+
+entities:
+  -
+    alias: patients
+    id: patient
+    table: semantic.patients
+    variables:  # Those things that define the target entity and doesn't depend of time
+      bod:
+        type: date # Possible values: numeric, text, categorical, date, timestamp, boolean
+      gender:
+        type: categorical
+      monitoring_plan_star_at:
+        type: date
+  -
+    alias: measurements
+    id: ~
+    table: semantic.measurements_view
+    temporal: measured_at   # This is the event time
+    spatial: ~
+    variables:
+      peso:
+        type: numeric
+      frecuencia_cardiaca:
+        type: numeric
+
+  -
+    alias: consultations
+    id: medical_consultation
+    table: semantic.medical_consultations
+    temporal: enter_date # Event time
+    spatial: ~
+    variables:
+      health_status:
+        type: text
+
+relationships:
+  -
+    parent:
+      entity: patients
+      key: patient
+    child:
+      entity: measurements
+      key: patient
+
+  -
+    parent:
+      entity: patients
+      key: patient
+    child:
+      entity: consultations
+      key: patient
