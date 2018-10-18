@@ -1,5 +1,7 @@
 # coding: utf-8
 
+from .abstractions import Feature
+
 class Aggregator:
     """
     Base class for aggregation functions
@@ -12,10 +14,10 @@ class Aggregator:
     such as the sum or average of the inputs.'
 
     """
-    def __init__(self, name, func, input_type, output_type, distinct = False, order_by=None, filter=None, stackable=True):
+    def __init__(self, name, aggregate=None, input_types=['numeric'], output_type='numeric', distinct = False, order_by=None, filter=None, stackable=True):
         self.name = name
-        self.func = func
-        self.input_type = input_type
+        self.aggregate = aggregate if aggregate else self.name
+        self.input_types = input_types
         self.output_type = output_type
         self.distinct = distinct # If DISTINCT is specified in addition to an order_by_clause,
                                  # then all the ORDER BY expressions must match regular arguments of
@@ -25,51 +27,143 @@ class Aggregator:
         self.filter = filter  # filter' FILTER WHERE :filter'
         self.stackable = stackable
 
+    @staticmethod
+    def _build_name(name, feature):
+        name = f'{ str.upper(name) }({feature.entity.alias}.{feature.name})'
+        return f'''"{name.replace('"', '')}"'''
+
+    def _build_aggregate_expression(self, feature):
+        expression = feature.name
+        aggregate_expression = [f"{self.aggregate}({'distinct' if self.distinct else ''} {expression}"]
+        if self.order_by and feature.sort:
+            # order by clause
+            aggregate_expression.append(f"order by {feature.sort})")
+        else:
+            aggregate_expression.append(")")
+        if self.filter and feature.specials:
+            # filter by clause
+            aggregate_expression.append(f" filter (where {feature.name} = {feature.specials}) ")
+
+        return ' '.join(aggregate_expression)
 
     def __call__(self, parent, child, feature):
-        return self.func(parent, child, feature, filter)
+        if feature.type not in self.input_types:
+            # We don't do anything
+            agg_feature = None
+        else:
+            agg_feature = Feature(name = self._build_name(self.name, feature),
+                                  type=self.output_type,
+                                  definition=self._build_aggregate_expression(feature),
+                                  parents = feature,
+                                  entity = parent,
+                                  stack_depth=feature.stack_depth + 1)
+        return agg_feature
+
+class Zscore(Aggregator):
+    def __init__(self):
+        super().__init__(name='zscore')
+
+    def _build_aggregate_expression(self,feature):
+        return f"(abs({ feature.name } - avg({ feature.name })) / stddev({ feature.name })"
 
 
-# ## Agregations
-# def _aggregator(self, target, entity, function, variable, input_type, output_type):
-#     return Feature(name=f'{ str.upper(function) }({entity.alias}.{ variable.name })',
-#               definition=f'{ function }({ variable.name })',
-#               type=output_type)
+class Skewness(Aggregator):
+    def __init__(self):
+        super().__init__(name='skewness')
 
-# sum = partialmethod(_aggregator, function='sum', input_type='numeric', output_type='numeric')
-# min = partialmethod(_aggregator, function='min', input_type='numeric', output_type='numeric')
-# max = partialmethod(_aggregator, function='max', input_type='numeric', output_type='numeric')
-# mean = partialmethod(_aggregator, function='avg', input_type='numeric', output_type='numeric')
-# stddev = partialmethod(_aggregator, function='stddev', input_type='numeric', output_type='numeric')
-# count = partialmethod(_aggregator, function='count', input_type='categorical', output_type='numeric')
+    def _build_aggregate_expression(self,feature):
+        return f"({ feature.name } - avg({ feature.name })) / stddev({ feature.name })**3"
 
-# def z_score(self, target, variable):
-#     return {f'"Z_SCORE({{ numeric_var }})"': {'definition': f'abs({{ numeric_var }} - avg({{ numeric_var }})) / stddev({{ numeric_var }})'}}
 
-# def skewness(self, target, variable):
-#     return {f'"SKEWNESS({{ numeric_var }})"': {'query':f'({{ numeric_var }} - avg({{ numeric_var }})) / stddev({{ numeric_var }})**3'}}
+class Kurtosis(Aggregator):
+    def __init__(self):
+        super().__init__(name='kurtosis')
 
-# def kurtosis(self, target, variable):
-#     return {f'"KURTOSIS({{ numeric_var }})"': {'query':f'({{ numeric_var }} - avg({{ numeric_var }})) / stddev({{ numeric_var }})**4'}}
+    def _build_aggregate_expression(self,feature):
+        return f"({ feature.name } - avg({ feature.name })) / stddev({ feature.name })**4"
 
-# def median(self, target, variable):
-#     return {f'"MEDIAN({{ numeric_var }})"': {'query': f'percentile_cont(0.5) within group (order by {{ numeric_var }})'}}
+class MinMaxScale(Aggregator):
+    def __init__(self):
+        super().__init__(name='min_max_scale')
 
-# def fixed_width_buckets(self, target, variable, n_buckets=5):
-#     return {f'"{str.upper({n_buckets})}_BUCKETS({{ numeric_var }})"': {'query': f'width_bucket({{ numeric_var }}, min({{ numeric_var }}), max({{ numeric_var }}), {{ n_buckets }})'}}
+    def _build_aggregate_expression(self,feature):
+        return f"1.0*({ feature.name } - min({ feature.name })/(max({ feature.name }) - min({ feature.name }))"
 
-# def min_max_scale(self, target, variable):
-#     return {f'"MIN_MAX({{ numeric_var }})': {'query': f'1.0*({{ numeric_var }} - min({{ numeric_var }})/(max({{ numeric_var }}) - min({{ numeric_var }}))'}}
+class AverageDeviation(Aggregator):
+    def __init__(self):
+        super().__init__(name='mean_deviation')
 
-# def num_unique(self, target, variable):
-#     return {f'"NUM_UNIQUE({{ categorical_var }})"': {'query': f'count( distinct {{ categorical_var }})'}}
+    def _build_aggregate_expression(self,feature):
+        return f"(sum(abs({feature.name} - avg({feature.name}))) / count({feature.name}))"
 
-# def mode(self, target, variable):
-#     return {f'"MODE({categorical_var})"': {'query': f'mode() within group (order by {{ categorical_var }})'}}
+
+class HarmonicMean(Aggregator):
+    """
+    It is the appropriate when dealing with rates and prices
+
+    From the wikipedia:
+    The harmonic mean of a list of numbers tends strongly toward
+    the least elements of the list, it tends (compared to the arithmetic mean)
+    to mitigate the impact of large outliers and aggravate
+    the impact of small ones
+    """
+    def __init__(self):
+        super().__init__(name='harmonic_mean')
+
+    def _build_aggregate_expression(self,feature):
+        return f"(count({feature.name}) / sum(1.0/{feature.name}))"
+
+
+class GeometricMean(Aggregator):
+    """
+    Is a better measure of central tendency than a simple arithmetic
+    mean when you are analyzing change over time
+
+    From the wikipedia:
+    This makes the geometric mean the only correct
+    mean when averaging normalized results; that is,
+    results that are presented as ratios to reference values
+    """
+    def __init__(self):
+        super().__init__(name='geometric_mean')
+
+    def _build_aggregate_expression(self,feature):
+        return f"""(
+        case
+        when {feature.name} > 0
+        then
+        exp(avg(log({feature.name}))
+        else
+        (-1.0)^count(*)*exp(avg(log(abs({feature.name})))
+        end
+        )
+        """
+
+sum = Aggregator(name='sum')
+min = Aggregator(name='min')
+max = Aggregator(name='max')
+mean = Aggregator(name='mean', aggregate='avg')
+stddev = Aggregator(name='stddev')
+var = Aggregator(name='variance')
+count = Aggregator(name='count', input_types=['categorical', 'index'])
+all = Aggregator(name='all', aggregate='bool_and', input_types=['boolean'], output_type='boolean')
+any = Aggregator(name='anu', aggregate='bool_or', input_types=['boolean'], output_type='boolean')
+nunique = Aggregator(name='nunique', aggregate='count', input_types=['categorical', 'index'], distinct=True)
+min_max_scale = MinMaxScale()
+mean_deviation = AverageDeviation()
+z_score = Zscore()
+skewness = Skewness()
+kurtosis = Kurtosis()
+harmonic_mean = HarmonicMean()
+geometric_mean = GeometricMean()
 
 
 class OrderedSetAggregator(Aggregator):
     """
+    There is a subclass of aggregate functions called ordered-set aggregates for which an
+    order_by_clause is required, usually because the aggregate's computation is only sensible
+    in terms of a specific ordering of its input rows. Typical examples of ordered-set aggregates
+    include rank and percentile calculations.
     For an ordered-set aggregate, the order_by_clause is written inside WITHIN GROUP (...),
     as shown in the final syntax alternative above.
     The expressions in the order_by_clause are evaluated once per input row just
@@ -87,8 +181,46 @@ class OrderedSetAggregator(Aggregator):
     which only make sense as a single value per aggregation calculation.
     The direct argument list can be empty; in this case, write just () not (*).
     """
-    def __init__(self, name, func, input_type, output_type,order_by=None, filter=None, direct_argument=None, stackable=True):
-        super().__init__(name, func, input_type, output_type, order_by, filter, stackable)
+    def __init__(self, name, aggregate=None, direct_argument=None, input_types=['numeric'], output_type='numeric', filter=None, stackable=True):
+        self.order_by = True
+        self.direct_argument = direct_argument
+        super().__init__(name, aggregate, input_types, output_type, self.order_by, filter, stackable)
 
-    def __call__(self, parent, child, feature):
-        return self.func(parent, child, feature, filter)
+    def _build_aggregate_expression(self, feature):
+        expression = feature.name
+        if self.direct_argument:
+            aggregate_expression = [f"{self.aggregate}({self.direct_argument})"]
+        else:
+            aggregate_expression = [f"{self.aggregate}()"]
+        aggregate_expression.append(f"within group(order by {expression})")
+        if self.filter and feature.specials:
+            # filter by clause
+            aggregate_expression.append(f" filter (where {feature.name} = {feature.specials}) ")
+
+        return ' '.join(aggregate_expression)
+
+median = OrderedSetAggregator(name='median', aggregate='percentile_cont', direct_argument=0.5)
+mode = OrderedSetAggregator(name='mode', input_types=['categorical'])
+
+
+# TODO: trend
+
+# TODO: first, last Trasnfromaciones?
+# TODO: Average time between events
+
+# TODO: def daily_average():
+#     pass
+
+# TODO: def weekly_average():
+#     pass
+
+# TODO: def monthly_average():
+#     pass
+
+# TODO: percentage of true
+
+# TODO: Above the average
+
+
+# def fixed_width_buckets(self, target, variable, n_buckets=5):
+#     return {f'"{str.upper({n_buckets})}_BUCKETS({ numeric_var })"': {'query': f'width_bucket({ numeric_var }, min({ numeric_var }), max({ numeric_var }), { n_buckets })'}}

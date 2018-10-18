@@ -2,18 +2,26 @@
 
 target: patients
 
+# whitelist:
+#   transformations: ['']
+#   aggregations: ['count']
+
+# blacklist:
+#   transformations: ['']
+#   aggregations: ['count']
+
 entities:
   -
     alias: patients
     id: patient
     table: semantic.patients
     variables:  # Those things that define the target entity and doesn't depend of time
-      bod:
-        type: date # Possible values: numeric, text, categorical, date, timestamp, boolean
+      #bod:
+      #  type: date # Possible values: numeric, text, categorical, date, timestamp, boolean
       gender:
         type: categorical
-      monitoring_plan_star_at:
-        type: date
+      #monitoring_plan_star_at:
+      #  type: date
   -
     alias: measurements
     id: ~
@@ -23,8 +31,18 @@ entities:
     variables:
       peso:
         type: numeric
+        intervals: 1d, 2d, 3d, 4d, 5d, 1w, 1.5w, 2w, 1m, 2m, 3m
       frecuencia_cardiaca:
         type: numeric
+        intervals: 1d, 2d, 3d, 4d, 5d, 1w, 1.5w, 2w, 1m, 2m, 3m
+
+  # -
+  #   alias: gender
+  #   id: gender
+  #   table: catalogs.gender
+  #   variables:
+  #     description:
+  #       type: categorical
 
   -
     alias: consultations
@@ -35,6 +53,7 @@ entities:
     variables:
       health_status:
         type: text
+        intervals: P1W, P2W, P1M, P2M # Supports ISO 8601 interval
 
 relationships:
   -
@@ -44,6 +63,14 @@ relationships:
     child:
       entity: measurements
       key: patient
+
+  # -
+  #   parent:
+  #     entity: gender
+  #     key: gender
+  #   child:
+  #     entity: patients
+  #     key: gender
 
   -
     parent:

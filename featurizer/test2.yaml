@@ -1,0 +1,30 @@
+target: customers
+
+entities:
+  -
+    alias: customers
+    id: customer_id
+    table: customers_tbl
+    variables:
+      gender:
+        type: categorical
+      age:
+        type: numeric
+
+  -
+    alias: orders
+    id: order_id
+    table: orders_tbl
+    variables:
+      date:
+        type: date
+
+
+relationships:
+  -
+    parent:
+      entity: customers
+      key: customer_id
+    child:
+      entity: orders
+      key: customer_id
