@@ -73,7 +73,15 @@ class Featurizer:
 
     @property
     def query(self):
-        return None
+        return f"""
+
+        with
+
+        {','.join(self.ctes)}
+
+        select * from {self.target.alias}_transform;
+
+        """
 
     def make_features(self):
         return self.build_features(self.target)
@@ -129,7 +137,7 @@ class Featurizer:
         self.features[entity.alias].extend(aggs)
         self.features[target.alias].extend(aggs)  # synthetize
 
-        print(f"""
+        cte_query = f"""
         -- Aggregate for {target.alias}
         {cte_name} as (
         select
@@ -137,7 +145,9 @@ class Featurizer:
         from {entity.alias}_transform
         group by {br.parent_key}
         )
-        """)
+        """
+
+        self.ctes.append(cte_query)
 
     def build_direct(self, target, entity, fr):
         print(fr)
@@ -153,18 +163,20 @@ class Featurizer:
         self.joins[target.alias].append(join_statement)
         self.features[target.alias].extend(directs)
 
-        print(f"""
+        cte_query = f"""
         -- direct features for {target.alias}
         {cte_name} as (
         select
         {','.join([direct.query for direct in directs])}
         from {entity.alias}_transform
         )
-        """)
+        """
+
+        self.ctes.append(cte_query)
 
     def build_transformations(self, target):
 
-        print(f"""
+        cte_query = f"""
         {target.alias}_synth as (
         select
         {', '.join([ft.name for ft in self.features[target.alias]])}
@@ -172,7 +184,9 @@ class Featurizer:
         {' left join ' if self.joins[target.alias] else '' }
         {' left join '.join([ join_statement for join_statement in self.joins[target.alias]])}
         )
-        """)
+        """
+
+        self.ctes.append(cte_query)
 
         trans = []
         for feature in self.features[target.alias]:
@@ -190,11 +204,13 @@ class Featurizer:
 
         self.features[target.alias].extend(trans)
 
-        print(f"""
+        cte_query = f"""
         -- transform {target.alias}
         {cte_table} as (
         select
         {', '.join([ft.query for ft in trans])}
         from {target.alias}_synth
         )
-        """)
+        """
+
+        self.ctes.append(cte_query)
