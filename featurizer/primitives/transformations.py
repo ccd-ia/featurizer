@@ -32,7 +32,8 @@ class Transformer:
             trans_feature = feature
         elif feature.type not in self.input_types:
             # Don't do anything
-            trans_feature = None
+            trans_feature = feature
+            trans_feature.stack_depth+=1
         else:
             trans_feature = Feature(name=self._build_name(self.name, feature),
                                     type=self.output_type,
@@ -117,7 +118,8 @@ class WindowFunctionTransformer:
     def __call__(self, parent, feature):
         if feature.type not in self.input_types:
             # We don't do anything
-            window_feature = None
+            window_feature = Feature
+            window_feature.stack_depth+=1
         else:
             window_feature = Feature(name = self._build_name(self.name, feature),
                                      type=self.output_type,
@@ -335,7 +337,8 @@ class IsInArray(Transformer):
     def __call__(self, parent, feature, an_array):
         if feature.type not in self.input_types:
             # Don't do anything
-            trans_feature = None
+            trans_feature = feature
+            trans_feature.stack_depth += 1
         else:
             trans_feature = Feature(name=self._build_name(self.name, feature),
                                     type=self.output_type,

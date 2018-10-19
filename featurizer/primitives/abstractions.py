@@ -19,9 +19,7 @@ class ERGraph:
             self.relationships = {}
 
         for r in self.relationships:
-            self.entities[r.child.alias].add_features([Key(name=r.child_key, entity=r.child)])
-
-
+            self.entities[r.child.alias].add_key(Key(name=r.child_key, entity=r.child))
 
     def get_backward_entities(self, entity):
         return {r.child for r in self.relationships if r.parent == entity}
@@ -40,6 +38,8 @@ class Entity:
         self.alias = alias
         self.id = Id(name=id, entity=self) if id else None
         self.table = table
+
+        self.keys = []
 
         self.features = [ Variable(name=var, type=description['type'], entity=self) for var, description in variables.items() ]
 
@@ -60,6 +60,10 @@ class Entity:
                {self.variables}
 
         """
+
+    def add_key(self, key):
+        if key not in self.keys:
+            self.keys.append(key)
 
     def add_features(self, features):
         for feature in features:
@@ -138,10 +142,12 @@ class Feature:
     def __eq__(self, other):
         return self.name == other.name
 
+    def __neq__(self, other):
+        return self.name != other.name
+
     def __hash__(self):
         return hash(self.name) ^ hash(self.type) ^ hash(self.definition) ^ \
-            hash(self.entity) ^ \
-            hash((self.name, self.type, self.definition, self.entity))
+            hash((self.name, self.type, self.definition))
 
     @property
     def query(self):

@@ -51,7 +51,7 @@ class Featurizer:
 
         self.path = []
 
-        self.features = {e.alias: e.features for e in self.entities}
+        self.features = {e.alias: set(e.features) for e in self.entities}
 
         self.joins = {e.alias: [] for e in self.entities}
 
@@ -127,14 +127,14 @@ class Featurizer:
         join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
 
         self.joins[target.alias].append( join_statement )
-        self.features[entity.alias].extend(aggs)
-        self.features[target.alias].extend(aggs)  # synthetize
+        self.features[entity.alias].update(aggs)
+        self.features[target.alias].update(aggs)  # synthetize
 
         cte_query = f"""
         -- Aggregate for {target.alias}
         {cte_name} as (
-        select
-        {','.join([agg.query for agg in aggs])}
+        select {entity.alias}_transform.{br.parent_key},
+        {','.join([agg.query for agg in aggs if agg.type not in ['index', 'key']])}
         from {entity.alias}_transform
         group by {br.parent_key}
         )
@@ -154,13 +154,13 @@ class Featurizer:
         join_statement = f" {cte_name} on {cte_name}.{fr.child_key} = {fr.child.table}.{fr.child_key} "
 
         self.joins[target.alias].append(join_statement)
-        self.features[target.alias].extend(directs)
+        self.features[target.alias].update(directs)
 
         cte_query = f"""
         -- direct features for {target.alias}
         {cte_name} as (
-        select
-        {','.join([direct.name for direct in directs])}
+        select {entity.id.name},
+        {','.join([direct.name for direct in directs if direct.type not in ['index', 'key']])}
         from {entity.alias}_transform
         )
         """
@@ -170,9 +170,12 @@ class Featurizer:
     def build_transformations(self, target):
 
         cte_query = f"""
+        -- sythetize aggregations and direct features for {target.alias}
         {target.alias}_synth as (
         select
-        {', '.join([ft.name for ft in self.features[target.alias]])}
+        {'' if target.id is None else target.id.name +','}
+        {', '.join([target.table + '.' + key.name for key in target.keys])}
+        {', '.join([ft.name for ft in self.features[target.alias] if ft.type not in ['index', 'key']])}
         from {target.table}
         {' left join ' if self.joins[target.alias] else '' }
         {' left join '.join([ join_statement for join_statement in self.joins[target.alias]])}
@@ -195,13 +198,15 @@ class Featurizer:
 
         cte_table = f"{target.alias}_transform"
 
-        self.features[target.alias].extend(trans)
+        self.features[target.alias].update(trans)
 
         cte_query = f"""
         -- transform {target.alias}
         {cte_table} as (
         select
-        {', '.join([ft.query for ft in trans])}
+        { '' if target.id is None else target.id.name +',' }
+        {', '.join([key.name for key in target.keys])}
+        {', '.join([ft.query for ft in trans if ft.type not in ['index', 'key']] )}
         from {target.alias}_synth
         )
         """
