@@ -47,7 +47,9 @@ class Aggregator:
         return ' '.join(aggregate_expression)
 
     def __call__(self, parent, child, feature):
-        if feature.type not in self.input_types:
+        if feature.type == 'key':
+            agg_feature = feature
+        elif feature.type not in self.input_types:
             # We don't do anything
             agg_feature = None
         else:
@@ -139,6 +141,7 @@ class GeometricMean(Aggregator):
         )
         """
 
+
 sum = Aggregator(name='sum')
 min = Aggregator(name='min')
 max = Aggregator(name='max')
@@ -147,7 +150,7 @@ stddev = Aggregator(name='stddev')
 var = Aggregator(name='variance')
 count = Aggregator(name='count', input_types=['categorical', 'index'])
 all = Aggregator(name='all', aggregate='bool_and', input_types=['boolean'], output_type='boolean')
-any = Aggregator(name='anu', aggregate='bool_or', input_types=['boolean'], output_type='boolean')
+any = Aggregator(name='any', aggregate='bool_or', input_types=['boolean'], output_type='boolean')
 nunique = Aggregator(name='nunique', aggregate='count', input_types=['categorical', 'index'], distinct=True)
 min_max_scale = MinMaxScale()
 mean_deviation = AverageDeviation()
@@ -220,6 +223,8 @@ mode = OrderedSetAggregator(name='mode', input_types=['categorical'])
 # TODO: percentage of true
 
 # TODO: Above the average
+
+
 
 
 # def fixed_width_buckets(self, target, variable, n_buckets=5):

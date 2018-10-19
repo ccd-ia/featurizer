@@ -28,7 +28,9 @@ class Transformer:
         return f""" {self.transformer}({feature.name}) """
 
     def __call__(self, parent, feature):
-        if feature.type not in self.input_types:
+        if feature.type == 'key':
+            trans_feature = feature
+        elif feature.type not in self.input_types:
             # Don't do anything
             trans_feature = None
         else:
@@ -169,7 +171,6 @@ class Diff(WindowFunctionTransformer):
 
 diff = Diff(name='diff')
 time_since_previous = Diff(name='time_since_previous', input_types=['date', 'timestamp'], output_type='date')
-
 
 class DistributionTransformer(WindowFunctionTransformer):
     def __init__(self, name, function=None, arg_func=None, input_types=['numeric'], output_type='numeric', order_by=None, frame_start=None, frame_end=None, stackable=True):

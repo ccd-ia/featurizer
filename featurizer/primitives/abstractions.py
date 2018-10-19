@@ -18,6 +18,11 @@ class ERGraph:
         else:
             self.relationships = {}
 
+        for r in self.relationships:
+            self.entities[r.child.alias].add_features([Key(name=r.child_key, entity=r.child)])
+
+
+
     def get_backward_entities(self, entity):
         return {r.child for r in self.relationships if r.parent == entity}
 
@@ -158,4 +163,4 @@ class Id(Feature):
 class Key(Feature):
     """ Represents a reference to another table """
     def __init__(self, name, entity):
-        super().__init__(name=name, definition=name, type='index', entity=entity)
+        super().__init__(name=name, definition=name, type='key', entity=entity)

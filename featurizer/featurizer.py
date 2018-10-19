@@ -51,11 +51,6 @@ class Featurizer:
 
         self.path = []
 
-        # self.features = {e.alias: {e.table: e.features} for e in self.entities}
-        # Split this on original, transformed, backward and forward features
-        # Keep a dictionary with the name of the CTE and the features that provide
-        # to the target table
-
         self.features = {e.alias: e.features for e in self.entities}
 
         self.joins = {e.alias: [] for e in self.entities}
@@ -74,13 +69,11 @@ class Featurizer:
     @property
     def query(self):
         return f"""
-
         with
 
         {','.join(self.ctes)}
 
-        select * from {self.target.alias}_transform;
-
+        select * from {self.target.alias}_transform
         """
 
     def make_features(self):
@@ -167,7 +160,7 @@ class Featurizer:
         -- direct features for {target.alias}
         {cte_name} as (
         select
-        {','.join([direct.query for direct in directs])}
+        {','.join([direct.name for direct in directs])}
         from {entity.alias}_transform
         )
         """
