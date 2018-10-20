@@ -11,4 +11,53 @@ entities:
       age:
         type: numeric
 
+  -
+    alias: orders
+    id: order_id
+    table: orders_tbl
+    variables:
+      date:
+        type: date
+
+  -
+    alias: items_ordered
+    id: ~
+    table: items_ordered_tbl
+    variables:
+      quantity:
+        type: numeric
+
+  -
+    alias: products
+    id: product_id
+    table: products_tbl
+    variables:
+      price:
+        type: numeric
+      colour:
+        type: categorical
+
 relationships:
+  -
+    parent:
+      entity: customers
+      key: customer_id
+    child:
+      entity: orders
+      key: customer_id
+
+  -
+    parent:
+      entity: products
+      key: product_id
+    child:
+      entity: items_ordered
+      key: product_id
+
+  -
+    parent:
+      entity: orders
+      key: order_id
+    child:
+      entity: items_ordered
+      key: order_id

@@ -146,8 +146,8 @@ class Feature:
         return self.name != other.name
 
     def __hash__(self):
-        return hash(self.name) ^ hash(self.type) ^ hash(self.definition) ^ \
-            hash((self.name, self.type, self.definition))
+        return hash(self.name) ^ hash(self.type) ^  \
+            hash((self.name, self.type))
 
     @property
     def query(self):

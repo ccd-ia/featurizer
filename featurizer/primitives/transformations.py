@@ -33,6 +33,7 @@ class Transformer:
         elif feature.type not in self.input_types:
             # Don't do anything
             trans_feature = feature
+            trans_feature.definition = feature.name
             trans_feature.stack_depth+=1
         else:
             trans_feature = Feature(name=self._build_name(self.name, feature),
@@ -119,6 +120,7 @@ class WindowFunctionTransformer:
         if feature.type not in self.input_types:
             # We don't do anything
             window_feature = Feature
+            window_feature.definition = feature.name
             window_feature.stack_depth+=1
         else:
             window_feature = Feature(name = self._build_name(self.name, feature),
@@ -324,7 +326,7 @@ class IsNull(Transformer):
         super().__init__(name, transformer=None, input_types=['numeric', 'categorical', 'date'], output_type='boolean', stackable=True)
 
     def _build_transformer_call(self, feature):
-        return f"({feature.entity.alias}.{ feature.name } is null)"
+        return f"({ feature.name } is null)"
 
 class IsInArray(Transformer):
     def __init__(self):
@@ -332,12 +334,13 @@ class IsInArray(Transformer):
         super().__init__(name, transformer=None, input_types=['numeric', 'categorical', 'date'], output_type='boolean', stackable=True)
 
     def _build_transformer_call(self, feature, an_array):
-        return f"({feature.entity.alias}.{feature.name} = ANY (ARRAY {an_array})"
+        return f"({feature.name} = ANY (ARRAY {an_array})"
 
     def __call__(self, parent, feature, an_array):
         if feature.type not in self.input_types:
             # Don't do anything
             trans_feature = feature
+            trans_feature.definition = feature.name
             trans_feature.stack_depth += 1
         else:
             trans_feature = Feature(name=self._build_name(self.name, feature),

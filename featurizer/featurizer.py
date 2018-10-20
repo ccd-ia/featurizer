@@ -29,8 +29,8 @@ TRANSFORMATIONS = {
     # 'dow': dow,
     # 'hourly_binning': hourly_binning,
     # 'daily_binning': daily_binning,
-    #'isnull': isnull.
-    'ln': ln
+    'isnull': isnull
+    #'ln': ln
 }
 
 class Featurizer:
@@ -115,6 +115,7 @@ class Featurizer:
     def build_aggregations(self, target, entity, br):
         print(br)
         aggs = []
+
         for feature in self.features[entity.alias]:
             for agg_name, aggregator in AGGREGATIONS.items():
                 new_feature = aggregator(target, entity, feature)
@@ -134,7 +135,7 @@ class Featurizer:
         -- Aggregate for {target.alias}
         {cte_name} as (
         select {entity.alias}_transform.{br.parent_key},
-        {','.join([agg.query for agg in aggs if agg.type not in ['index', 'key']])}
+        {','.join([agg.query for agg in aggs if agg.type not in ['key']])}
         from {entity.alias}_transform
         group by {br.parent_key}
         )
@@ -173,8 +174,8 @@ class Featurizer:
         -- sythetize aggregations and direct features for {target.alias}
         {target.alias}_synth as (
         select
-        {'' if target.id is None else target.id.name +','}
-        {', '.join([target.table + '.' + key.name for key in target.keys])}
+        {'' if target.id is None else target.table +'.'+target.id.name +','}
+        {' '.join([target.table + '.' + key.name + ', ' for key in target.keys])}
         {', '.join([ft.name for ft in self.features[target.alias] if ft.type not in ['index', 'key']])}
         from {target.table}
         {' left join ' if self.joins[target.alias] else '' }
@@ -185,10 +186,12 @@ class Featurizer:
         self.ctes.append(cte_query)
 
         trans = []
+
         for feature in self.features[target.alias]:
             if feature.type != 'index':
                 for trans_name, transformer in TRANSFORMATIONS.items():
                     new_feature = transformer(target, feature)
+                    print(f'{feature} -- {trans_name} --> {new_feature}')
                     if new_feature:
                         trans.append(new_feature)
             else:
@@ -205,7 +208,7 @@ class Featurizer:
         {cte_table} as (
         select
         { '' if target.id is None else target.id.name +',' }
-        {', '.join([key.name for key in target.keys])}
+        {' '.join([key.name + ', ' for key in target.keys])}
         {', '.join([ft.query for ft in trans if ft.type not in ['index', 'key']] )}
         from {target.alias}_synth
         )
