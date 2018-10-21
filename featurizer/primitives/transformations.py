@@ -57,7 +57,9 @@ sign = Transformer(name='sign')
 num_chars = Transformer(name='num_chars', transformer='char_lenght')
 # random = Transformer(name='random')  # without arguments  Should setseed(number)
 identity = Transformer(name='identity', transformer='')
-
+ceil = Transformer(name='ceil')
+floor = Transformer(name='floor')
+trunc = Transformer(name='trunc')
 # #round = partialmethod(_unitary, function='round')
 # # power
 
@@ -266,6 +268,50 @@ class DailyBinning(Transformer):
 hourly_binning = HourlyBinning()
 daily_binning = DailyBinning()
 
+
+class CyclicalDateTransformer(DateTransformer):
+    def __init__(self, name, date_part, period, adjust = True):
+        self.period = period
+        self.adjust
+        super().__init__(name=name, date_part=date_part)
+
+    def _build_transformer_call(self, feature, trig_function):
+        if self.adjust:
+            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint - 1)*(2*pi()/{self.period}))"""
+        else:
+            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
+
+    def __call__(self, parent, feature):
+        if feature.type == 'key':
+            cyclical_features = feature
+        elif feature.type not in self.input_types:
+            # Don't do anything
+            cyclical_features = feature
+            cyclical_features.definition = feature.name
+            cyclical_features.stack_depth+=1
+        else:
+            cyclical_features = [Feature(name=self._build_name(self.name + '_sin', feature),
+                                         type=self.output_type,
+                                         definition=self._build_transformer_call(feature, trig_function='sin'),
+                                         parents = feature,
+                                         entity = parent,
+                                         stack_depth=feature.stack_depth + 1),
+                                 Feature(name=self._build_name(self.name + '_cos', feature),
+                                         type=self.output_type,
+                                         definition=self._build_transformer_call(feature, trig_function='cos'),
+                                         parents = feature,
+                                         entity = parent,
+                                         stack_depth=feature.stack_depth + 1)
+            ]
+
+        return cyclical_features
+
+
+cyclic_hour = CyclicalDateTransformer(name='cyclic_hour', date_part='HH24', period=24, adjust=False)
+cyclic_month = CyclicalDateTransformer(name='cyclic_month', date_part='MM', period=12)
+cyclic_day = CyclicalDateTransformer(name='cyclic_hour', date_part='D', period=7)
+
+
 class BinaryTransformer(Transformer):
     def __init__(self, name, operation, input_types=['numeric'], output_type='numeric', stackable=True):
         self.operation = operation
@@ -355,7 +401,9 @@ class IsInArray(Transformer):
 isnull = IsNull()
 inarray = IsInArray()
 
-# TODO: Transform dates to cyclical (Fourier)
+
+
+
 
 
 # def _polynomial(self, target, x_1, x_2):
