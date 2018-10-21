@@ -124,12 +124,49 @@ class Featurizer:
 
         aggs = set(aggs)
 
-        cte_name=f"{entity.alias}_aggs_for_{target.alias}"
-        join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
-
-        self.joins[target.alias].append( join_statement )
         self.features[entity.alias].update(aggs)
         self.features[target.alias].update(aggs)  # synthetize
+
+        self.build_aggregations_cte(target, entity, br, aggs)
+
+
+    def build_direct(self, target, entity, fr):
+        print(fr)
+        directs = []
+        for feature in self.features[entity.alias]:
+            directs.append(feature)
+
+        directs = set(directs)
+
+        self.features[target.alias].update(directs)
+
+        self.build_direct_cte(target, entity, fr, directs)
+
+
+    def build_transformations(self, target):
+
+        self.build_synthetize_cte(target)
+
+        trans = []
+
+        for feature in self.features[target.alias]:
+            if feature.type != 'index':
+                for trans_name, transformer in TRANSFORMATIONS.items():
+                    new_feature = transformer(target, feature)
+                    if new_feature:
+                        trans.append(new_feature)
+            else:
+                trans.append(feature)
+
+        trans = set(trans)
+
+        self.features[target.alias].update(trans)
+
+        self.build_transform_cte(target, trans)
+
+    def build_aggregations_cte(self, target, entity, br, aggs):
+        cte_name=f"{entity.alias}_aggs_for_{target.alias}"
+        join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
 
         cte_query = f"""
         -- Aggregate for {target.alias}
@@ -140,22 +177,11 @@ class Featurizer:
         group by {br.parent_key}
         )
         """
-
+        self.joins[target.alias].append( join_statement )
         self.ctes.append(cte_query)
 
-    def build_direct(self, target, entity, fr):
-        print(fr)
-        directs = []
-        for feature in self.features[entity.alias]:
-            directs.append(feature)
-
-        directs = set(directs)
-
+    def build_direct_cte(self, target, entity, fr, directs):
         cte_name = f"{entity.alias}_direct_transfers_for_{target.alias}"
-        join_statement = f" {cte_name} on {cte_name}.{fr.child_key} = {fr.child.table}.{fr.child_key} "
-
-        self.joins[target.alias].append(join_statement)
-        self.features[target.alias].update(directs)
 
         cte_query = f"""
         -- direct features for {target.alias}
@@ -165,11 +191,11 @@ class Featurizer:
         from {entity.alias}_transform
         )
         """
-
+        join_statement = f" {cte_name} on {cte_name}.{fr.child_key} = {fr.child.table}.{fr.child_key} "
+        self.joins[target.alias].append(join_statement)
         self.ctes.append(cte_query)
 
-    def build_transformations(self, target):
-
+    def build_synthetize_cte(self, target):
         cte_query = f"""
         -- sythetize aggregations and direct features for {target.alias}
         {target.alias}_synth as (
@@ -185,23 +211,8 @@ class Featurizer:
 
         self.ctes.append(cte_query)
 
-        trans = []
-
-        for feature in self.features[target.alias]:
-            if feature.type != 'index':
-                for trans_name, transformer in TRANSFORMATIONS.items():
-                    new_feature = transformer(target, feature)
-                    print(f'{feature} -- {trans_name} --> {new_feature}')
-                    if new_feature:
-                        trans.append(new_feature)
-            else:
-                trans.append(feature)
-
-        trans = set(trans)
-
+    def build_transform_cte(self, target, trans):
         cte_table = f"{target.alias}_transform"
-
-        self.features[target.alias].update(trans)
 
         cte_query = f"""
         -- transform {target.alias}

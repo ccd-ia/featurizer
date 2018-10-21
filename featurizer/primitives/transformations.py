@@ -272,7 +272,7 @@ daily_binning = DailyBinning()
 class CyclicalDateTransformer(DateTransformer):
     def __init__(self, name, date_part, period, adjust = True):
         self.period = period
-        self.adjust
+        self.adjust = adjust
         super().__init__(name=name, date_part=date_part)
 
     def _build_transformer_call(self, feature, trig_function):
@@ -400,10 +400,6 @@ class IsInArray(Transformer):
 
 isnull = IsNull()
 inarray = IsInArray()
-
-
-
-
 
 
 # def _polynomial(self, target, x_1, x_2):
