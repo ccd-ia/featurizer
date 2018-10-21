@@ -1,5 +1,8 @@
 # coding: utf-8
 
+from enum import Enum
+
+FeatureType = Enum('FeatureType', 'index spatial_ix temporal_ix date timestamp numeric categorical key')
 
 class ERGraph:
     def __init__(self, entities, relationships):
@@ -34,19 +37,26 @@ class ERGraph:
         return {r for r in self.relationships if r.child == entity}
 
 class Entity:
-    def __init__(self, alias, table, id, spatial=None, temporal=None, variables=None):
+    def __init__(self, alias, table, id, spatial_ix=None, temporal_ix=None, variables=None):
         self.alias = alias
-        self.id = Id(name=id, entity=self) if id else None
         self.table = table
 
-        self.keys = []
+        self.id = Id(name=id, entity=self) if id else None
+        self.spatial_ix = Id(name=spatial_ix, entity=self) if spatial_ix else None                  # Spatial index a.k.a "event location"
+        self.temporal_ix = Id(name=temporal_ix, entity=self) if temporal_ix else None                # Temporal index a.k.a "event date"
 
-        self.features = [ Variable(name=var, type=description['type'], entity=self) for var, description in variables.items() ]
 
-        self.features = self.features + ([self.id] if self.id else [])
+        self.keys = []                          # Foreign keys to another dataset
 
-        self.spatial = spatial
-        self.temporal = temporal
+        self.features = []
+
+        if variables is not None:
+            self.features = [ Variable(name=var, type=description['type'], entity=self) for var, description in variables.items() ]
+
+        self.features = self.features + \
+            ([self.id] if self.id else []) + \
+            ([self.temporal_ix] if self.temporal_ix else []) + \
+            ([self.spatial_ix] if self.spatial_ix else [])
 
     def __repr__(self):
         return f"Entity({self.alias})"
@@ -60,6 +70,10 @@ class Entity:
                {self.variables}
 
         """
+
+    @property
+    def indexes(self):
+        return list(filter(None, [self.id, self.spatial_ix, self.temporal_ix]))
 
     def add_key(self, key):
         if key not in self.keys:
@@ -164,7 +178,6 @@ class Id(Feature):
     """ Represents an entity id """
     def __init__(self, name, entity):
         super().__init__(name=name, definition=name, type='index', entity=entity)
-
 
 class Key(Feature):
     """ Represents a reference to another table """

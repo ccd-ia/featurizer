@@ -69,11 +69,19 @@ class Featurizer:
     @property
     def query(self):
         return f"""
+
+        select aod.as_of_date, t.*
+        from as_of_dates as aod
+        cross join lateral (
+
         with
 
         {','.join(self.ctes)}
 
         select * from {self.target.alias}_transform
+        ) as t
+
+        order by aod.as_of_date
         """
 
     def make_features(self):
@@ -168,12 +176,17 @@ class Featurizer:
         cte_name=f"{entity.alias}_aggs_for_{target.alias}"
         join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
 
+        fts = [agg.query for agg in aggs if agg.type not in ['key']]
+        where_clause = f"where aod.as_of_date >= {entity.temporal_ix}" if entity.temporal_ix else ''
+
         cte_query = f"""
         -- Aggregate for {target.alias}
         {cte_name} as (
-        select {entity.alias}_transform.{br.parent_key},
-        {','.join([agg.query for agg in aggs if agg.type not in ['key']])}
+        select
+        {entity.alias}_transform.{br.parent_key},
+        {','.join(fts)}
         from {entity.alias}_transform
+        {where_clause}
         group by {br.parent_key}
         )
         """
@@ -186,7 +199,8 @@ class Featurizer:
         cte_query = f"""
         -- direct features for {target.alias}
         {cte_name} as (
-        select {entity.id.name},
+        select
+        {entity.id.name},
         {','.join([direct.name for direct in directs if direct.type not in ['index', 'key']])}
         from {entity.alias}_transform
         )
@@ -196,13 +210,18 @@ class Featurizer:
         self.ctes.append(cte_query)
 
     def build_synthetize_cte(self, target):
+
+        cte_table = f"{target.alias}_synth"
+
+        ixs = [f"{target.table}.{ix.name}" for ix in target.indexes]
+        keys = [f"{target.table}.{key.name}" for key in target.keys]
+        fts = [ft.name for ft in self.features[target.alias] if ft.type not in ['index', 'key']]
+
         cte_query = f"""
         -- sythetize aggregations and direct features for {target.alias}
-        {target.alias}_synth as (
+        {cte_table} as (
         select
-        {'' if target.id is None else target.table +'.'+target.id.name +','}
-        {' '.join([target.table + '.' + key.name + ', ' for key in target.keys])}
-        {', '.join([ft.name for ft in self.features[target.alias] if ft.type not in ['index', 'key']])}
+        {', '.join(ixs + keys + fts)}
         from {target.table}
         {' left join ' if self.joins[target.alias] else '' }
         {' left join '.join([ join_statement for join_statement in self.joins[target.alias]])}
@@ -214,13 +233,15 @@ class Featurizer:
     def build_transform_cte(self, target, trans):
         cte_table = f"{target.alias}_transform"
 
+        ixs = [f"{ix.name}" for ix in target.indexes]
+        keys = [f"{key.name}" for key in target.keys]
+        fts = [ft.query for ft in trans if ft.type not in ['index', 'key']]
+
         cte_query = f"""
         -- transform {target.alias}
         {cte_table} as (
         select
-        { '' if target.id is None else target.id.name +',' }
-        {' '.join([key.name + ', ' for key in target.keys])}
-        {', '.join([ft.query for ft in trans if ft.type not in ['index', 'key']] )}
+        {', '.join(ixs + keys + fts)}
         from {target.alias}_synth
         )
         """

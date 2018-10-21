@@ -14,11 +14,9 @@ entities:
   -
     alias: orders
     id: order_id
+    temporal_ix: date
     table: orders_tbl
     variables:
-      date:
-        type: date
-
 
 relationships:
   -
