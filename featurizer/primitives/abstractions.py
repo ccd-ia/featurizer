@@ -45,7 +45,6 @@ class Entity:
         self.spatial_ix = Id(name=spatial_ix, entity=self) if spatial_ix else None                  # Spatial index a.k.a "event location"
         self.temporal_ix = Id(name=temporal_ix, entity=self) if temporal_ix else None                # Temporal index a.k.a "event date"
 
-
         self.keys = []                          # Foreign keys to another dataset
 
         self.features = []

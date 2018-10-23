@@ -1,5 +1,16 @@
 target: customers
 
+# intervals are global
+intervals: ['1 day', '2 days', '3 days', 'P1W', 'P1M', '1 year', '1 year 2 months', 'P1M3D']
+
+# aggregations:
+#   whitelist: *
+#   #blacklist:
+
+# transformations:
+#   #whitelist:
+#   blacklist: exp, log
+
 entities:
   -
     alias: customers

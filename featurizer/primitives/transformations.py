@@ -13,11 +13,10 @@ class Transformer:
     """
     def __init__(self, name, transformer=None, input_types=['numeric'], output_type='numeric', stackable=True):
         self.name = name
-        self.transformer = transformer if transformer else self.name
+        self.transformer = transformer if transformer is not None else self.name
         self.input_types = input_types
         self.output_type = output_type
         self.stackable = stackable
-
 
     @staticmethod
     def _build_name(name, feature):
@@ -54,15 +53,34 @@ log = Transformer(name='log')
 sqrt = Transformer(name='sqrt')
 cbrt = Transformer(name='cbrt')
 sign = Transformer(name='sign')
-num_chars = Transformer(name='num_chars', transformer='char_lenght')
+num_chars = Transformer(name='num_chars', transformer='char_lenght', input_types=['text'])
 # random = Transformer(name='random')  # without arguments  Should setseed(number)
-identity = Transformer(name='identity', transformer='')
 ceil = Transformer(name='ceil')
 floor = Transformer(name='floor')
 trunc = Transformer(name='trunc')
 # #round = partialmethod(_unitary, function='round')
 # # power
 
+class Identity(Transformer):
+    def __init__(self):
+        super().__init__(name='identity', input_types=['numeric', 'categoric', 'text'])
+
+    @staticmethod
+    def _build_name(name, feature):
+        name = f'{feature.entity.alias}.{feature.name}'
+        return f'''"{name.replace('"', '')}"'''
+
+    def _build_transformer_call(self, feature):
+        return f""" {feature.name} """
+
+    def __call__(self, parent, feature):
+        # Don't do anything
+        trans_feature = feature
+        trans_feature.definition = feature.name
+
+        return trans_feature
+
+identity = Identity()
 
 class WindowFunctionTransformer:
     """
@@ -400,6 +418,9 @@ class IsInArray(Transformer):
 
 isnull = IsNull()
 inarray = IsInArray()
+
+#percentage above avg
+#percentage trues
 
 
 # def _polynomial(self, target, x_1, x_2):

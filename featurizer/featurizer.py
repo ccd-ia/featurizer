@@ -13,7 +13,7 @@ from .primitives.aggregations import *
 from .primitives.transformations import *
 
 AGGREGATIONS = {
-    'sum': sum,
+#    'sum': sum,
     'count': count,
     'mean': mean,
     # 'median': median,
@@ -25,12 +25,13 @@ TRANSFORMATIONS = {
     # 'last': last,
     # 'previous': previous,
     # 'day': day,
-    'month': month,
+#    'month': month,
     # 'dow': dow,
     # 'hourly_binning': hourly_binning,
     # 'daily_binning': daily_binning,
-    'isnull': isnull
+#    'isnull': isnull
     #'ln': ln
+    'identity': identity
 }
 
 class Featurizer:
@@ -47,6 +48,8 @@ class Featurizer:
 
         self.target = self.get_entity(config['target'])
 
+        self.intervals = config['intervals']
+
         self.ctes = []
 
         self.path = []
@@ -54,6 +57,8 @@ class Featurizer:
         self.features = {e.alias: set(e.features) for e in self.entities}
 
         self.joins = {e.alias: [] for e in self.entities}
+
+        self.make_features()
 
     @property
     def entities(self):
@@ -69,7 +74,6 @@ class Featurizer:
     @property
     def query(self):
         return f"""
-
         select aod.as_of_date, t.*
         from as_of_dates as aod
         cross join lateral (
@@ -129,6 +133,19 @@ class Featurizer:
                 new_feature = aggregator(target, entity, feature)
                 if new_feature:
                     aggs.append(new_feature)
+                for interval in self.intervals:
+                    print(f"{feature}")
+                    print(f"Interval: {interval}")
+                    if feature.entity.temporal_ix is None:
+                        print(f"Entity: {feature.entity} doesn't have event dates. Skipping")
+                        break
+
+                    new_feature = aggregator(target,
+                                             entity,
+                                             feature,
+                                             interval=interval)
+                    if new_feature:
+                        aggs.append(new_feature)
 
         aggs = set(aggs)
 
@@ -177,7 +194,7 @@ class Featurizer:
         join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
 
         fts = [agg.query for agg in aggs if agg.type not in ['key']]
-        where_clause = f"where aod.as_of_date >= {entity.temporal_ix}" if entity.temporal_ix else ''
+        where_clause = f"where aod.as_of_date >= {entity.temporal_ix.name}" if entity.temporal_ix else ''
 
         cte_query = f"""
         -- Aggregate for {target.alias}
@@ -247,3 +264,10 @@ class Featurizer:
         """
 
         self.ctes.append(cte_query)
+
+    def to_dataframe(self):
+        db = records.Database()
+        rows = db.query(self.query)
+        df = rows.export('df')
+        df = df.set_index(['as_of_date', self.target.id.name], inplace=False)
+        return df

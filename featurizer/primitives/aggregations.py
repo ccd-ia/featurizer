@@ -14,7 +14,7 @@ class Aggregator:
     such as the sum or average of the inputs.'
 
     """
-    def __init__(self, name, aggregate=None, input_types=['numeric'], output_type='numeric', distinct = False, order_by=None, filter=None, stackable=True):
+    def __init__(self, name, aggregate=None, input_types=['numeric'], output_type='numeric', distinct = False, order_by=None, stackable=True):
         self.name = name
         self.aggregate = aggregate if aggregate else self.name
         self.input_types = input_types
@@ -24,15 +24,17 @@ class Aggregator:
                                  # the aggregate; that is, you cannot sort on
                                  # an expression that is not included in the DISTINCT list .
         self.order_by = order_by # ' ORDER BY expression' i.e. input columns
-        self.filter = filter  # filter' FILTER WHERE :filter'
+        #self.filter_by = filter_by  # filter' FILTER WHERE :filter'
         self.stackable = stackable
 
     @staticmethod
-    def _build_name(name, feature):
-        name = f'{ str.upper(name) }({feature.entity.alias}.{feature.name})'
+    def _build_name(name, feature, interval):
+        name = f'{ str.upper(name) }({feature.entity.alias}.{feature.name}'
+        interval = f'|interval={interval})' if interval else ')'
+        name = name + interval
         return f'''"{name.replace('"', '')}"'''
 
-    def _build_aggregate_expression(self, feature):
+    def _build_aggregate_expression(self, feature, interval):
         expression = feature.name
         aggregate_expression = [f"{self.aggregate}({'distinct' if self.distinct else ''} {expression}"]
         if self.order_by and feature.sort:
@@ -40,22 +42,24 @@ class Aggregator:
             aggregate_expression.append(f"order by {feature.sort})")
         else:
             aggregate_expression.append(")")
-        if self.filter and feature.specials:
+        if interval:
             # filter by clause
-            aggregate_expression.append(f" filter (where {feature.name} = {feature.specials}) ")
-
+            event_date = feature.entity.temporal_ix.name
+            daterange = f" daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]') "
+            aggregate_expression.append(f" filter (where {daterange} @>  {event_date}) ")
+        print(aggregate_expression)
         return ' '.join(aggregate_expression)
 
-    def __call__(self, parent, child, feature):
+    def __call__(self, parent, child, feature, interval=None):
         if feature.type == 'key':
             agg_feature = feature
         elif feature.type not in self.input_types:
             # We don't do anything
             agg_feature = None
         else:
-            agg_feature = Feature(name = self._build_name(self.name, feature),
+            agg_feature = Feature(name = self._build_name(self.name, feature, interval=interval),
                                   type=self.output_type,
-                                  definition=self._build_aggregate_expression(feature),
+                                  definition=self._build_aggregate_expression(feature, interval),
                                   parents = feature,
                                   entity = parent,
                                   stack_depth=feature.stack_depth + 1)
