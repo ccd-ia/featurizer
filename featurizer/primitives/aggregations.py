@@ -47,7 +47,6 @@ class Aggregator:
             event_date = feature.entity.temporal_ix.name
             daterange = f" daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]') "
             aggregate_expression.append(f" filter (where {daterange} @>  {event_date}) ")
-        print(aggregate_expression)
         return ' '.join(aggregate_expression)
 
     def __call__(self, parent, child, feature, interval=None):

@@ -44,6 +44,8 @@ class Featurizer:
         with open(config_file) as f:
             config = yaml.load(f)
 
+        self.max_depth = config['max_depth']
+
         self.graph = ERGraph(config['entities'], config['relationships'])
 
         self.target = self.get_entity(config['target'])
@@ -92,9 +94,13 @@ class Featurizer:
         return self.build_features(self.target)
 
     def build_features(self, target_entity, i=0):
-        print("\t"*i, f"build_features({target_entity.alias})")
+        print("\t"*i, f"build_features({target_entity.alias}). Depth: {i}")
 
         i = i+1
+
+        if self.max_depth <= i:
+            print("Maximun depth reached. We wont dig anymore")
+            return
 
         if target_entity not in self.path:
             self.path.append(target_entity)
@@ -134,8 +140,6 @@ class Featurizer:
                 if new_feature:
                     aggs.append(new_feature)
                 for interval in self.intervals:
-                    print(f"{feature}")
-                    print(f"Interval: {interval}")
                     if feature.entity.temporal_ix is None:
                         print(f"Entity: {feature.entity} doesn't have event dates. Skipping")
                         break

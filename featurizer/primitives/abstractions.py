@@ -166,6 +166,12 @@ class Feature:
     def query(self):
         return f"""{self.definition} as "{str.replace(self.name, '"', '')}" """
 
+    @property
+    def short_name(self):
+        if len(self.name) <= 63:
+            return self.name
+        else:
+            return hash(self)
 
 class Variable(Feature):
     """ Represents a column in a table. """
