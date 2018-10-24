@@ -5,7 +5,32 @@
 
 * Collate
 
-* What do we want to acieve?
+** One step aggregation to =as_of_dates=
+
+#+BEGIN_SRC ditaa :file collate.png
+
++---------------+                +---------------+
+|cBLU           |   aggregates   | cGRE          |
+|     events    |--------------->|  collated     |
+|               |                |   features    |
+|               |                |               |
++---------------+                +---------------+
+
+#+END_SRC
+
+#+RESULTS:
+[[file:collate.png]]
+
+** Confusing / Non-intuitive  semantics
+
+*** The /meaning/ (originally) refers to the aggregated variable
+    - The =aggregate= is numeric, even if the variable was categorical
+    - Then =categorical= is just a filter over the aggregate function
+    - Weird use of =max=
+    - Incorrect interpretation of =avg=
+    - /encoding/ is defined as a /ad-hoc/ implementation of =ohe=
+
+* What do we want to achieve?
 
 ** Expand the features available to =triage=
 
@@ -58,6 +83,7 @@
   :ATTACH_DIR: /home/nanounanue/projects/delorean/images
   :END:
 
+#+CAPTION: Image from /Deep Feature Synthesis: Towards Automating Data Science Endeavors/
 [[file:../images/screenshot-20181023-221853.png]]
 
 * How DFS works? Algorithm
@@ -65,13 +91,14 @@
   :ATTACH_DIR: /home/nanounanue/projects/delorean/images/
   :END:
 
+#+CAPTION: Clip from /Deep Feature Synthesis: Towards Automating Data Science Endeavors/
 [[file:../images/screenshot-20181023-222032.png]]
 
 * Featurizer
 
-** Implements the *DFS algorithm* in =python=
+** Implements the *DFS algorithm* in =python= to generate =sql=
 
-** Supports a more rich set of /transformations/ and /aggregations/ than the current =DFS=
+** Supports a bigger set of /transformations/ and /aggregations/ than the current =DFS=
 
 ** Tracks the features dependencies
 
@@ -81,7 +108,7 @@
 
 *** /Planned/: Allow the user to specify =Temporary tables= / =tables= instead of the =CTEs=
 
-**** In that way you can achieve better performance
+**** In that way you can achieve better performance (/not implemented yet/)
 
 ** Executes the SQL
 
@@ -151,10 +178,11 @@ featurizer = Featurizer('test.yaml')
 
 featurizer.query  # shows the query
 
-df = featurizer.to_dataframe()
+df = featurizer.to_dataframe() # Or gets you a dataframe
 #+END_EXAMPLE
 
 * Example
+
 
 
 * What is missing? / Limitations
@@ -166,3 +194,7 @@ df = featurizer.to_dataframe()
 ** Solve the column limit in PostgreSQL
 
 ** Maybe we could simplify the configuration file /if/ we specify the DB connection and use /metadata/ magic
+
+** Avoid stacks that don't make sense
+
+** Store the Features metadata table
