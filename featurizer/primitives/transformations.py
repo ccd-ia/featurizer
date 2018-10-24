@@ -82,6 +82,107 @@ class Identity(Transformer):
 
 identity = Identity()
 
+
+class DateTransformer(Transformer):
+    def __init__(self, name, date_part):
+        self.date_part = date_part
+        super().__init__(name, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
+
+    def _build_transformer_call(self, feature):
+        return f"to_char({ feature.name }, '{self.date_part}')"
+
+day = DateTransformer(name='day', date_part='day')
+dow = DateTransformer(name='dow', date_part='ID')  # Iso week: Monday (1) to Sunday (7)
+dom = DateTransformer(name='dom', date_part='DD')
+doy = DateTransformer(name='doy', date_part='DDD')
+year = DateTransformer(name='year', date_part='YYYY')
+month = DateTransformer(name='month', date_part='M')
+hour = DateTransformer(name='hour', date_part='HH24')
+century = DateTransformer(name='century', date_part='CC')
+quarter = DateTransformer(name='quarter', date_part='Q')
+week = DateTransformer(name='week', date_part='W')
+week_of_year = DateTransformer(name='week_of_year', date_part='WW')
+time_zone = DateTransformer(name='tz', date_part='TZ')
+tz_offset = DateTransformer(name='tz_offset', date_part='OF')
+
+
+class HourlyBinning(Transformer):
+    def __init__(self):
+        super().__init__(name='hourly_bin', transformer=None, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
+
+    def _build_transformer_call(self, feature):
+        return f'''
+        (
+        case
+        when extract(hour from { feature.name }) <@ int4range(0,5) then 'night'
+        when extract(hour from { feature.name }) <@ int4range(5,8) then 'early_morning'
+        when extract(hour from { feature.name }) <@ int4range(8,11) then 'morning'
+        when extract(hour from { feature.name }) <@ int4range(11,14) then 'midday'
+        when extract(hour from { feature.name }) <@ int4range(14,19) then 'afternoon'
+        when extract(hour from { feature.name }) <@ int4range(19,22) then 'evening'
+        when extract(hour from { feature.name }) <@ int4range(22,24) then 'night'
+        )
+        '''
+
+class DailyBinning(Transformer):
+    def __init__(self):
+        super().__init__(name='daily_bin', transformer=None, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
+
+    def _build_transformer_call(self, feature):
+        return f'''
+        (
+        case
+        when to_char({feature.name},'ID')::smallint <@ int4range(0,5) then 'weekday'
+        when to_char({feature.name},'ID')::smallint <@ int4range(5,7) then 'weekday'
+        )
+        '''
+
+hourly_binning = HourlyBinning()
+daily_binning = DailyBinning()
+
+
+class CyclicalDateTransformer(DateTransformer):
+    def __init__(self, name, date_part, period, adjust = True):
+        self.period = period
+        self.adjust = adjust
+        super().__init__(name=name, date_part=date_part)
+
+    def _build_transformer_call(self, feature, trig_function):
+        if self.adjust:
+            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint - 1)*(2*pi()/{self.period}))"""
+        else:
+            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
+
+    def __call__(self, parent, feature):
+        if feature.type == 'key':
+            cyclical_features = feature
+        elif feature.type not in self.input_types:
+            # Don't do anything
+            cyclical_features = feature
+            cyclical_features.definition = feature.name
+            cyclical_features.stack_depth+=1
+        else:
+            cyclical_features = [Feature(name=self._build_name(self.name + '_sin', feature),
+                                         type=self.output_type,
+                                         definition=self._build_transformer_call(feature, trig_function='sin'),
+                                         parents = feature,
+                                         entity = parent,
+                                         stack_depth=feature.stack_depth + 1),
+                                 Feature(name=self._build_name(self.name + '_cos', feature),
+                                         type=self.output_type,
+                                         definition=self._build_transformer_call(feature, trig_function='cos'),
+                                         parents = feature,
+                                         entity = parent,
+                                         stack_depth=feature.stack_depth + 1)
+            ]
+
+        return cyclical_features
+
+
+cyclic_hour = CyclicalDateTransformer(name='cyclic_hour', date_part='HH24', period=24, adjust=False)
+cyclic_month = CyclicalDateTransformer(name='cyclic_month', date_part='MM', period=12)
+cyclic_day = CyclicalDateTransformer(name='cyclic_hour', date_part='D', period=7)
+
 class WindowFunctionTransformer:
     """
     A window function call represents the application of an aggregate-like
@@ -228,107 +329,6 @@ cdf = DistributionTransformer(name='cdf', function='cum_dist')
 ## relative rank of the current row: (rank - 1) / (total partition rows - 1)
 percent_rank = DistributionTransformer(name='percent_rank')
 ntile = DistributionTransformer(name='ntile', arg_func=5)
-
-class DateTransformer(Transformer):
-    def __init__(self, name, date_part):
-        self.date_part = date_part
-        super().__init__(name, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
-
-    def _build_transformer_call(self, feature):
-        return f"to_char({ feature.name }, '{self.date_part}')"
-
-day = DateTransformer(name='day', date_part='day')
-dow = DateTransformer(name='dow', date_part='ID')  # Iso week: Monday (1) to Sunday (7)
-dom = DateTransformer(name='dom', date_part='DD')
-doy = DateTransformer(name='doy', date_part='DDD')
-year = DateTransformer(name='year', date_part='YYYY')
-month = DateTransformer(name='month', date_part='M')
-hour = DateTransformer(name='hour', date_part='HH24')
-century = DateTransformer(name='century', date_part='CC')
-quarter = DateTransformer(name='quarter', date_part='Q')
-week = DateTransformer(name='week', date_part='W')
-week_of_year = DateTransformer(name='week_of_year', date_part='WW')
-time_zone = DateTransformer(name='tz', date_part='TZ')
-tz_offset = DateTransformer(name='tz_offset', date_part='OF')
-
-
-class HourlyBinning(Transformer):
-    def __init__(self):
-        super().__init__(name='hourly_bin', transformer=None, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
-
-    def _build_transformer_call(self, feature):
-        return f'''
-        (
-        case
-        when extract(hour from { feature.name }) <@ int4range(0,5) then 'night'
-        when extract(hour from { feature.name }) <@ int4range(5,8) then 'early_morning'
-        when extract(hour from { feature.name }) <@ int4range(8,11) then 'morning'
-        when extract(hour from { feature.name }) <@ int4range(11,14) then 'midday'
-        when extract(hour from { feature.name }) <@ int4range(14,19) then 'afternoon'
-        when extract(hour from { feature.name }) <@ int4range(19,22) then 'evening'
-        when extract(hour from { feature.name }) <@ int4range(22,24) then 'night'
-        )
-        '''
-
-class DailyBinning(Transformer):
-    def __init__(self):
-        super().__init__(name='daily_bin', transformer=None, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
-
-    def _build_transformer_call(self, feature):
-        return f'''
-        (
-        case
-        when to_char({feature.name},'ID')::smallint <@ int4range(0,5) then 'weekday'
-        when to_char({feature.name},'ID')::smallint <@ int4range(5,7) then 'weekday'
-        )
-        '''
-
-hourly_binning = HourlyBinning()
-daily_binning = DailyBinning()
-
-
-class CyclicalDateTransformer(DateTransformer):
-    def __init__(self, name, date_part, period, adjust = True):
-        self.period = period
-        self.adjust = adjust
-        super().__init__(name=name, date_part=date_part)
-
-    def _build_transformer_call(self, feature, trig_function):
-        if self.adjust:
-            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint - 1)*(2*pi()/{self.period}))"""
-        else:
-            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
-
-    def __call__(self, parent, feature):
-        if feature.type == 'key':
-            cyclical_features = feature
-        elif feature.type not in self.input_types:
-            # Don't do anything
-            cyclical_features = feature
-            cyclical_features.definition = feature.name
-            cyclical_features.stack_depth+=1
-        else:
-            cyclical_features = [Feature(name=self._build_name(self.name + '_sin', feature),
-                                         type=self.output_type,
-                                         definition=self._build_transformer_call(feature, trig_function='sin'),
-                                         parents = feature,
-                                         entity = parent,
-                                         stack_depth=feature.stack_depth + 1),
-                                 Feature(name=self._build_name(self.name + '_cos', feature),
-                                         type=self.output_type,
-                                         definition=self._build_transformer_call(feature, trig_function='cos'),
-                                         parents = feature,
-                                         entity = parent,
-                                         stack_depth=feature.stack_depth + 1)
-            ]
-
-        return cyclical_features
-
-
-cyclic_hour = CyclicalDateTransformer(name='cyclic_hour', date_part='HH24', period=24, adjust=False)
-cyclic_month = CyclicalDateTransformer(name='cyclic_month', date_part='MM', period=12)
-cyclic_day = CyclicalDateTransformer(name='cyclic_hour', date_part='D', period=7)
-
 
 class BinaryTransformer(Transformer):
     def __init__(self, name, operation, input_types=['numeric'], output_type='numeric', stackable=True):
