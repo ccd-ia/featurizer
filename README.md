@@ -1,2 +1,2 @@
-# delorean
-DFS implementation for PostgreSQL temporal datasources 
+# Featurizer
+DFS implementation for PostgreSQL temporal datasources
