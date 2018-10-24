@@ -205,30 +205,12 @@ class OrderedSetAggregator(Aggregator):
 
         return ' '.join(aggregate_expression)
 
+
 median = OrderedSetAggregator(name='median', aggregate='percentile_cont', direct_argument=0.5)
 mode = OrderedSetAggregator(name='mode', input_types=['categorical'])
 
 
 # TODO: trend
-
-# TODO: first, last Trasnfromaciones?
-# TODO: Average time between events
-
-# TODO: def daily_average():
-#     pass
-
-# TODO: def weekly_average():
-#     pass
-
-# TODO: def monthly_average():
-#     pass
-
-# TODO: percentage of true
-
-# TODO: Above the average
-
-
-
 
 # def fixed_width_buckets(self, target, variable, n_buckets=5):
 #     return {f'"{str.upper({n_buckets})}_BUCKETS({ numeric_var })"': {'query': f'width_bucket({ numeric_var }, min({ numeric_var }), max({ numeric_var }), { n_buckets })'}}
