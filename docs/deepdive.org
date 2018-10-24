@@ -7,7 +7,7 @@
 
 ** One step aggregation to =as_of_dates=
 
-#+BEGIN_SRC ditaa :file collate.png
+#+BEGIN_SRC ditaa :file ./images/collate.png
 
 +---------------+                +---------------+
 |cBLU           |   aggregates   | cGRE          |
@@ -19,7 +19,7 @@
 #+END_SRC
 
 #+RESULTS:
-[[file:collate.png]]
+[[file:./images/collate.png]]
 
 ** Confusing / Non-intuitive  semantics
 
@@ -74,9 +74,9 @@
 
 ** Currently, the open version works in =python=
 
-* How DFS works?: /Backward/ and /Forward/ relationships
+* TODO How DFS works?: /Backward/ and /Forward/ relationships
 
-* How DFS works?: Transformers, Aggregators and Direct Transfers
+* TODO How DFS works?: Transformers, Aggregators and Direct Transfers
 
 * How DFS works? Graphically
   :PROPERTIES:
@@ -84,7 +84,7 @@
   :END:
 
 #+CAPTION: Image from /Deep Feature Synthesis: Towards Automating Data Science Endeavors/
-[[file:../images/screenshot-20181023-221853.png]]
+[[file:images/screenshot-20181023-221853.png]]
 
 * How DFS works? Algorithm
   :PROPERTIES:
@@ -92,7 +92,7 @@
   :END:
 
 #+CAPTION: Clip from /Deep Feature Synthesis: Towards Automating Data Science Endeavors/
-[[file:../images/screenshot-20181023-222032.png]]
+[[file:images/screenshot-20181023-222032.png]]
 
 * Featurizer
 
@@ -131,7 +131,7 @@
 
 * Class structure
 
-#+BEGIN_SRC plantuml :file featurizer_class_diagram.png
+#+BEGIN_SRC plantuml :file ./images/featurizer_class_diagram.png
 
 Featurizer *-- ERGraph
 
@@ -165,7 +165,7 @@ Transformer : __call__()
 #+END_SRC
 
 #+RESULTS:
-[[file:featurizer_class_diagram.png]]
+[[file:./images/featurizer_class_diagram.png]]
 
 * How to use it?
 
