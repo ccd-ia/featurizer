@@ -1,13 +1,23 @@
 #+TITLE: Featurizer
 #+AUTHOR: Adolfo De Unánue
 #+EMAIL: adolfo@uchicago.edu
+#+startup: beamer
+#+LaTeX_CLASS: beamer
+#+LaTeX_CLASS_OPTIONS: [presentation, smaller]
+#+OPTIONS: H:1 toc:t num:t
+#+BEAMER_FRAME_LEVEL: 1
+#+PROPERTY: header-args :var pages=12
+#+BEAMER_THEME: default
+#+BEAMER_HEADER: \subtitle{More features for everyone!}
+#+BEAMER_HEADER: \institute[DSaPP]{Center for Data Science and Public Policy\\\url{http://dsapp.uchicago.edu}}
+
 
 
 * Collate
 
 ** One step aggregation to =as_of_dates=
 
-#+BEGIN_SRC ditaa :file ./images/collate.png
+#+BEGIN_SRC ditaa :file images/collate.png :exports none
 
 +---------------+                +---------------+
 |cBLU           |   aggregates   | cGRE          |
@@ -19,7 +29,7 @@
 #+END_SRC
 
 #+RESULTS:
-[[file:./images/collate.png]]
+[[file:images/collate.png]]
 
 ** Confusing / Non-intuitive  semantics
 
@@ -29,6 +39,7 @@
     - Weird use of =max=
     - Incorrect interpretation of =avg=
     - /encoding/ is defined as a /ad-hoc/ implementation of =ohe=
+
 
 * What do we want to achieve?
 
@@ -48,7 +59,7 @@
 
 *** /Some stats/ (Not implemented yet)
 
-* What do we did?
+* What did we do?
 
 ** We implemented the *DFS algorithm* (=2015=) in a mix of =Python / =PostgreSQL= as the feature generator
 
@@ -131,7 +142,7 @@
 
 * Class structure
 
-#+BEGIN_SRC plantuml :file ./images/featurizer_class_diagram.png
+#+BEGIN_SRC plantuml :file images/featurizer_class_diagram.png :exports results
 
 Featurizer *-- ERGraph
 
@@ -165,7 +176,7 @@ Transformer : __call__()
 #+END_SRC
 
 #+RESULTS:
-[[file:./images/featurizer_class_diagram.png]]
+[[file:images/featurizer_class_diagram.png]]
 
 * How to use it?
 
