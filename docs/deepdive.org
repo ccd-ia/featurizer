@@ -4,36 +4,31 @@
 #+startup: beamer
 #+LaTeX_CLASS: beamer
 #+LaTeX_CLASS_OPTIONS: [presentation, smaller]
-#+OPTIONS: H:1 toc:t num:t
+#+OPTIONS: H:1 toc:nil num:t
 #+BEAMER_FRAME_LEVEL: 1
 #+PROPERTY: header-args :var pages=12
-#+BEAMER_THEME: default
+#+BEAMER_THEME: UnofficialUChicago
 #+BEAMER_HEADER: \subtitle{More features for everyone!}
 #+BEAMER_HEADER: \institute[DSaPP]{Center for Data Science and Public Policy\\\url{http://dsapp.uchicago.edu}}
+#+EXPORT_EXCLUDE_TAGS: no export
+#+INFOJS_OPT: view:nil toc:nil ltoc:t mouse:underline buttons:0 path:https://orgmode.org/org-info.js
 
-
+#+BEGIN_EXPORT latex
+\maketitle
+#+END_EXPORT
 
 * Collate
 
-** One step aggregation to =as_of_dates=
+- One step aggregation to =as_of_dates=
 
-#+BEGIN_SRC ditaa :file images/collate.png :exports none
+#+CAPTION: Collate does an /one step aggregation/ of the events (plus imputation)
+[[./images/collate.png]]
 
-+---------------+                +---------------+
-|cBLU           |   aggregates   | cGRE          |
-|     events    |--------------->|  collated     |
-|               |                |   features    |
-|               |                |               |
-+---------------+                +---------------+
+* Collate
 
-#+END_SRC
+- Confusing / Non-intuitive  semantics
 
-#+RESULTS:
-[[file:images/collate.png]]
-
-** Confusing / Non-intuitive  semantics
-
-*** The /meaning/ (originally) refers to the aggregated variable
+  - The /meaning/ (originally) refers to the aggregated variable
     - The =aggregate= is numeric, even if the variable was categorical
     - Then =categorical= is just a filter over the aggregate function
     - Weird use of =max=
@@ -43,47 +38,47 @@
 
 * What do we want to achieve?
 
-** Expand the features available to =triage=
+-  Expand the features available to =triage=
 
-** Improve =collate='s semantics
+-  Improve =collate='s semantics
 
-** Simplify the way to adding new features
+-  Simplify the way to adding new features
 
-** Add governance to the features
+-  Add governance to the features
 
-*** Feature metadata
+	-  Feature metadata
 
-*** Short names
+	-  Short names
 
-*** Descriptions
+	-  Descriptions
 
-*** /Some stats/ (Not implemented yet)
+	-  /Some stats/ (Not implemented yet)
 
 * What did we do?
 
-** We implemented the *DFS algorithm* (=2015=) in a mix of =Python / =PostgreSQL= as the feature generator
+-  We implemented the *DFS algorithm* (=2015=) in a mix of =Python / =PostgreSQL= as the feature generator
 
-** We added some =triage= specific functionality
+-  We added some =triage= specific functionality
 
-*** time intervals
+	-  time intervals
 
-*** feature groups
+	-  feature groups
 
 * How DFS works? : Generalities
 
-** *DFS* = /Deep feature synthesis/
+-  *DFS* = /Deep feature synthesis/
 
-** Recursive algorithm
+-  Recursive algorithm
 
-*** It traverses the tables through the relationships between tables
+	-  It traverses the tables through the relationships between tables
 
-*** A slightly modification of a BFS for graph traversal
+	-  A slightly modification of a BFS for graph traversal
 
-** Originally built for =MySQL=
+-  Originally built for =MySQL=
 
-*** No temporal handling at the beginning
+	-  No temporal handling at the beginning
 
-** Currently, the open version works in =python=
+-  Currently, the open version works in =python=
 
 * TODO How DFS works?: /Backward/ and /Forward/ relationships
 
@@ -107,105 +102,76 @@
 
 * Featurizer
 
-** Implements the *DFS algorithm* in =python= to generate =sql=
+-  Implements the *DFS algorithm* in =python= to generate =sql=
 
-** Supports a bigger set of /transformations/ and /aggregations/ than the current =DFS=
+-  Supports a bigger set of /transformations/ and /aggregations/ than the current =DFS=
 
-** Tracks the features dependencies
+-  Tracks the features dependencies
 
-** Generates =SQL=
+-  Generates =SQL=
 
-*** At this moment as a chain of =CTEs=
+	-  At this moment as a chain of =CTEs=
 
-*** /Planned/: Allow the user to specify =Temporary tables= / =tables= instead of the =CTEs=
+	-  /Planned/: Allow the user to specify =Temporary tables= / =tables= instead of the =CTEs=
 
-**** In that way you can achieve better performance (/not implemented yet/)
+	- * In that way you can achieve better performance (/not implemented yet/)
 
-** Executes the SQL
+-  Executes the SQL
 
-*** This is just for testing, when incorporated to =triage= it will use =architect=
+	-  This is just for testing, when incorporated to =triage= it will use =architect=
 
 * Featurizer
 
-** The idea is /automatically/ generate features /for/ a specific =target=
+-  The idea is /automatically/ generate features /for/ a specific =target=
 
-** The function's set is applied /globally/
+-  The function's set is applied /globally/
 
-** You can control the functions to be applied through /whitelists/ and /blacklists/
+-  You can control the functions to be applied through /whitelists/ and /blacklists/
 
-** The intervals are /global/ too
+-  The intervals are /global/ too
 
    - The reason behind this is a conceptual one: the config file
      /defines/ the structure of the /input/ tables no the /way to transform them/
 
-** The other knob is =max_depth=
+-  The other knob is =max_depth=
+
 
 * Class structure
 
-#+BEGIN_SRC plantuml :file images/featurizer_class_diagram.png :exports results
-
-Featurizer *-- ERGraph
-
-ERGraph *-- "many" Entity
-ERGraph *-- "many" Relationship
-
-Entity *-- Feature
-
-Feature <|-- Variable
-Feature <|-- Id
-Feature <|-- Key
-
-Transformer <|-- WindowFunctionTransformer
-Transformer <|-- BinaryTransformer
-Transformer <|-- DistributionTransformer
-
-Aggregator <|-- OrderedSetAggregator
-
-Featurizer : query
-Featurizer : make_features()
-Featurizer : to_dataframe()
-
-Aggregator : {static} _build_name()
-Aggregator : - _build_aggregate_expression()
-Aggregator : __call__()
-
-Transformer : {static}  _build_name()
-Transformer : - _build_transformer_call()
-Transformer : __call__()
-
-#+END_SRC
-
-#+RESULTS:
-[[file:images/featurizer_class_diagram.png]]
+#+CAPTION: (A very basic) UML Class diagram for Featurizer
+[[./images/featurizer_class_diagram.png]]
 
 * How to use it?
 
-** =YAML= configuration file
+- =YAML= configuration file
 
-** Example =python= code:
+- Example =python= code:
 
 #+BEGIN_EXAMPLE ipython
 featurizer = Featurizer('test.yaml')
 
-featurizer.query  # shows the query
+featurizer.query  # shows the query ...
 
-df = featurizer.to_dataframe() # Or gets you a dataframe
+df = featurizer.to_dataframe() # ... or gets you a dataframe
 #+END_EXAMPLE
 
-* Example
+* LIVE DEMO
+
 
 
 
 * What is missing? / Limitations
 
-** The =SQL= generation is quite dumb, there is no /pruning/
+- The =SQL= generation is quite dumb, there is no /pruning/
+  - Remember there is a /double/ limitation in =PostgreSQL=: (a) size of the
+    row, and (b) number of columns
 
-** Unit tests
+- Solve the column limit in PostgreSQL
 
-** Solve the column limit in PostgreSQL
+- Unit tests
 
-** Maybe we could simplify the configuration file /if/ we specify the DB connection and use /metadata/ magic
+- Maybe we could simplify the configuration file /if/ we specify the DB connection and use /metadata/ magic
 
-** Avoid stacks that don't make sense
+- Avoid stacks that don't make sense
 
-** Store the Features metadata table
+- Store the Features metadata table (for /data lineage/)
