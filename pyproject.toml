@@ -14,9 +14,11 @@ dependencies = [
   "records",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "pytest",
+[tool.uv]
+dev-dependencies = [
+    "basedpyright>=1.31.7",
+    "jupyter-console>=6.6.3",
+    "pytest>=8.2",
 ]
 
 [build-system]

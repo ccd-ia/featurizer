@@ -1,66 +1,78 @@
 # coding: utf-8
 
-from functools import partialmethod
-
-import records
+import os
 import yaml
+from icecream import ic
+from loguru import logger
 
-from .primitives import Entity, Relationship
-from .primitives import Aggregator, Transformer
+from .executor import QueryExecutor
+from .planner import FeaturePlanner, PlannerResult
 from .primitives import ERGraph
+from .primitives.utils import get_aggregations, get_transformers
+from .sql import SQLRenderer
 
-from .primitives.aggregations import *
-from .primitives.transformations import *
+DEFAULT_AGGREGATIONS = ("count", "mean", "sum", "stddev")
+DEFAULT_TRANSFORMATIONS = (
+    "identity",
+    "abs",
+    "cum_sum",
+    "day",
+    "dow",
+    "month",
+    "lag_1",
+    "lag_3",
+    "lag_7",
+    "rolling_mean_3",
+    "rolling_std_7",
+    "pct_change_1",
+)
 
-AGGREGATIONS = {
-#    'sum': sum,
-    'count': count,
-    'mean': mean,
-    # 'median': median,
-    # 'mode': mode
-}
-
-TRANSFORMATIONS = {
-    # 'first': first,
-    # 'last': last,
-    # 'previous': previous,
-    # 'day': day,
-#    'month': month,
-    # 'dow': dow,
-    # 'hourly_binning': hourly_binning,
-    # 'daily_binning': daily_binning,
-#    'isnull': isnull
-    #'ln': ln
-    'identity': identity
-}
 
 class Featurizer:
     """
-    PostgreSQL implementation of the
-    DFS algorithm (adapted for temporal data sets)
+    PostgreSQL implementation of the DFS algorithm (adapted for temporal data sets).
+
+    Coordinates configuration loading, feature planning, SQL rendering, and optional
+    database execution.
     """
 
-    def __init__(self, config_file):
-        with open(config_file) as f:
-            config = yaml.load(f)
+    def __init__(self, config_file, *, debug=False):
+        config = self._load_config(config_file)
 
-        self.max_depth = config['max_depth']
+        self._debug_enabled = debug or self._env_debug_enabled()
+        if self._debug_enabled:
+            ic.configureOutput(prefix="[Featurizer] ", includeContext=True)
 
-        self.graph = ERGraph(config['entities'], config['relationships'])
+        self.max_depth = config["max_depth"]
+        self.intervals = config["intervals"]
 
-        self.target = self.get_entity(config['target'])
+        self.graph = ERGraph(config["entities"], config["relationships"])
+        self.target = self._get_entity(config["target"])
 
-        self.intervals = config['intervals']
+        self.aggregations = get_aggregations(DEFAULT_AGGREGATIONS)
+        self.transformations = get_transformers(DEFAULT_TRANSFORMATIONS)
 
-        self.ctes = []
+        planner = FeaturePlanner(
+            graph=self.graph,
+            target_alias=self.target.alias,
+            max_depth=self.max_depth,
+            intervals=self.intervals,
+            aggregations=self.aggregations,
+            transformations=self.transformations,
+            debug=self._debug_enabled,
+        )
+        self._plan: PlannerResult = planner.plan()
 
-        self.path = []
+        self.features = {alias: set(features) for alias, features in self._plan.features.items()}
+        self.ctes = list(self._plan.ctes)
+        self.joins = {alias: list(joins) for alias, joins in self._plan.joins.items()}
 
-        self.features = {e.alias: set(e.features) for e in self.entities}
+        self._renderer = SQLRenderer()
+        self._executor = QueryExecutor()
 
-        self.joins = {e.alias: [] for e in self.entities}
-
-        self.make_features()
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
 
     @property
     def entities(self):
@@ -70,208 +82,62 @@ class Featurizer:
     def relationships(self):
         return self.graph.relationships
 
-    def get_entity(self, alias):
-        return self.graph.entities.get(alias, None)
-
     @property
     def query(self):
-        return f"""
-        select aod.as_of_date, t.*
-        from as_of_dates as aod
-        cross join lateral (
-
-        with
-
-        {','.join(self.ctes)}
-
-        select * from {self.target.alias}_transform
-        ) as t
-
-        order by aod.as_of_date
-        """
-
-    def make_features(self):
-        return self.build_features(self.target)
-
-    def build_features(self, target_entity, i=0):
-        print("\t"*i, f"build_features({target_entity.alias}). Depth: {i}")
-
-        i = i+1
-
-        if self.max_depth <= i:
-            print("Maximun depth reached. We wont dig anymore")
-            return
-
-        if target_entity not in self.path:
-            self.path.append(target_entity)
-
-        self.get_direct_features(target_entity, i)
-
-        self.get_backward_features(target_entity, i)
-
-        self.build_transformations(target_entity)
-
-
-    def get_direct_features(self, target, i):
-        forward_relationships = self.graph.get_forward_relationships(target)
-        for fr in forward_relationships:
-            e = fr.parent
-            if e in self.path:
-                continue
-            self.build_features(e, i)
-            self.build_direct(target, e, fr)
-
-    def get_backward_features(self, target, i):
-        backward_relationships = self.graph.get_backward_relationships(target)
-        for br in backward_relationships:
-            e = br.child
-            if e in self.path:
-                continue
-            self.build_features(e, i)
-            self.build_aggregations(target, e, br)
-
-    def build_aggregations(self, target, entity, br):
-        print(br)
-        aggs = []
-
-        for feature in self.features[entity.alias]:
-            for agg_name, aggregator in AGGREGATIONS.items():
-                new_feature = aggregator(target, entity, feature)
-                if new_feature:
-                    aggs.append(new_feature)
-                for interval in self.intervals:
-                    if feature.entity.temporal_ix is None:
-                        print(f"Entity: {feature.entity} doesn't have event dates. Skipping")
-                        break
-
-                    new_feature = aggregator(target,
-                                             entity,
-                                             feature,
-                                             interval=interval)
-                    if new_feature:
-                        aggs.append(new_feature)
-
-        aggs = set(aggs)
-
-        self.features[entity.alias].update(aggs)
-        self.features[target.alias].update(aggs)  # synthetize
-
-        self.build_aggregations_cte(target, entity, br, aggs)
-
-
-    def build_direct(self, target, entity, fr):
-        print(fr)
-        directs = []
-        for feature in self.features[entity.alias]:
-            directs.append(feature)
-
-        directs = set(directs)
-
-        self.features[target.alias].update(directs)
-
-        self.build_direct_cte(target, entity, fr, directs)
-
-
-    def build_transformations(self, target):
-
-        self.build_synthetize_cte(target)
-
-        trans = []
-
-        for feature in self.features[target.alias]:
-            if feature.type != 'index':
-                for trans_name, transformer in TRANSFORMATIONS.items():
-                    new_feature = transformer(target, feature)
-                    if new_feature:
-                        trans.append(new_feature)
-            else:
-                trans.append(feature)
-
-        trans = set(trans)
-
-        self.features[target.alias].update(trans)
-
-        self.build_transform_cte(target, trans)
-
-    def build_aggregations_cte(self, target, entity, br, aggs):
-        cte_name=f"{entity.alias}_aggs_for_{target.alias}"
-        join_statement = f" {cte_name} on {cte_name}.{br.child_key} = {br.parent.table}.{br.parent_key} "
-
-        fts = [agg.query for agg in aggs if agg.type not in ['key']]
-        where_clause = f"where aod.as_of_date >= {entity.temporal_ix.name}" if entity.temporal_ix else ''
-
-        cte_query = f"""
-        -- Aggregate for {target.alias}
-        {cte_name} as (
-        select
-        {entity.alias}_transform.{br.parent_key},
-        {','.join(fts)}
-        from {entity.alias}_transform
-        {where_clause}
-        group by {br.parent_key}
-        )
-        """
-        self.joins[target.alias].append( join_statement )
-        self.ctes.append(cte_query)
-
-    def build_direct_cte(self, target, entity, fr, directs):
-        cte_name = f"{entity.alias}_direct_transfers_for_{target.alias}"
-
-        cte_query = f"""
-        -- direct features for {target.alias}
-        {cte_name} as (
-        select
-        {entity.id.name},
-        {','.join([direct.name for direct in directs if direct.type not in ['index', 'key']])}
-        from {entity.alias}_transform
-        )
-        """
-        join_statement = f" {cte_name} on {cte_name}.{fr.child_key} = {fr.child.table}.{fr.child_key} "
-        self.joins[target.alias].append(join_statement)
-        self.ctes.append(cte_query)
-
-    def build_synthetize_cte(self, target):
-
-        cte_table = f"{target.alias}_synth"
-
-        ixs = [f"{target.table}.{ix.name}" for ix in target.indexes]
-        keys = [f"{target.table}.{key.name}" for key in target.keys]
-        fts = [ft.name for ft in self.features[target.alias] if ft.type not in ['index', 'key']]
-
-        cte_query = f"""
-        -- sythetize aggregations and direct features for {target.alias}
-        {cte_table} as (
-        select
-        {', '.join(ixs + keys + fts)}
-        from {target.table}
-        {' left join ' if self.joins[target.alias] else '' }
-        {' left join '.join([ join_statement for join_statement in self.joins[target.alias]])}
-        )
-        """
-
-        self.ctes.append(cte_query)
-
-    def build_transform_cte(self, target, trans):
-        cte_table = f"{target.alias}_transform"
-
-        ixs = [f"{ix.name}" for ix in target.indexes]
-        keys = [f"{key.name}" for key in target.keys]
-        fts = [ft.query for ft in trans if ft.type not in ['index', 'key']]
-
-        cte_query = f"""
-        -- transform {target.alias}
-        {cte_table} as (
-        select
-        {', '.join(ixs + keys + fts)}
-        from {target.alias}_synth
-        )
-        """
-
-        self.ctes.append(cte_query)
+        return self._renderer.render(self._plan)
 
     def to_dataframe(self):
-        db = records.Database()
-        rows = db.query(self.query)
-        df = rows.export('df')
-        df = df.set_index(['as_of_date', self.target.id.name], inplace=False)
-        return df
+        if self.target.id is None:
+            raise ValueError(f"Target entity '{self.target.alias}' does not define a primary id.")
+        return self._executor.to_dataframe(self.query, self.target.id.name)
+
+    # ------------------------------------------------------------------ #
+    # Internal helpers
+    # ------------------------------------------------------------------ #
+
+    def _get_entity(self, alias):
+        entity = self.graph.entities.get(alias)
+        if entity is None:
+            raise ValueError(f"Unknown target entity alias '{alias}'.")
+        return entity
+
+    @staticmethod
+    def _env_debug_enabled():
+        value = os.getenv("FEATURIZER_DEBUG", "")
+        return value.lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _load_config(config_file):
+        try:
+            with open(config_file) as f:
+                config = yaml.safe_load(f) or {}
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(f"Config file not found: {config_file}") from exc
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML in config file {config_file}") from exc
+
+        required_keys = {"target", "max_depth", "intervals", "entities"}
+        missing = [key for key in required_keys if key not in config]
+        if missing:
+            raise ValueError(f"Config missing required keys: {', '.join(missing)}")
+
+        if not isinstance(config["target"], str) or not config["target"].strip():
+            raise ValueError("'target' must be a non-empty string.")
+
+        if not isinstance(config["max_depth"], int) or config["max_depth"] < 1:
+            raise ValueError("'max_depth' must be a positive integer.")
+
+        if not isinstance(config["entities"], list) or not config["entities"]:
+            raise ValueError("Config must declare at least one entity in 'entities'.")
+
+        if not isinstance(config["intervals"], list):
+            raise ValueError("'intervals' must be a list of interval strings.")
+
+        relationships = config.get("relationships")
+        if relationships is None:
+            logger.debug("No relationships defined in config; defaulting to empty list.")
+            config["relationships"] = []
+        elif not isinstance(relationships, list):
+            raise ValueError("'relationships' must be a list when provided.")
+
+        return config

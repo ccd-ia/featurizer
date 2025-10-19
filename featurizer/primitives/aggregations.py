@@ -1,6 +1,13 @@
 # coding: utf-8
 
+"""Aggregation primitives and registry wiring.
+
+Each aggregator registers itself through `register_aggregation` so new primitives
+can be discovered without editing the featurizer core.
+"""
+
 from .abstractions import Feature
+from .utils import register_aggregation
 
 class Aggregator:
     """
@@ -163,6 +170,29 @@ kurtosis = Kurtosis()
 harmonic_mean = HarmonicMean()
 geometric_mean = GeometricMean()
 
+DEFAULT_AGGREGATIONS = {
+    "sum": sum,
+    "min": min,
+    "max": max,
+    "mean": mean,
+    "stddev": stddev,
+    "variance": var,
+    "count": count,
+    "all": all,
+    "any": any,
+    "nunique": nunique,
+    "min_max_scale": min_max_scale,
+    "mean_deviation": mean_deviation,
+    "z_score": z_score,
+    "skewness": skewness,
+    "kurtosis": kurtosis,
+    "harmonic_mean": harmonic_mean,
+    "geometric_mean": geometric_mean,
+}
+
+for _name, _agg in DEFAULT_AGGREGATIONS.items():
+    register_aggregation(_name, _agg)
+
 
 class OrderedSetAggregator(Aggregator):
     """
@@ -208,6 +238,9 @@ class OrderedSetAggregator(Aggregator):
 
 median = OrderedSetAggregator(name='median', aggregate='percentile_cont', direct_argument=0.5)
 mode = OrderedSetAggregator(name='mode', input_types=['categorical'])
+
+register_aggregation("median", median)
+register_aggregation("mode", mode)
 
 
 # TODO: trend

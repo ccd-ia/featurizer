@@ -1,0 +1,29 @@
+# Minimal config used for registry and planner tests.
+target: patients
+max_depth: 2
+
+intervals:
+  - P1D
+
+entities:
+  - alias: patients
+    id: patient_id
+    table: analytics.patients
+    variables:
+      age:
+        type: numeric
+  - alias: visits
+    id: visit_id
+    table: analytics.visits
+    temporal_ix: visited_at
+    variables:
+      duration_minutes:
+        type: numeric
+
+relationships:
+  - parent:
+      entity: patients
+      key: patient_id
+    child:
+      entity: visits
+      key: patient_id
