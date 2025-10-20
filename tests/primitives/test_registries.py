@@ -66,6 +66,15 @@ def test_interval_aggregation_name_annotations():
 
 
 def test_transformer_subset_lookup():
-    names = ["identity", "lag_1", "rolling_mean_3", "pct_change_1"]
+    names = [
+        "identity",
+        "lag_1",
+        "rolling_mean_3",
+        "rolling_median_7",
+        "rolling_iqr_7",
+        "ema_7",
+        "holt_winters_trend_7",
+        "pct_change_1",
+    ]
     transformers = get_transformers(names)
     assert set(transformers) == set(names)

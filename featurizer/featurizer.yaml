@@ -21,6 +21,7 @@ entities:
     alias: patients
     id: patient
     table: semantic.patients
+    temporal_ix: registered_at
     variables:
       gender:
         type: categorical
@@ -65,6 +66,16 @@ entities:
           - P1W
           - P2W
           - P1M
+  -
+    alias: care_plans
+    id: care_plan
+    table: semantic.care_plans
+    temporal_ix: effective_at
+    variables:
+      plan_score:
+        type: numeric
+      plan_type:
+        type: categorical
 
 relationships:
   -
@@ -90,3 +101,13 @@ relationships:
     child:
       entity: consultations
       key: patient
+  -
+    parent:
+      entity: care_plans
+      key: patient
+    child:
+      entity: patients
+      key: patient
+    temporal:
+      mode: as_of
+      grace: P21D

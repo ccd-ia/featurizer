@@ -19,8 +19,16 @@ def test_featurizer_features_remain_hashable(sample_config_path):
     assert any("STDDEV(" in name for name in feature_names)
     assert any("ABS(" in name for name in feature_names)
     assert any("CUM_SUM(" in name for name in feature_names)
+    assert any("ROLLING_MEDIAN_7(" in name for name in feature_names)
+    assert any("ROLLING_IQR_7(" in name for name in feature_names)
+    assert any("EMA_7(" in name for name in feature_names)
+    assert any("HOLT_WINTERS_TREND_7(" in name for name in feature_names)
 
     # Hashability regression guard: re-adding the set should not change cardinality.
     feature_set = set(features)
     feature_set.update(features)
     assert len(feature_set) == len(features)
+
+    query_text = featurizer.query.lower()
+    assert "lateral (" in query_text
+    assert "care_plans_asof_for_patients" in query_text

@@ -98,6 +98,55 @@ def test_rolling_mean_transformer_uses_frame():
     assert "rows between 2 preceding and current row" in result.definition.lower()
 
 
+def test_rolling_median_transformer_uses_percentile():
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    transformer = get_transformers(["rolling_median_7"])["rolling_median_7"]
+
+    result = transformer(entity, feature)
+
+    assert result is not None
+    assert "percentile_cont(0.5)" in result.definition.lower()
+    assert "rows between 6 preceding and current row" in result.definition.lower()
+
+
+def test_rolling_iqr_transformer_differs_percentiles():
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    transformer = get_transformers(["rolling_iqr_7"])["rolling_iqr_7"]
+
+    result = transformer(entity, feature)
+
+    assert result is not None
+    assert "percentile_cont(0.75)" in result.definition.lower()
+    assert "percentile_cont(0.25)" in result.definition.lower()
+
+
+def test_ema_transformer_builds_weighted_window():
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    transformer = get_transformers(["ema_7"])["ema_7"]
+
+    result = transformer(entity, feature)
+
+    assert result is not None
+    assert "sum(" in result.definition.lower()
+    assert "exp(" in result.definition.lower()
+    assert "nullif" in result.definition.lower()
+
+
+def test_holt_winters_trend_uses_regression():
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    transformer = get_transformers(["holt_winters_trend_7"])["holt_winters_trend_7"]
+
+    result = transformer(entity, feature)
+
+    assert result is not None
+    assert "regr_slope" in result.definition.lower()
+    assert "rows between 6 preceding and current row" in result.definition.lower()
+
+
 def test_pct_change_transformer_computes_ratio():
     entity = _make_numeric_entity()
     feature = _get_feature(entity, "duration_minutes")

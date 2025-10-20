@@ -93,6 +93,10 @@ class FeaturePlanner:
         self._get_backward_features(target_entity, depth)
         self._build_transformations(target_entity)
 
+    @staticmethod
+    def _sort_features(features: Iterable[Feature]) -> List[Feature]:
+        return sorted(features, key=lambda feature: feature.name)
+
     def _get_direct_features(self, target: Entity, depth: int) -> None:
         forward_relationships = self.graph.get_forward_relationships(target)
         for relationship in forward_relationships:
@@ -137,20 +141,24 @@ class FeaturePlanner:
                         aggregations.append(interval_feature)
 
         aggregation_set = set(aggregations)
-        self._debug("aggregations", target=target.alias, source=source.alias, count=len(aggregation_set))
+        sorted_aggs = self._sort_features(aggregation_set)
+        self._debug("aggregations", target=target.alias, source=source.alias, count=len(sorted_aggs))
 
         self._features[source.alias].update(aggregation_set)
         self._features[target.alias].update(aggregation_set)
 
-        self._build_aggregations_cte(target, source, relationship, aggregation_set)
+        self._build_aggregations_cte(target, source, relationship, sorted_aggs)
 
     def _build_direct(self, target: Entity, source: Entity, relationship: Relationship) -> None:
         logger.debug("Processing forward relationship {}", relationship)
-        directs = set(self._features[source.alias])
+        directs = self._sort_features(self._features[source.alias])
         self._debug("direct_features", target=target.alias, source=source.alias, count=len(directs))
 
         self._features[target.alias].update(directs)
-        self._build_direct_cte(target, source, relationship, directs)
+        if getattr(relationship, "temporal_mode", None) == "as_of":
+            self._build_direct_asof(target, source, relationship, directs)
+        else:
+            self._build_direct_cte(target, source, relationship, directs)
 
     def _build_transformations(self, target: Entity) -> None:
         self._build_synth_cte(target)
@@ -174,7 +182,8 @@ class FeaturePlanner:
 
         self._debug("transformations", target=target.alias, count=len(flattened))
         self._features[target.alias].update(flattened)
-        self._build_transform_cte(target, flattened)
+        sorted_flattened = self._sort_features(flattened)
+        self._build_transform_cte(target, sorted_flattened)
 
     # ------------------------------------------------------------------ #
     # CTE builders (unchanged from the original implementation)
@@ -242,13 +251,69 @@ class FeaturePlanner:
         self._joins[target.alias].append(join_statement)
         self._ctes.append(cte_query)
 
+    def _build_direct_asof(
+        self,
+        target: Entity,
+        source: Entity,
+        relationship: Relationship,
+        features: Iterable[Feature],
+    ) -> None:
+        target_temporal = target.temporal_ix.name if target.temporal_ix else None
+        source_temporal = (
+            relationship.temporal_child_field
+            or (source.temporal_ix.name if source.temporal_ix else None)
+        )
+        if not target_temporal or not source_temporal:
+            logger.warning(
+                "Temporal join requested between {} and {} but temporal indexes are missing; falling back to static join.",
+                source.alias,
+                target.alias,
+            )
+            self._build_direct_cte(target, source, relationship, features)
+            return
+
+        projected = [
+            f"{source.alias}_transform.{feature.name} as \"{feature.name}\""
+            for feature in features
+            if feature.type not in {'index', 'key'}
+        ]
+        if not projected:
+            return
+
+        projected_sql = ",\n        ".join(projected)
+
+        where_clauses = [
+            f"{source.alias}_transform.{relationship.parent_key} = {target.table}.{relationship.child_key}",
+            f"{source.alias}_transform.{source_temporal} <= {target.table}.{target_temporal}",
+        ]
+        if relationship.temporal_grace:
+            where_clauses.append(
+                f"{target.table}.{target_temporal} - {source.alias}_transform.{source_temporal} <= interval '{relationship.temporal_grace}'"
+            )
+
+        cte_name = f"{source.alias}_asof_for_{target.alias}"
+        # Convert the CTE text into a lateral join referencing the target table row.
+        lateral_join = (
+            " lateral (\n"
+            "        select\n"
+            f"        {projected_sql}\n"
+            f"        from {source.alias}_transform\n"
+            f"        where {' and '.join(where_clauses)}\n"
+            f"        order by {source.alias}_transform.{source_temporal} desc\n"
+            "        limit 1\n"
+            f"    ) as {cte_name} on true "
+        )
+        self._joins[target.alias].append(lateral_join)
+
     def _build_synth_cte(self, target: Entity) -> None:
         cte_table = f"{target.alias}_synth"
 
         indexes = [f"{target.table}.{ix.name}" for ix in target.indexes]
         keys = [f"{target.table}.{key.name}" for key in target.keys]
         feature_names = [
-            feature.name for feature in self._features[target.alias] if feature.type not in ['index', 'key']
+            feature.name
+            for feature in self._sort_features(self._features[target.alias])
+            if feature.type not in ['index', 'key']
         ]
 
         cte_query = f"""

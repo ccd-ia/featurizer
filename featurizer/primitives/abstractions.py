@@ -11,10 +11,13 @@ class ERGraph:
         if relationships:
             self.relationships = [
                 Relationship(
-                    parent = self.entities[r['parent']['entity']],
-                    child = self.entities[r['child']['entity']],
-                    parent_key = r['parent']['key'],
-                    child_key = r['child']['key']
+                    parent=self.entities[r['parent']['entity']],
+                    child=self.entities[r['child']['entity']],
+                    parent_key=r['parent']['key'],
+                    child_key=r['child']['key'],
+                    temporal_mode=(r.get('temporal') or {}).get('mode'),
+                    temporal_grace=(r.get('temporal') or {}).get('grace'),
+                    temporal_child_field=(r.get('temporal') or {}).get('child_timestamp'),
                 )
                 for r in relationships
             ]
@@ -100,25 +103,42 @@ class Entity:
         return relationship
 
 class Relationship:
-    def __init__(self, parent, child, parent_key, child_key):
+    def __init__(self, parent, child, parent_key, child_key, temporal_mode=None, temporal_grace=None, temporal_child_field=None):
 
         self.parent = parent
         self.parent_key = parent_key
         self.child = child
         self.child_key = child_key
+        self.temporal_mode = temporal_mode
+        self.temporal_grace = temporal_grace
+        self.temporal_child_field = temporal_child_field
 
     def __repr__(self):
         return f"""{self.parent}.{self.parent_key} -> {self.child}.{self.child_key}"""
 
     def __eq__(self, other):
-        return self.parent == other.parent and \
-            self.parent_key == other.parent_key and \
-            self.child == other.child and \
-            self.child_key == other.child_key
+        return (
+            self.parent == other.parent
+            and self.parent_key == other.parent_key
+            and self.child == other.child
+            and self.child_key == other.child_key
+            and self.temporal_mode == other.temporal_mode
+            and self.temporal_grace == other.temporal_grace
+            and self.temporal_child_field == other.temporal_child_field
+        )
 
     def __hash__(self):
-        return hash(self.parent.alias) and hash(self.parent_key) \
-            and hash(self.child.alias) and hash(self.child_key)
+        return hash(
+            (
+                self.parent.alias,
+                self.parent_key,
+                self.child.alias,
+                self.child_key,
+                self.temporal_mode,
+                self.temporal_grace,
+                self.temporal_child_field,
+            )
+        )
 
     def __contains__(self, entity):
         if entity in [self.parent, self.child]:

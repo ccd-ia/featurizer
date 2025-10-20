@@ -24,6 +24,11 @@ DEFAULT_TRANSFORMATIONS = (
     "lag_7",
     "rolling_mean_3",
     "rolling_std_7",
+    "rolling_median_7",
+    "rolling_iqr_7",
+    "ema_7",
+    "holt_winters_level_7",
+    "holt_winters_trend_7",
     "pct_change_1",
 )
 

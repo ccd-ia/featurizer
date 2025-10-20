@@ -6,9 +6,9 @@ Unary transformers should register via `register_transformer` to remain discover
 by the featurizer without requiring manual imports.
 """
 
-from .abstractions import Feature
+from .abstractions import Entity, Feature
 from .utils import register_transformer
-from typing import Iterable
+from typing import Callable, Iterable, Optional, Sequence, Tuple
 
 class Transformer:
     """
@@ -307,6 +307,34 @@ def _build_temporal_window(function: str, parent: Entity, feature: Feature, *, a
     return f"{function}({args_sql}) over ({window_clause})"
 
 
+def _frame_for_window(window: int) -> Optional[Tuple[str, str]]:
+    if window <= 1:
+        return None
+    return (f"{window - 1} preceding", "current row")
+
+
+def _build_percentile_window(
+    parent: Entity,
+    feature: Feature,
+    percentile: float,
+    frame: Optional[Tuple[str, str]],
+) -> Optional[str]:
+    partition = parent.id.name if parent.id else None
+    if partition is None:
+        return None
+    order_by = _temporal_ordering(feature)
+    if order_by is None:
+        return None
+    frame_clause = ""
+    if frame:
+        start, end = frame
+        frame_clause = f" rows between {start} and {end}"
+    return (
+        f"percentile_cont({percentile}) within group (order by {feature.name}) "
+        f"over (partition by {partition} order by {order_by}{frame_clause})"
+    )
+
+
 cum_sum = WindowFunctionTransformer(name='cum_sum', function='sum', order_by=_temporal_ordering)
 cum_mean = WindowFunctionTransformer(name='cum_mean', function='avg', order_by=_temporal_ordering)
 cum_max = WindowFunctionTransformer(name='cum_max', function='max', order_by=_temporal_ordering)
@@ -414,14 +442,145 @@ class RollingStatisticTransformer:
     def __call__(self, parent, feature):
         if feature.type != 'numeric':
             return feature
-        frame = None
-        if self.window > 1:
-            frame = (f"{self.window - 1} preceding", "current row")
+        frame = _frame_for_window(self.window)
         expression = _build_temporal_window(self.function, parent, feature, frame=frame)
         if expression is None:
             return None
         return Feature(
             name=f"\"{self.label.upper()}_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class RollingMedianTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"rolling_median_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        expression = _build_percentile_window(parent, feature, 0.5, frame)
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"ROLLING_MEDIAN_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class RollingIQRTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"rolling_iqr_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        p75 = _build_percentile_window(parent, feature, 0.75, frame)
+        p25 = _build_percentile_window(parent, feature, 0.25, frame)
+        if not p75 or not p25:
+            return None
+        expression = f"({p75}) - ({p25})"
+        return Feature(
+            name=f"\"ROLLING_IQR_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class ExponentialMovingAverageTransformer:
+    def __init__(self, window: int, decay: float):
+        self.window = window
+        self.decay = decay
+        self.name = f"ema_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        partition = parent.id.name if parent.id else None
+        order_by = _temporal_ordering(feature)
+        if not partition or not order_by:
+            return None
+        frame = _frame_for_window(self.window)
+        frame_clause = ""
+        if frame:
+            start, end = frame
+            frame_clause = f" rows between {start} and {end}"
+        timestamp_expr = f"(extract(epoch from {order_by}) / 86400.0)"
+        weight_expr = f"exp({self.decay} * {timestamp_expr})"
+        base_window = f"partition by {partition} order by {order_by}{frame_clause}"
+        numerator = f"sum({feature.name} * {weight_expr}) over ({base_window})"
+        denominator = f"sum({weight_expr}) over ({base_window})"
+        expression = f"{numerator} / NULLIF({denominator}, 0)"
+        return Feature(
+            name=f"\"EMA_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class HoltWintersLevelTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"holt_winters_level_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        expression = _build_temporal_window("avg", parent, feature, frame=frame)
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"HOLT_WINTERS_LEVEL_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class HoltWintersTrendTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"holt_winters_trend_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        order_by = _temporal_ordering(feature)
+        if order_by is None:
+            return None
+        frame = _frame_for_window(self.window)
+        expression = _build_temporal_window(
+            "regr_slope",
+            parent,
+            feature,
+            args=[order_by],
+            frame=frame,
+        )
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"HOLT_WINTERS_TREND_{self.window}({feature.entity.alias}.{feature.name})\"",
             type='numeric',
             definition=expression,
             parents=feature,
@@ -600,13 +759,36 @@ for _periods in (1, 3, 7):
     DEFAULT_TRANSFORMERS[_lag_transformer.name] = _lag_transformer
     register_transformer(_lag_transformer.name, _lag_transformer)
 
-for _window in (3, 7):
+for _window in (3, 7, 14):
     _rolling_mean = RollingStatisticTransformer("rolling_mean", "avg", _window)
     _rolling_std = RollingStatisticTransformer("rolling_std", "stddev", _window)
     DEFAULT_TRANSFORMERS[_rolling_mean.name] = _rolling_mean
     DEFAULT_TRANSFORMERS[_rolling_std.name] = _rolling_std
     register_transformer(_rolling_mean.name, _rolling_mean)
     register_transformer(_rolling_std.name, _rolling_std)
+
+for _window in (5, 7):
+    _rolling_median = RollingMedianTransformer(_window)
+    DEFAULT_TRANSFORMERS[_rolling_median.name] = _rolling_median
+    register_transformer(_rolling_median.name, _rolling_median)
+
+for _window in (7, 14):
+    _rolling_iqr = RollingIQRTransformer(_window)
+    DEFAULT_TRANSFORMERS[_rolling_iqr.name] = _rolling_iqr
+    register_transformer(_rolling_iqr.name, _rolling_iqr)
+
+for _window, _decay in ((7, 0.25), (14, 0.15)):
+    _ema = ExponentialMovingAverageTransformer(_window, _decay)
+    DEFAULT_TRANSFORMERS[_ema.name] = _ema
+    register_transformer(_ema.name, _ema)
+
+for _window in (7, 14):
+    _hw_level = HoltWintersLevelTransformer(_window)
+    _hw_trend = HoltWintersTrendTransformer(_window)
+    DEFAULT_TRANSFORMERS[_hw_level.name] = _hw_level
+    DEFAULT_TRANSFORMERS[_hw_trend.name] = _hw_trend
+    register_transformer(_hw_level.name, _hw_level)
+    register_transformer(_hw_trend.name, _hw_trend)
 
 for _periods in (1, 3):
     _pct = PercentageChangeTransformer(_periods)

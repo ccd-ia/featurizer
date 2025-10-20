@@ -9,6 +9,7 @@ entities:
   - alias: patients
     id: patient_id
     table: analytics.patients
+    temporal_ix: registered_at
     variables:
       age:
         type: numeric
@@ -19,6 +20,15 @@ entities:
     variables:
       duration_minutes:
         type: numeric
+  - alias: care_plans
+    id: plan_id
+    table: analytics.care_plans
+    temporal_ix: effective_at
+    variables:
+      patient_id:
+        type: index
+      risk_score:
+        type: numeric
 
 relationships:
   - parent:
@@ -27,3 +37,12 @@ relationships:
     child:
       entity: visits
       key: patient_id
+  - parent:
+      entity: care_plans
+      key: patient_id
+    child:
+      entity: patients
+      key: patient_id
+    temporal:
+      mode: as_of
+      grace: P14D
