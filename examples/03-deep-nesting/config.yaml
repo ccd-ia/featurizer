@@ -1,0 +1,87 @@
+# Retail supply chain: Deep nesting example
+
+target: stores
+max_depth: 3
+
+intervals:
+  - P30D  # Last 30 days
+  - P90D  # Last 90 days
+
+entities:
+  - alias: stores
+    id: store_id
+    table: stores
+    temporal_ix: open_date
+    variables:
+      region:
+        type: categorical
+      size_sqft:
+        type: numeric
+
+  - alias: orders
+    id: order_id
+    table: orders
+    temporal_ix: order_date
+    variables:
+      status:
+        type: categorical
+
+  - alias: order_items
+    id: item_id
+    table: order_items
+    variables:
+      quantity:
+        type: numeric
+      unit_price:
+        type: numeric
+
+  - alias: products
+    id: product_id
+    table: products
+    variables:
+      category:
+        type: categorical
+      base_cost:
+        type: numeric
+
+  - alias: suppliers
+    id: supplier_id
+    table: suppliers
+    variables:
+      country:
+        type: categorical
+      rating:
+        type: numeric
+
+relationships:
+  # Depth 1: Stores → Orders
+  - parent:
+      entity: stores
+      key: store_id
+    child:
+      entity: orders
+      key: store_id
+
+  # Depth 2: Orders → OrderItems
+  - parent:
+      entity: orders
+      key: order_id
+    child:
+      entity: order_items
+      key: order_id
+
+  # Depth 2: OrderItems → Products
+  - parent:
+      entity: order_items
+      key: product_id
+    child:
+      entity: products
+      key: product_id
+
+  # Depth 3: Products → Suppliers
+  - parent:
+      entity: products
+      key: supplier_id
+    child:
+      entity: suppliers
+      key: supplier_id

@@ -4,23 +4,69 @@
 
 Each aggregator registers itself through `register_aggregation` so new primitives
 can be discovered without editing the featurizer core.
+
+Aggregation primitives are applied when traversing backward relationships
+(parent ← child). They reduce multiple rows from the child entity to a single
+value for each parent entity row.
+
+Available aggregations:
+    - Basic: sum, min, max, mean, stddev, variance, count, nunique
+    - Boolean: all, any
+    - Ordered-set: median, mode
+    - Statistical: min_max_scale, mean_deviation, z_score, skewness, kurtosis
+    - Mean variants: harmonic_mean, geometric_mean
+
+Example usage:
+    >>> from featurizer.primitives.utils import get_aggregations
+    >>> aggs = get_aggregations(["sum", "mean", "median"])
+    >>> for name, agg in aggs.items():
+    ...     print(f"{name}: {agg}")
+
+Most aggregations support temporal interval filtering when the entity has a
+temporal_ix defined. This allows computing aggregates over specific time windows
+(e.g., "sum of orders in the last 7 days").
 """
 
 from .abstractions import Feature
 from .utils import register_aggregation
 
+
 class Aggregator:
-    """
-    Base class for aggregation functions
+    """Base class for aggregation functions.
+
+    Aggregators reduce multiple rows to a single value, following PostgreSQL's
+    aggregate function semantics. They are applied when traversing backward
+    relationships in the entity graph.
 
     From the PostgreSQL docs:
+        "An aggregate function reduces multiple inputs to a single output value,
+        such as the sum or average of the inputs."
 
-    '...represents the application of an aggregate
-    function across the rows selected by a query.
-    An aggregate function reduces multiple inputs to a single output value,
-    such as the sum or average of the inputs.'
+    Attributes:
+        name: Unique identifier for this aggregation (e.g., 'sum', 'mean').
+        aggregate: SQL aggregate function name (defaults to name).
+        input_types: List of feature types this aggregation accepts.
+        output_type: Type of the resulting feature.
+        distinct: If True, applies DISTINCT to the aggregate.
+        order_by: Optional ORDER BY clause for ordered-set aggregates.
+        stackable: If True, can be composed with other primitives.
 
+    Example:
+        >>> # Create a custom aggregation
+        >>> class ProductAgg(Aggregator):
+        ...     def __init__(self):
+        ...         super().__init__(name='product')
+        ...     def _build_aggregate_expression(self, feature, interval):
+        ...         return f"EXP(SUM(LN({feature.name})))"
+        >>> register_aggregation('product', ProductAgg())
+
+    SQL Generation:
+        The aggregator generates SQL like:
+        - Basic: `SUM(amount)` or `AVG(price)`
+        - With interval: `SUM(amount) FILTER (WHERE daterange(...) @> date)`
+        - With DISTINCT: `COUNT(DISTINCT category)`
     """
+
     def __init__(self, name, aggregate=None, input_types=['numeric'], output_type='numeric', distinct = False, order_by=None, stackable=True):
         self.name = name
         self.aggregate = aggregate if aggregate else self.name
@@ -72,6 +118,14 @@ class Aggregator:
         return agg_feature
 
 class Zscore(Aggregator):
+    """Z-score (standard score) aggregation.
+
+    Computes how many standard deviations a value is from the mean.
+    Useful for identifying outliers and normalizing distributions.
+
+    SQL: (ABS(value - AVG(value)) / STDDEV(value))
+    """
+
     def __init__(self):
         super().__init__(name='zscore')
 
@@ -80,6 +134,15 @@ class Zscore(Aggregator):
 
 
 class Skewness(Aggregator):
+    """Skewness aggregation - measure of distribution asymmetry.
+
+    Positive skewness indicates a right-tailed distribution.
+    Negative skewness indicates a left-tailed distribution.
+    Values near zero indicate a symmetric distribution.
+
+    SQL: ((value - AVG(value)) / STDDEV(value))^3
+    """
+
     def __init__(self):
         super().__init__(name='skewness')
 
@@ -88,20 +151,47 @@ class Skewness(Aggregator):
 
 
 class Kurtosis(Aggregator):
+    """Kurtosis aggregation - measure of distribution tailedness.
+
+    High kurtosis indicates heavy tails (more outliers).
+    Low kurtosis indicates light tails (fewer outliers).
+    Normal distribution has kurtosis of 3.
+
+    SQL: ((value - AVG(value)) / STDDEV(value))^4
+    """
+
     def __init__(self):
         super().__init__(name='kurtosis')
 
     def _build_aggregate_expression(self,feature):
         return f"({ feature.name } - avg({ feature.name })) / stddev({ feature.name })**4"
 
+
 class MinMaxScale(Aggregator):
+    """Min-max normalization aggregation.
+
+    Scales values to a 0-1 range based on min and max.
+    Useful for comparing features with different scales.
+
+    SQL: (value - MIN(value)) / (MAX(value) - MIN(value))
+    """
+
     def __init__(self):
         super().__init__(name='min_max_scale')
 
     def _build_aggregate_expression(self,feature):
         return f"1.0*({ feature.name } - min({ feature.name })/(max({ feature.name }) - min({ feature.name }))"
 
+
 class AverageDeviation(Aggregator):
+    """Mean absolute deviation aggregation.
+
+    Measures average distance from the mean. More robust to outliers
+    than standard deviation.
+
+    SQL: SUM(ABS(value - AVG(value))) / COUNT(value)
+    """
+
     def __init__(self):
         super().__init__(name='mean_deviation')
 
@@ -195,27 +285,25 @@ for _name, _agg in DEFAULT_AGGREGATIONS.items():
 
 
 class OrderedSetAggregator(Aggregator):
-    """
-    There is a subclass of aggregate functions called ordered-set aggregates for which an
-    order_by_clause is required, usually because the aggregate's computation is only sensible
-    in terms of a specific ordering of its input rows. Typical examples of ordered-set aggregates
-    include rank and percentile calculations.
-    For an ordered-set aggregate, the order_by_clause is written inside WITHIN GROUP (...),
-    as shown in the final syntax alternative above.
-    The expressions in the order_by_clause are evaluated once per input row just
-    like regular aggregate arguments, sorted as per the order_by_clause's requirements,
-    and fed to the aggregate function as input arguments.
-    (This is unlike the case for a non-WITHIN GROUP order_by_clause, which is
-    not treated as argument(s) to the aggregate function.)
-    The argument expressions preceding WITHIN GROUP, if any, are called direct
-    arguments to distinguish them from the aggregated arguments listed in the order_by_clause.
-    Unlike regular aggregate arguments, direct arguments are evaluated only once
-    per aggregate call, not once per input row. This means that they can contain variables
-    only if those variables are grouped by GROUP BY; this restriction is the same as
-    if the direct arguments were not inside an aggregate expression at all.
-    Direct arguments are typically used for things like percentile fractions,
-    which only make sense as a single value per aggregation calculation.
-    The direct argument list can be empty; in this case, write just () not (*).
+    """Ordered-set aggregate functions (e.g., median, mode, percentiles).
+
+    These aggregates require an ORDER BY clause within the aggregate call
+    (WITHIN GROUP syntax) because their computation depends on row ordering.
+
+    Common examples:
+        - PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) -- median
+        - MODE() WITHIN GROUP (ORDER BY category) -- most frequent value
+
+    From PostgreSQL docs:
+        "For an ordered-set aggregate, the order_by_clause is written inside
+        WITHIN GROUP (...). The expressions are evaluated once per input row,
+        sorted per the ORDER BY requirements, and fed to the aggregate function."
+
+    Attributes:
+        direct_argument: Value passed before WITHIN GROUP (e.g., 0.5 for median).
+
+    SQL Pattern:
+        AGGREGATE(direct_arg) WITHIN GROUP (ORDER BY expression)
     """
     def __init__(self, name, aggregate=None, direct_argument=None, input_types=['numeric'], output_type='numeric', filter=None, stackable=True):
         self.order_by = True

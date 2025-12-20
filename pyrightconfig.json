@@ -1,0 +1,27 @@
+{
+  "include": [
+    "featurizer"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/node_modules"
+  ],
+  "pythonVersion": "3.10",
+  "pythonPlatform": "Linux",
+  "typeCheckingMode": "standard",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownVariableType": false,
+  "reportUnnecessaryIsInstance": "warning",
+  "reportUnnecessaryComparison": "warning",
+  "reportUnnecessaryCast": "warning",
+  "reportIncompatibleMethodOverride": "error",
+  "reportIncompatibleVariableOverride": "error",
+  "reportInconsistentConstructor": "error",
+  "ignore": [
+    "featurizer/primitives/aggregations.py",
+    "featurizer/primitives/transformations.py"
+  ]
+}

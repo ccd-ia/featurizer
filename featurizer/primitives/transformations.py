@@ -4,21 +4,72 @@
 
 Unary transformers should register via `register_transformer` to remain discoverable
 by the featurizer without requiring manual imports.
+
+Transformation primitives are applied to features within an entity. They transform
+individual values or compute window functions over partitions.
+
+Categories of transformers:
+    - Basic: identity (pass-through)
+    - Math: abs, exp, ln, log, sqrt, cbrt, sign, ceil, floor, trunc
+    - Text: num_chars
+    - Date parts: day, dow, month, year, hour, quarter, week, etc.
+    - Binning: hourly_bin, daily_bin
+    - Cyclical: cyclic_hour, cyclic_month, cyclic_day (sin/cos encoding)
+    - Cumulative: cum_sum, cum_mean, cum_max, cum_min, cum_count
+    - Window: first, last, previous, diff, time_since_previous
+    - Lag: lag_1, lag_3, lag_7
+    - Rolling: rolling_mean_*, rolling_std_*, rolling_median_*, rolling_iqr_*
+    - EMA: ema_7, ema_14
+    - Holt-Winters: holt_winters_level_*, holt_winters_trend_*
+    - Percentage change: pct_change_1, pct_change_3
+    - Distribution: cdf, percent_rank, ntile
+    - Boolean: is_null, in_array
+
+Example usage:
+    >>> from featurizer.primitives.utils import get_transformers
+    >>> transforms = get_transformers(["abs", "lag_1", "rolling_mean_7"])
+    >>> for name, t in transforms.items():
+    ...     print(f"{name}: {t}")
+
+Important: Transformers must return NEW Feature instances (never mutate input)
+to preserve hashing semantics for set operations and deduplication.
 """
 
 from .abstractions import Entity, Feature
 from .utils import register_transformer
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
+
 class Transformer:
-    """
-    Base class for transformation functions
+    """Base class for transformation functions.
 
-    From the PostgreSQL docs:
-    The syntax for a function call is the name of a function (possibly qualified
-    with a schema name), followed by its argument list enclosed in parentheses:
+    Transformers apply functions to individual feature values within an entity.
+    They generate SQL function calls that transform column values.
 
+    From PostgreSQL docs:
+        "The syntax for a function call is the name of a function followed by
+        its argument list enclosed in parentheses."
+
+    Attributes:
+        name: Unique identifier for this transformation.
+        transformer: SQL function name (defaults to name).
+        input_types: List of feature types this transformation accepts.
+        output_type: Type of the resulting feature.
+        stackable: If True, can be composed with other primitives.
+
+    Example:
+        >>> class Square(Transformer):
+        ...     def __init__(self):
+        ...         super().__init__(name='square')
+        ...     def _build_transformer_call(self, feature):
+        ...         return f"POWER({feature.name}, 2)"
+        >>> register_transformer('square', Square())
+
+    Important:
+        Subclasses should return NEW Feature instances from __call__,
+        never mutate the input feature.
     """
+
     def __init__(self, name, transformer=None, input_types=['numeric'], output_type='numeric', stackable=True):
         self.name = name
         self.transformer = transformer if transformer is not None else self.name
@@ -197,14 +248,30 @@ cyclic_day = CyclicalDateTransformer(name='cyclic_hour', date_part='D', period=7
 
 
 class WindowFunctionTransformer:
-    """
-    A window function call represents the application of an aggregate-like
-    function over some portion of the rows selected by a query.
-    Unlike non-window aggregate calls, this is not tied to grouping of the
-    selected rows into a single output row — each row remains separate in the query output.
-    However the window function has access to all the rows that would
-    be part of the current row's group according to the grouping specification
-    (PARTITION BY list) of the window function call.
+    """Window function transformer for aggregate-like operations over row partitions.
+
+    Window functions compute values across a set of rows related to the current row,
+    without collapsing rows like regular aggregates do. Each row retains its identity.
+
+    From PostgreSQL docs:
+        "A window function call represents the application of an aggregate-like
+        function over some portion of the rows selected by a query. Unlike
+        non-window aggregate calls, this is not tied to grouping of the selected
+        rows into a single output row — each row remains separate in the query output."
+
+    Attributes:
+        name: Unique identifier for this transformation.
+        function: SQL window function name.
+        order_by: Callable or string for ORDER BY clause (often temporal_ix).
+        frame: Tuple defining the window frame (start, end), e.g., ('3 preceding', 'current row').
+        extra_args: Additional arguments to pass to the function.
+
+    SQL Pattern:
+        FUNCTION(value) OVER (PARTITION BY id ORDER BY date [ROWS BETWEEN ... AND ...])
+
+    Examples:
+        - cum_sum: SUM(value) OVER (PARTITION BY id ORDER BY date)
+        - rolling_mean_7: AVG(value) OVER (... ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
     """
     def __init__(
         self,
@@ -409,6 +476,22 @@ percent_rank = DistributionTransformer(name='percent_rank', order_by=_temporal_o
 ntile = DistributionTransformer(name='ntile', arg_func=5, order_by=_temporal_ordering)
 
 class LagTransformer:
+    """Access values from N periods ago.
+
+    Creates a feature containing the value from N rows back, ordered by
+    the entity's temporal index. Useful for comparing current values to
+    historical values.
+
+    Args:
+        periods: Number of periods to look back.
+
+    SQL: LAG(value, N) OVER (PARTITION BY id ORDER BY temporal_ix)
+
+    Examples:
+        - lag_1: Previous period's value
+        - lag_7: Value from 7 periods ago (e.g., same day last week)
+    """
+
     def __init__(self, periods: int):
         self.periods = periods
         self.name = f"lag_{periods}"
@@ -433,6 +516,24 @@ class LagTransformer:
 
 
 class RollingStatisticTransformer:
+    """Rolling window statistics (mean, std, etc.).
+
+    Computes statistics over a sliding window of N rows preceding and
+    including the current row. Useful for smoothing time series and
+    detecting trends.
+
+    Args:
+        label: Base name for the transformer (e.g., 'rolling_mean').
+        function: SQL aggregate function to apply (e.g., 'avg', 'stddev').
+        window: Number of rows in the window (including current).
+
+    SQL: FUNCTION(value) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+
+    Examples:
+        - rolling_mean_7: 7-day moving average
+        - rolling_std_14: 14-day rolling standard deviation
+    """
+
     def __init__(self, label: str, function: str, window: int):
         self.label = label
         self.function = function
@@ -503,6 +604,24 @@ class RollingIQRTransformer:
 
 
 class ExponentialMovingAverageTransformer:
+    """Exponential Moving Average (EMA) with time-based weighting.
+
+    EMA gives more weight to recent observations, with weights decaying
+    exponentially based on time distance. More responsive to recent
+    changes than simple moving averages.
+
+    Args:
+        window: Number of rows in the window.
+        decay: Decay rate for exponential weighting (higher = faster decay).
+
+    SQL Pattern:
+        SUM(value * EXP(decay * time)) / SUM(EXP(decay * time)) OVER (...)
+
+    Use cases:
+        - Trend following in financial time series
+        - Smoothing noisy signals while preserving responsiveness
+    """
+
     def __init__(self, window: int, decay: float):
         self.window = window
         self.decay = decay
@@ -537,6 +656,18 @@ class ExponentialMovingAverageTransformer:
 
 
 class HoltWintersLevelTransformer:
+    """Holt-Winters level component (smoothed average).
+
+    Extracts the level (base value) component from a time series,
+    implemented as a rolling average. Part of the Holt-Winters
+    exponential smoothing method for forecasting.
+
+    Args:
+        window: Number of rows for smoothing.
+
+    SQL: AVG(value) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+    """
+
     def __init__(self, window: int):
         self.window = window
         self.name = f"holt_winters_level_{window}"
@@ -559,6 +690,22 @@ class HoltWintersLevelTransformer:
 
 
 class HoltWintersTrendTransformer:
+    """Holt-Winters trend component (slope over time).
+
+    Extracts the trend (direction) component from a time series using
+    linear regression slope. Part of the Holt-Winters exponential
+    smoothing method for forecasting.
+
+    Args:
+        window: Number of rows for trend calculation.
+
+    SQL: REGR_SLOPE(value, time) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+
+    Use cases:
+        - Detecting upward/downward trends
+        - Forecasting future values
+    """
+
     def __init__(self, window: int):
         self.window = window
         self.name = f"holt_winters_trend_{window}"
