@@ -1,13 +1,17 @@
 # coding: utf-8
 
+from __future__ import annotations
+
 from enum import Enum
+from typing import Any, Dict, List, Optional, Set
 
 FeatureType = Enum('FeatureType', 'index spatial_ix temporal_ix date timestamp numeric categorical key')
 
 class ERGraph:
-    def __init__(self, entities, relationships):
-        self.entities = {e['alias']: Entity(**e) for e in entities}
+    def __init__(self, entities: List[Dict[str, Any]], relationships: Optional[List[Dict[str, Any]]]) -> None:
+        self.entities: Dict[str, Entity] = {e['alias']: Entity(**e) for e in entities}
 
+        self.relationships: List[Relationship]
         if relationships:
             self.relationships = [
                 Relationship(
@@ -22,101 +26,104 @@ class ERGraph:
                 for r in relationships
             ]
         else:
-            self.relationships = {}
+            self.relationships = []
 
         for r in self.relationships:
             self.entities[r.child.alias].add_key(Key(name=r.child_key, entity=r.child))
 
-    def get_backward_entities(self, entity):
+    def get_backward_entities(self, entity: Entity) -> Set[Entity]:
         return {r.child for r in self.relationships if r.parent == entity}
 
-    def get_forward_entities(self, entity):
+    def get_forward_entities(self, entity: Entity) -> Set[Entity]:
         return {r.parent for r in self.relationships if r.child == entity}
 
-    def get_backward_relationships(self, entity):
+    def get_backward_relationships(self, entity: Entity) -> Set[Relationship]:
         return {r for r in self.relationships if r.parent == entity}
 
-    def get_forward_relationships(self, entity):
+    def get_forward_relationships(self, entity: Entity) -> Set[Relationship]:
         return {r for r in self.relationships if r.child == entity}
 
 class Entity:
-    def __init__(self, alias, table, id, spatial_ix=None, temporal_ix=None, variables=None):
-        self.alias = alias
-        self.table = table
+    def __init__(
+        self,
+        alias: str,
+        table: str,
+        id: Optional[str],
+        spatial_ix: Optional[str] = None,
+        temporal_ix: Optional[str] = None,
+        variables: Optional[Dict[str, Dict[str, str]]] = None
+    ) -> None:
+        self.alias: str = alias
+        self.table: str = table
 
-        self.id = Id(name=id, entity=self) if id else None
-        self.spatial_ix = Id(name=spatial_ix, entity=self) if spatial_ix else None                  # Spatial index a.k.a "event location"
-        self.temporal_ix = Id(name=temporal_ix, entity=self) if temporal_ix else None                # Temporal index a.k.a "event date"
+        self.id: Optional[Id] = Id(name=id, entity=self) if id else None
+        self.spatial_ix: Optional[Id] = Id(name=spatial_ix, entity=self) if spatial_ix else None  # Spatial index a.k.a "event location"
+        self.temporal_ix: Optional[Id] = Id(name=temporal_ix, entity=self) if temporal_ix else None  # Temporal index a.k.a "event date"
 
-        self.keys = []                          # Foreign keys to another dataset
+        self.keys: List[Key] = []  # Foreign keys to another dataset
 
-        self.features = []
+        self.features: List[Feature] = []
 
         if variables is not None:
-            self.features = [ Variable(name=var, type=description['type'], entity=self) for var, description in variables.items() ]
+            self.features = [Variable(name=var, type=description['type'], entity=self) for var, description in variables.items()]
 
         self.features = self.features + \
             ([self.id] if self.id else []) + \
             ([self.temporal_ix] if self.temporal_ix else []) + \
             ([self.spatial_ix] if self.spatial_ix else [])
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Entity({self.alias})"
 
-    def info(self):
+    def info(self) -> str:
+        feature_list = ', '.join(f.name for f in self.features if isinstance(f, Variable))
         return f"""
 
         {self.alias.capitalize()}(table = {self.table})
 
             Variables:
-               {self.variables}
+               {feature_list}
 
         """
 
     @property
-    def indexes(self):
+    def indexes(self) -> List[Id]:
         return list(filter(None, [self.id, self.spatial_ix, self.temporal_ix]))
 
-    def add_key(self, key):
+    def add_key(self, key: Key) -> None:
         if key not in self.keys:
             self.keys.append(key)
 
-    def add_features(self, features):
+    def add_features(self, features: List[Feature]) -> None:
         for feature in features:
             if feature not in self.features:
                 self.features.append(feature)
 
-    def add_relationship(self, relationship):
-        if self.alias in relationship:
-            if self.alias == relationship.parent:
-                self.relationships['backward'].append(relationship)
-            else:
-                self.relationships['forward'].append(relationship)
-
-    def get_relationship(self, other, type):
-        relationship = None
-        for r in self.relationships[type]:
-            if other in r:
-                relationship = r
-                break
-
-        return relationship
-
 class Relationship:
-    def __init__(self, parent, child, parent_key, child_key, temporal_mode=None, temporal_grace=None, temporal_child_field=None):
+    def __init__(
+        self,
+        parent: Entity,
+        child: Entity,
+        parent_key: str,
+        child_key: str,
+        temporal_mode: Optional[str] = None,
+        temporal_grace: Optional[str] = None,
+        temporal_child_field: Optional[str] = None
+    ) -> None:
+        self.parent: Entity = parent
+        self.parent_key: str = parent_key
+        self.child: Entity = child
+        self.child_key: str = child_key
+        self.temporal_mode: Optional[str] = temporal_mode
+        self.temporal_grace: Optional[str] = temporal_grace
+        self.temporal_child_field: Optional[str] = temporal_child_field
 
-        self.parent = parent
-        self.parent_key = parent_key
-        self.child = child
-        self.child_key = child_key
-        self.temporal_mode = temporal_mode
-        self.temporal_grace = temporal_grace
-        self.temporal_child_field = temporal_child_field
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"""{self.parent}.{self.parent_key} -> {self.child}.{self.child_key}"""
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Relationship):
+            return False
         return (
             self.parent == other.parent
             and self.parent_key == other.parent_key
@@ -127,7 +134,7 @@ class Relationship:
             and self.temporal_child_field == other.temporal_child_field
         )
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(
             (
                 self.parent.alias,
@@ -140,71 +147,82 @@ class Relationship:
             )
         )
 
-    def __contains__(self, entity):
+    def __contains__(self, entity: Entity) -> bool:
         if entity in [self.parent, self.child]:
             return True
+        return False
 
-    def is_backward(self, e1, e2):
+    def is_backward(self, e1: Entity, e2: Entity) -> bool:
         return e1 == self.parent and e2 == self.child
 
-    def is_forward(self, e1, e2):
+    def is_forward(self, e1: Entity, e2: Entity) -> bool:
         return e1 == self.child and e2 == self.parent
 
 
 class Feature:
-    """ Base class for features """
+    """Base class for features"""
     def __init__(
-            self, name, type, definition=None, entity=None, parents=None,
-            intervals=None, specials=None, sort=None, description='a feature',
-            stack_depth=0
-    ):
-        self.name = name
-        self.type = type
-        self.definition = definition
-        self.stack_depth = stack_depth
-        self.entity = entity
-        self.parents = parents  ## Which are they parent variables
-        self.intervals = intervals or [] ## Do we care about some past time intervals?
-        self.specials = specials or []  ## Do we care about specific values?
-        self.sort = sort ## Sort by...
-        self.description = description
+        self,
+        name: str,
+        type: str,
+        definition: Optional[str] = None,
+        entity: Optional[Entity] = None,
+        parents: Optional[List[Feature]] = None,
+        intervals: Optional[List[str]] = None,
+        specials: Optional[List[Any]] = None,
+        sort: Optional[str] = None,
+        description: str = 'a feature',
+        stack_depth: int = 0
+    ) -> None:
+        self.name: str = name
+        self.type: str = type
+        self.definition: Optional[str] = definition
+        self.stack_depth: int = stack_depth
+        self.entity: Optional[Entity] = entity
+        self.parents: Optional[List[Feature]] = parents  # Which are the parent variables
+        self.intervals: List[str] = intervals or []  # Do we care about some past time intervals?
+        self.specials: List[Any] = specials or []  # Do we care about specific values?
+        self.sort: Optional[str] = sort  # Sort by...
+        self.description: str = description
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"""Feature({self.name.replace('"', '')})"""
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Feature):
+            return False
         return self.name == other.name
 
-    def __neq__(self, other):
-        return self.name != other.name
+    def __ne__(self, other: object) -> bool:
+        return not self.__eq__(other)
 
-    def __hash__(self):
-        return hash(self.name) ^ hash(self.type) ^  \
-            hash((self.name, self.type))
+    def __hash__(self) -> int:
+        return hash(self.name) ^ hash(self.type) ^ hash((self.name, self.type))
 
     @property
-    def query(self):
+    def query(self) -> str:
         return f"""{self.definition} as "{str.replace(self.name, '"', '')}" """
 
     @property
-    def short_name(self):
+    def short_name(self) -> str | int:
         if len(self.name) <= 63:
             return self.name
         else:
             return hash(self)
 
 class Variable(Feature):
-    """ Represents a column in a table. """
-    def __init__(self, name, type, entity):
+    """Represents a column in a table."""
+    def __init__(self, name: str, type: str, entity: Entity) -> None:
         super().__init__(name=name, definition=name, type=type, entity=entity, stack_depth=0)
 
 
 class Id(Feature):
-    """ Represents an entity id """
-    def __init__(self, name, entity):
+    """Represents an entity id"""
+    def __init__(self, name: str, entity: Entity) -> None:
         super().__init__(name=name, definition=name, type='index', entity=entity)
 
+
 class Key(Feature):
-    """ Represents a reference to another table """
-    def __init__(self, name, entity):
+    """Represents a reference to another table"""
+    def __init__(self, name: str, entity: Entity) -> None:
         super().__init__(name=name, definition=name, type='key', entity=entity)

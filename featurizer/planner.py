@@ -130,7 +130,7 @@ class FeaturePlanner:
                     aggregations.append(new_feature)
 
                 for interval in self.intervals:
-                    if feature.entity.temporal_ix is None:
+                    if feature.entity is None or feature.entity.temporal_ix is None:
                         logger.warning(
                             "Entity {} lacks temporal index; skipping interval-based aggregation",
                             feature.entity,
@@ -175,10 +175,12 @@ class FeaturePlanner:
 
         flattened: Set[Feature] = set()
         for candidate in transformed:
-            if isinstance(candidate, (list, tuple, set)):
-                flattened.update(candidate)
-            elif candidate:
+            if isinstance(candidate, Feature):
                 flattened.add(candidate)
+            elif isinstance(candidate, (list, tuple, set)):
+                for item in candidate:
+                    if isinstance(item, Feature):
+                        flattened.add(item)
 
         self._debug("transformations", target=target.alias, count=len(flattened))
         self._features[target.alias].update(flattened)

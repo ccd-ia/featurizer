@@ -2,6 +2,8 @@
 
 """SQL rendering utilities."""
 
+from __future__ import annotations
+
 from .planner import PlannerResult
 
 
@@ -9,6 +11,14 @@ class SQLRenderer:
     """Builds the final query from planner artifacts."""
 
     def render(self, plan: PlannerResult) -> str:
+        """Render a complete SQL query from planner artifacts.
+
+        Args:
+            plan: PlannerResult containing CTEs, features, and join information
+
+        Returns:
+            Complete SQL query string with CTEs wrapped in lateral join
+        """
         ctes = ','.join(plan.ctes)
         target_alias = plan.target.alias
         return f"""

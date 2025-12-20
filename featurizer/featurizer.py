@@ -1,15 +1,22 @@
 # coding: utf-8
 
+from __future__ import annotations
+
 import os
+from typing import Any, Dict, Iterable, List, Sequence, Set
+
 import yaml
 from icecream import ic
 from loguru import logger
 
 from .executor import QueryExecutor
 from .planner import FeaturePlanner, PlannerResult
-from .primitives import ERGraph
-from .primitives.utils import get_aggregations, get_transformers
+from .primitives import ERGraph, Entity, Feature
+from .primitives.utils import get_aggregations, get_transformers, AggregationRegistry, TransformationRegistry
 from .sql import SQLRenderer
+from .validation import ConfigValidator, ValidationResult
+
+import pandas as pd
 
 DEFAULT_AGGREGATIONS = ("count", "mean", "sum", "stddev")
 DEFAULT_TRANSFORMATIONS = (
@@ -41,21 +48,32 @@ class Featurizer:
     database execution.
     """
 
-    def __init__(self, config_file, *, debug=False):
-        config = self._load_config(config_file)
+    def __init__(self, config_file: str, *, debug: bool = False, validate: bool = True) -> None:
+        """Initialize Featurizer from a YAML configuration file.
 
-        self._debug_enabled = debug or self._env_debug_enabled()
+        Args:
+            config_file: Path to YAML configuration file
+            debug: Enable debug logging with icecream. Can also be set via FEATURIZER_DEBUG env var.
+            validate: Run enhanced validation checks (default: True)
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist
+            ValueError: If config is missing required keys or has invalid values
+        """
+        config = self._load_config(config_file, validate=validate)
+
+        self._debug_enabled: bool = debug or self._env_debug_enabled()
         if self._debug_enabled:
             ic.configureOutput(prefix="[Featurizer] ", includeContext=True)
 
-        self.max_depth = config["max_depth"]
-        self.intervals = config["intervals"]
+        self.max_depth: int = config["max_depth"]
+        self.intervals: List[str] = config["intervals"]
 
-        self.graph = ERGraph(config["entities"], config["relationships"])
-        self.target = self._get_entity(config["target"])
+        self.graph: ERGraph = ERGraph(config["entities"], config["relationships"])
+        self.target: Entity = self._get_entity(config["target"])
 
-        self.aggregations = get_aggregations(DEFAULT_AGGREGATIONS)
-        self.transformations = get_transformers(DEFAULT_TRANSFORMATIONS)
+        self.aggregations: AggregationRegistry = get_aggregations(DEFAULT_AGGREGATIONS)
+        self.transformations: TransformationRegistry = get_transformers(DEFAULT_TRANSFORMATIONS)
 
         planner = FeaturePlanner(
             graph=self.graph,
@@ -68,30 +86,41 @@ class Featurizer:
         )
         self._plan: PlannerResult = planner.plan()
 
-        self.features = {alias: set(features) for alias, features in self._plan.features.items()}
-        self.ctes = list(self._plan.ctes)
-        self.joins = {alias: list(joins) for alias, joins in self._plan.joins.items()}
+        self.features: Dict[str, Set[Feature]] = {alias: set(features) for alias, features in self._plan.features.items()}
+        self.ctes: List[str] = list(self._plan.ctes)
+        self.joins: Dict[str, List[str]] = {alias: list(joins) for alias, joins in self._plan.joins.items()}
 
-        self._renderer = SQLRenderer()
-        self._executor = QueryExecutor()
+        self._renderer: SQLRenderer = SQLRenderer()
+        self._executor: QueryExecutor = QueryExecutor()
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
 
     @property
-    def entities(self):
+    def entities(self) -> Iterable[Entity]:
+        """Return all entities in the graph."""
         return self.graph.entities.values()
 
     @property
-    def relationships(self):
+    def relationships(self) -> List[Any]:
+        """Return all relationships in the graph."""
         return self.graph.relationships
 
     @property
-    def query(self):
+    def query(self) -> str:
+        """Generate the SQL query for this featurizer configuration."""
         return self._renderer.render(self._plan)
 
-    def to_dataframe(self):
+    def to_dataframe(self) -> pd.DataFrame:
+        """Execute the query and return results as a DataFrame.
+
+        Returns:
+            DataFrame indexed by ['as_of_date', target_id]
+
+        Raises:
+            ValueError: If target entity doesn't define a primary ID
+        """
         if self.target.id is None:
             raise ValueError(f"Target entity '{self.target.alias}' does not define a primary id.")
         return self._executor.to_dataframe(self.query, self.target.id.name)
@@ -100,19 +129,44 @@ class Featurizer:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
-    def _get_entity(self, alias):
+    def _get_entity(self, alias: str) -> Entity:
+        """Get an entity by alias from the graph.
+
+        Args:
+            alias: Entity alias to look up
+
+        Returns:
+            Entity with the given alias
+
+        Raises:
+            ValueError: If entity with alias doesn't exist
+        """
         entity = self.graph.entities.get(alias)
         if entity is None:
             raise ValueError(f"Unknown target entity alias '{alias}'.")
         return entity
 
     @staticmethod
-    def _env_debug_enabled():
+    def _env_debug_enabled() -> bool:
+        """Check if debug mode is enabled via environment variable."""
         value = os.getenv("FEATURIZER_DEBUG", "")
         return value.lower() in {"1", "true", "yes", "on"}
 
     @staticmethod
-    def _load_config(config_file):
+    def _load_config(config_file: str, validate: bool = True) -> Dict[str, Any]:
+        """Load and validate configuration from YAML file.
+
+        Args:
+            config_file: Path to YAML configuration file
+            validate: Run enhanced validation checks
+
+        Returns:
+            Validated configuration dictionary
+
+        Raises:
+            FileNotFoundError: If config file doesn't exist
+            ValueError: If config is invalid or missing required keys
+        """
         try:
             with open(config_file) as f:
                 config = yaml.safe_load(f) or {}
@@ -121,6 +175,20 @@ class Featurizer:
         except yaml.YAMLError as exc:
             raise ValueError(f"Invalid YAML in config file {config_file}") from exc
 
+        # Run enhanced validation if enabled
+        if validate:
+            validator = ConfigValidator(mode="strict")
+            result = validator.validate(config)
+
+            if not result.is_valid:
+                raise ValueError(f"Configuration validation failed:\n{result.format_errors()}")
+
+            # Log warnings
+            for warning in result.warnings:
+                location = f"[{warning.location}] " if warning.location else ""
+                logger.warning(f"{location}{warning.message}")
+
+        # Backwards compatibility: Basic validation
         required_keys = {"target", "max_depth", "intervals", "entities"}
         missing = [key for key in required_keys if key not in config]
         if missing:
