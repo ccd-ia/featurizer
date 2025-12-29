@@ -38,6 +38,37 @@ A simple configuration with customers and orders generates features like:
 -   `HOLT_WINTERS_TREND_14(orders.amount)` &#x2013; Trend direction over 14 periods
 
 
+## Examples
+
+The `examples/` directory contains four self-contained tutorials with SQLite databases:
+
+| Example                                                  | Scenario                                        | Concepts                                 |
+|-------------------------------------------------------- |----------------------------------------------- |---------------------------------------- |
+| [01-basic-aggregations](examples/01-basic-aggregations/) | E-commerce (Customers → Orders)                 | Parent-child relationships, time windows |
+| [02-temporal-joins](examples/02-temporal-joins/)         | Healthcare (Patients → Care Plans)              | As-of joins, grace periods               |
+| [03-deep-nesting](examples/03-deep-nesting/)             | Retail (Stores → Orders → Products → Suppliers) | Multi-level traversal (depth=3)          |
+| [04-custom-primitives](examples/04-custom-primitives/)   | Finance (Accounts → Transactions)               | Custom aggregations and transformations  |
+
+To run an example:
+
+```sh
+cd examples/01-basic-aggregations/
+
+# Generate sample data
+python create_data.py
+
+# Run feature generation (shows summary)
+python run_example.py
+
+# View generated SQL
+python run_example.py --show-sql
+
+# Execute and save results
+python run_example.py --execute --output features.csv
+```
+
+Each example includes a Jupyter notebook (`tutorial.ipynb`) for interactive exploration.
+
 
 ## Supported Feature Primitives
 
