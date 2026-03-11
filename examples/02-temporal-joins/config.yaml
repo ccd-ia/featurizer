@@ -1,0 +1,41 @@
+# Healthcare feature generation: Patients with temporal Care Plans
+
+target: patients
+max_depth: 2
+
+intervals:
+  - P30D  # Last 30 days
+  - P90D  # Last 90 days
+
+entities:
+  - alias: patients
+    id: patient_id
+    table: patients
+    temporal_ix: admission_date
+    variables:
+      age:
+        type: numeric
+      severity_level:
+        type: categorical
+
+  - alias: care_plans
+    id: plan_id
+    table: care_plans
+    temporal_ix: plan_date
+    variables:
+      treatment_type:
+        type: categorical
+      cost:
+        type: numeric
+
+relationships:
+  - parent:
+      entity: patients
+      key: patient_id
+    child:
+      entity: care_plans
+      key: patient_id
+    temporal:
+      mode: as_of
+      grace: P7D  # Allow matching plans up to 7 days in the future
+      child_time: plan_date

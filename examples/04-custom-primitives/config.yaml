@@ -1,0 +1,37 @@
+# Financial analytics: Accounts with Transactions
+
+target: accounts
+max_depth: 2
+
+intervals:
+  - P7D   # Last 7 days
+  - P30D  # Last 30 days
+
+entities:
+  - alias: accounts
+    id: account_id
+    table: accounts
+    temporal_ix: open_date
+    variables:
+      account_type:
+        type: categorical
+      credit_limit:
+        type: numeric
+
+  - alias: transactions
+    id: transaction_id
+    table: transactions
+    temporal_ix: transaction_date
+    variables:
+      amount:
+        type: numeric
+      transaction_type:
+        type: categorical
+
+relationships:
+  - parent:
+      entity: accounts
+      key: account_id
+    child:
+      entity: transactions
+      key: account_id

@@ -1,16 +1,75 @@
 # coding: utf-8
 
-from .abstractions import Feature
+"""Transformation primitives and registry wiring.
+
+Unary transformers should register via `register_transformer` to remain discoverable
+by the featurizer without requiring manual imports.
+
+Transformation primitives are applied to features within an entity. They transform
+individual values or compute window functions over partitions.
+
+Categories of transformers:
+    - Basic: identity (pass-through)
+    - Math: abs, exp, ln, log, sqrt, cbrt, sign, ceil, floor, trunc
+    - Text: num_chars
+    - Date parts: day, dow, month, year, hour, quarter, week, etc.
+    - Binning: hourly_bin, daily_bin
+    - Cyclical: cyclic_hour, cyclic_month, cyclic_day (sin/cos encoding)
+    - Cumulative: cum_sum, cum_mean, cum_max, cum_min, cum_count
+    - Window: first, last, previous, diff, time_since_previous
+    - Lag: lag_1, lag_3, lag_7
+    - Rolling: rolling_mean_*, rolling_std_*, rolling_median_*, rolling_iqr_*
+    - EMA: ema_7, ema_14
+    - Holt-Winters: holt_winters_level_*, holt_winters_trend_*
+    - Percentage change: pct_change_1, pct_change_3
+    - Distribution: cdf, percent_rank, ntile
+    - Boolean: is_null, in_array
+
+Example usage:
+    >>> from featurizer.primitives.utils import get_transformers
+    >>> transforms = get_transformers(["abs", "lag_1", "rolling_mean_7"])
+    >>> for name, t in transforms.items():
+    ...     print(f"{name}: {t}")
+
+Important: Transformers must return NEW Feature instances (never mutate input)
+to preserve hashing semantics for set operations and deduplication.
+"""
+
+from .abstractions import Entity, Feature
+from .utils import register_transformer
+from typing import Callable, Iterable, Optional, Sequence, Tuple
+
 
 class Transformer:
-    """
-    Base class for transformation functions
+    """Base class for transformation functions.
 
-    From the PostgreSQL docs:
-    The syntax for a function call is the name of a function (possibly qualified
-    with a schema name), followed by its argument list enclosed in parentheses:
+    Transformers apply functions to individual feature values within an entity.
+    They generate SQL function calls that transform column values.
 
+    From PostgreSQL docs:
+        "The syntax for a function call is the name of a function followed by
+        its argument list enclosed in parentheses."
+
+    Attributes:
+        name: Unique identifier for this transformation.
+        transformer: SQL function name (defaults to name).
+        input_types: List of feature types this transformation accepts.
+        output_type: Type of the resulting feature.
+        stackable: If True, can be composed with other primitives.
+
+    Example:
+        >>> class Square(Transformer):
+        ...     def __init__(self):
+        ...         super().__init__(name='square')
+        ...     def _build_transformer_call(self, feature):
+        ...         return f"POWER({feature.name}, 2)"
+        >>> register_transformer('square', Square())
+
+    Important:
+        Subclasses should return NEW Feature instances from __call__,
+        never mutate the input feature.
     """
+
     def __init__(self, name, transformer=None, input_types=['numeric'], output_type='numeric', stackable=True):
         self.name = name
         self.transformer = transformer if transformer is not None else self.name
@@ -27,22 +86,16 @@ class Transformer:
         return f""" {self.transformer}({feature.name}) """
 
     def __call__(self, parent, feature):
-        if feature.type == 'key':
-            trans_feature = feature
-        elif feature.type not in self.input_types:
-            # Don't do anything
-            trans_feature = feature
-            trans_feature.definition = feature.name
-            trans_feature.stack_depth+=1
-        else:
-            trans_feature = Feature(name=self._build_name(self.name, feature),
-                                    type=self.output_type,
-                                    definition=self._build_transformer_call(feature),
-                                    parents = feature,
-                                    entity = parent,
-                                    stack_depth=feature.stack_depth + 1)
-
-        return trans_feature
+        if feature.type == 'key' or feature.type not in self.input_types:
+            return feature
+        return Feature(
+            name=self._build_name(self.name, feature),
+            type=self.output_type,
+            definition=self._build_transformer_call(feature),
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
 
 abs = Transformer(name='abs')
 exp = Transformer(name='exp')
@@ -74,11 +127,7 @@ class Identity(Transformer):
         return f""" {feature.name} """
 
     def __call__(self, parent, feature):
-        # Don't do anything
-        trans_feature = feature
-        trans_feature.definition = feature.name
-
-        return trans_feature
+        return feature
 
 identity = Identity()
 
@@ -86,10 +135,27 @@ identity = Identity()
 class DateTransformer(Transformer):
     def __init__(self, name, date_part):
         self.date_part = date_part
-        super().__init__(name, input_types=['date', 'timestamp'], output_type='categorical', stackable=True)
+        super().__init__(name, input_types=['date', 'timestamp', 'index'], output_type='categorical', stackable=True)
 
     def _build_transformer_call(self, feature):
         return f"to_char({ feature.name }, '{self.date_part}')"
+
+    def __call__(self, parent, feature):
+        if feature.type == 'key':
+            return feature
+        temporal_ix = getattr(feature.entity, "temporal_ix", None)
+        if feature.type == 'index' and feature is not temporal_ix:
+            return feature
+        if feature.type not in self.input_types:
+            return feature
+        return Feature(
+            name=self._build_name(self.name, feature),
+            type=self.output_type,
+            definition=self._build_transformer_call(feature),
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
 
 day = DateTransformer(name='day', date_part='day')
 dow = DateTransformer(name='dow', date_part='ID')  # Iso week: Monday (1) to Sunday (7)
@@ -154,46 +220,71 @@ class CyclicalDateTransformer(DateTransformer):
             return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
 
     def __call__(self, parent, feature):
-        if feature.type == 'key':
-            cyclical_features = feature
-        elif feature.type not in self.input_types:
-            # Don't do anything
-            cyclical_features = feature
-            cyclical_features.definition = feature.name
-            cyclical_features.stack_depth+=1
-        else:
-            cyclical_features = [Feature(name=self._build_name(self.name + '_sin', feature),
-                                         type=self.output_type,
-                                         definition=self._build_transformer_call(feature, trig_function='sin'),
-                                         parents = feature,
-                                         entity = parent,
-                                         stack_depth=feature.stack_depth + 1),
-                                 Feature(name=self._build_name(self.name + '_cos', feature),
-                                         type=self.output_type,
-                                         definition=self._build_transformer_call(feature, trig_function='cos'),
-                                         parents = feature,
-                                         entity = parent,
-                                         stack_depth=feature.stack_depth + 1)
-            ]
-
-        return cyclical_features
+        if feature.type == 'key' or feature.type not in self.input_types:
+            return feature
+        return [
+            Feature(
+                name=self._build_name(self.name + '_sin', feature),
+                type=self.output_type,
+                definition=self._build_transformer_call(feature, trig_function='sin'),
+                parents=feature,
+                entity=parent,
+                stack_depth=feature.stack_depth + 1,
+            ),
+            Feature(
+                name=self._build_name(self.name + '_cos', feature),
+                type=self.output_type,
+                definition=self._build_transformer_call(feature, trig_function='cos'),
+                parents=feature,
+                entity=parent,
+                stack_depth=feature.stack_depth + 1,
+            ),
+        ]
 
 
 cyclic_hour = CyclicalDateTransformer(name='cyclic_hour', date_part='HH24', period=24, adjust=False)
 cyclic_month = CyclicalDateTransformer(name='cyclic_month', date_part='MM', period=12)
 cyclic_day = CyclicalDateTransformer(name='cyclic_hour', date_part='D', period=7)
 
+
 class WindowFunctionTransformer:
+    """Window function transformer for aggregate-like operations over row partitions.
+
+    Window functions compute values across a set of rows related to the current row,
+    without collapsing rows like regular aggregates do. Each row retains its identity.
+
+    From PostgreSQL docs:
+        "A window function call represents the application of an aggregate-like
+        function over some portion of the rows selected by a query. Unlike
+        non-window aggregate calls, this is not tied to grouping of the selected
+        rows into a single output row — each row remains separate in the query output."
+
+    Attributes:
+        name: Unique identifier for this transformation.
+        function: SQL window function name.
+        order_by: Callable or string for ORDER BY clause (often temporal_ix).
+        frame: Tuple defining the window frame (start, end), e.g., ('3 preceding', 'current row').
+        extra_args: Additional arguments to pass to the function.
+
+    SQL Pattern:
+        FUNCTION(value) OVER (PARTITION BY id ORDER BY date [ROWS BETWEEN ... AND ...])
+
+    Examples:
+        - cum_sum: SUM(value) OVER (PARTITION BY id ORDER BY date)
+        - rolling_mean_7: AVG(value) OVER (... ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
     """
-    A window function call represents the application of an aggregate-like
-    function over some portion of the rows selected by a query.
-    Unlike non-window aggregate calls, this is not tied to grouping of the
-    selected rows into a single output row — each row remains separate in the query output.
-    However the window function hasf access to all the rows that would
-    be part of the current row's group according to the grouping specification
-    (PARTITION BY list) of the window function call.
-    """
-    def __init__(self, name, function=None, input_types=['numeric'], output_type='numeric', order_by=None, filter=None, frame_start=None, frame_end=None, stackable=True):
+    def __init__(
+        self,
+        name,
+        function=None,
+        input_types=['numeric'],
+        output_type='numeric',
+        order_by: Optional[Callable[[Feature], Optional[str]]] = None,
+        filter=None,
+        frame: Optional[Tuple[str, str]] = None,
+        stackable=True,
+        extra_args: Optional[Sequence[Callable[[Feature], str] | str]] = None,
+    ):
         self.name = name
         self.function = function if function else self.name
         self.input_types = input_types
@@ -201,134 +292,476 @@ class WindowFunctionTransformer:
         self.order_by = order_by
         self.filter = filter  # filter' FILTER WHERE :filter'
         self.stackable = stackable
-        # The frame_clause specifies the set of rows constituting
-        # the window frame, which is a subset of the current partition,
-        # for those window functions that act on the frame
-        # instead of the whole partition.
-        # The frame can be specified in either RANGE or ROWS mode;
-        # in either case, it runs from the frame_start to
-        # the frame_end. If frame_end is omitted, it defaults to
-        # CURRENT ROW.
-        self.frame_start = frame_start
-        self.frame_end = frame_end
+        self.frame = frame
+        self.extra_args: Tuple[Callable[[Feature], str] | str, ...] = tuple(extra_args or ())
 
     @staticmethod
     def _build_name(name, feature):
         name = f'{ str.upper(name) }({feature.entity.alias}.{feature.name})'
         return f'''"{name.replace('"', '')}"'''
 
+    def _resolve_order_by(self, feature: Feature) -> Optional[str]:
+        if callable(self.order_by):
+            return self.order_by(feature)
+        return self.order_by
+
+    def _resolve_args(self, feature: Feature) -> Sequence[str]:
+        args = []
+        for arg in self.extra_args:
+            if callable(arg):
+                args.append(arg(feature))
+            else:
+                args.append(str(arg))
+        return args
+
     def _build_window_function_call(self, parent, feature):
         expression = feature.name
         partition = parent.id.name
-        window_call = [f"{ self.function }({ expression })"]
+        if not partition:
+            return None
+        window_args = [expression] + list(self._resolve_args(feature))
+        window_call = [f"{ self.function }({ ', '.join(window_args) })"]
         if self.filter and feature.specials:
             # filter by clause
             window_call.append(f" filter (where {feature.name} = {feature.specials}) ")
         window_call.append(f" over (partition by { partition }")
-        if self.order_by and feature.sort:
-            window_call.append(f" order by { self.order_by } ")
-        if self.frame_start:
-            if self.frame_end:
-                 window_call.append(f" rows between {self.frame_start} and {self.frame_end} ")
-            else:
-                window_call.append(f" rows {self.frame_start} ")
-        else:
-            window_call.append(")")
+        order_clause = self._resolve_order_by(feature)
+        if order_clause:
+            window_call.append(f" order by { order_clause }")
+        if self.frame:
+            start, end = self.frame
+            window_call.append(f" rows between {start} and {end}")
+        window_call.append(")")
 
         return ' '.join(window_call)
 
     def __call__(self, parent, feature):
         if feature.type not in self.input_types:
-            # We don't do anything
-            window_feature = Feature
-            window_feature.definition = feature.name
-            window_feature.stack_depth+=1
-        else:
-            window_feature = Feature(name = self._build_name(self.name, feature),
-                                     type=self.output_type,
-                                     definition=self._build_window_function_call(parent, feature),
-                                     parents = feature,
-                                     entity = parent,
-                                     stack_depth=feature.stack_depth + 1)
-        return window_feature
+            return feature
+        definition = self._build_window_function_call(parent, feature)
+        if not definition:
+            return None
+        return Feature(
+            name=self._build_name(self.name, feature),
+            type=self.output_type,
+            definition=definition,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
 
 
-cum_sum = WindowFunctionTransformer(name='cum_sum', function='sum')
-cum_mean = WindowFunctionTransformer(name='cum_mean', function='avg')
-cum_max = WindowFunctionTransformer(name='cum_max', function='max')
-cum_min = WindowFunctionTransformer(name='cum_min', function='min')
-cum_count = WindowFunctionTransformer(name='cum_count', function='count', input_types=['categorical', 'index'])
+def _temporal_ordering(feature: Feature) -> Optional[str]:
+    temporal_ix = getattr(feature.entity, "temporal_ix", None)
+    if temporal_ix is None:
+        return None
+    return temporal_ix.name
+
+
+def _build_temporal_window(function: str, parent: Entity, feature: Feature, *, args: Iterable[str] = (), frame: Optional[Tuple[str, str]] = None) -> Optional[str]:
+    partition = parent.id.name if parent.id else None
+    if partition is None:
+        return None
+    order_by = _temporal_ordering(feature)
+    if order_by is None:
+        return None
+    args_sql = ", ".join([feature.name] + list(args))
+    window_bits = [f"partition by {partition}", f"order by {order_by}"]
+    if frame:
+        start, end = frame
+        window_bits.append(f"rows between {start} and {end}")
+    window_clause = " ".join(window_bits)
+    return f"{function}({args_sql}) over ({window_clause})"
+
+
+def _frame_for_window(window: int) -> Optional[Tuple[str, str]]:
+    if window <= 1:
+        return None
+    return (f"{window - 1} preceding", "current row")
+
+
+def _build_percentile_window(
+    parent: Entity,
+    feature: Feature,
+    percentile: float,
+    frame: Optional[Tuple[str, str]],
+) -> Optional[str]:
+    partition = parent.id.name if parent.id else None
+    if partition is None:
+        return None
+    order_by = _temporal_ordering(feature)
+    if order_by is None:
+        return None
+    frame_clause = ""
+    if frame:
+        start, end = frame
+        frame_clause = f" rows between {start} and {end}"
+    return (
+        f"percentile_cont({percentile}) within group (order by {feature.name}) "
+        f"over (partition by {partition} order by {order_by}{frame_clause})"
+    )
+
+
+cum_sum = WindowFunctionTransformer(name='cum_sum', function='sum', order_by=_temporal_ordering)
+cum_mean = WindowFunctionTransformer(name='cum_mean', function='avg', order_by=_temporal_ordering)
+cum_max = WindowFunctionTransformer(name='cum_max', function='max', order_by=_temporal_ordering)
+cum_min = WindowFunctionTransformer(name='cum_min', function='min', order_by=_temporal_ordering)
+cum_count = WindowFunctionTransformer(name='cum_count', function='count', input_types=['categorical', 'index'], order_by=_temporal_ordering)
 
 # All of the following act on the window frame, not in the partition
 # TODO: Include any or *
-first = WindowFunctionTransformer(name='first', function='first_value', input_types=['categorical', 'index', 'numeric', 'date'])
-last = WindowFunctionTransformer(name='last', function='last_value', input_types=['categorical', 'index', 'numeric'])
+first = WindowFunctionTransformer(name='first', function='first_value', input_types=['categorical', 'index', 'numeric', 'date'], order_by=_temporal_ordering)
+last = WindowFunctionTransformer(name='last', function='last_value', input_types=['categorical', 'index', 'numeric'], order_by=_temporal_ordering)
 #nth_value = WindowFunctionTransformer(name='nth_value', function='', input_types=['categorical', 'index', 'numeric', 'date'])
 
-previous = WindowFunctionTransformer(name='previous', function='lag')
-# TODO: Add the second from current, third from current, so on
+previous = WindowFunctionTransformer(name='previous', function='lag', order_by=_temporal_ordering)
 
-class Diff(WindowFunctionTransformer):
-    def __init__(self, name, input_types=['numeric'], output_type='numeric', order_by=None, filter=None, frame_start=None, frame_end=None, stackable=True):
-        function=None
-        super().__init__(name, function, input_types, output_type, order_by=None, filter=None, frame_start=None, frame_end=None, stackable=True)
 
-    def _build_window_function_call(self, parent, feature):
-        expression = feature.name
-        partition = parent.id.name
-        window_call = [f"{expression} - lag({ expression })"]
-        if self.filter and feature.specials:
-            # filter by clause
-            window_call.append(f" filter (where {feature.name} = {feature.specials}) ")
-        window_call.append(f" over (partition by { partition }")
-        if self.order_by and feature.sort:
-            window_call.append(f" order by { self.order_by } ")
-        if self.frame_start:
-            if self.frame_end:
-                 window_call.append(f" rows between {self.frame_start} and {self.frame_end} ")
-            else:
-                window_call.append(f" rows {self.frame_start} ")
-        else:
-            window_call.append(")")
+class Diff:
+    def __init__(self, name, input_types=['numeric'], output_type='numeric'):
+        self.name = name
+        self.input_types = input_types
+        self.output_type = output_type
 
-        return ' '.join(window_call)
+    def __call__(self, parent, feature):
+        if feature.type not in self.input_types:
+            return feature
+        lag_expr = _build_temporal_window("lag", parent, feature)
+        if lag_expr is None:
+            return None
+        return Feature(
+            name=f"\"{self.name.upper()}({feature.entity.alias}.{feature.name})\"",
+            type=self.output_type,
+            definition=f"{feature.name} - {lag_expr}",
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
 
 
 diff = Diff(name='diff')
 time_since_previous = Diff(name='time_since_previous', input_types=['date', 'timestamp'], output_type='date')
 
+
 class DistributionTransformer(WindowFunctionTransformer):
-    def __init__(self, name, function=None, arg_func=None, input_types=['numeric'], output_type='numeric', order_by=None, frame_start=None, frame_end=None, stackable=True):
+    def __init__(self, name, function=None, arg_func=None, input_types=['numeric'], output_type='numeric', order_by=None, frame=None, stackable=True):
         #  Only window functions that are aggregates accept a FILTER clause.
         filter = False
         self.arg_func = arg_func
-        super().__init__(name,function, input_types, output_type, order_by, filter, frame_start, frame_end, stackable)
+        super().__init__(name, function, input_types, output_type, order_by, filter, frame, stackable)
 
     def _build_window_function_call(self, parent, feature):
         partition = parent.id.name
-        window_call = []
+        if not partition:
+            return None
+        pieces = []
         if self.arg_func:
-            window_call.append(f"{ self.function }({ self.arg_func })")
+            pieces.append(f"{ self.function }({ self.arg_func })")
         else:
-            window_call.append(f"{ self.function }()")
-        window_call.append(f" over (partition by { partition }")
-        if self.order_by and feature.sort:
-            window_call.append(f" order by { self.order_by } ")
-        if self.frame_start:
-            if self.frame_end:
-                 window_call.append(f" rows between {self.frame_start} and {self.frame_end} ")
-            else:
-                window_call.append(f" rows {self.frame_start} ")
-        else:
-            window_call.append(")")
-
-        return ' '.join(window_call)
+            pieces.append(f"{ self.function }()")
+        pieces.append(f" over (partition by { partition }")
+        order_clause = self._resolve_order_by(feature) if hasattr(self, "_resolve_order_by") else None
+        if order_clause:
+            pieces.append(f" order by { order_clause }")
+        if self.frame:
+            start, end = self.frame
+            pieces.append(f" rows between {start} and {end}")
+        pieces.append(")")
+        return ' '.join(pieces)
 
 
-cdf = DistributionTransformer(name='cdf', function='cum_dist')
+cdf = DistributionTransformer(name='cdf', function='cum_dist', order_by=_temporal_ordering)
 ## relative rank of the current row: (rank - 1) / (total partition rows - 1)
-percent_rank = DistributionTransformer(name='percent_rank')
-ntile = DistributionTransformer(name='ntile', arg_func=5)
+percent_rank = DistributionTransformer(name='percent_rank', order_by=_temporal_ordering)
+ntile = DistributionTransformer(name='ntile', arg_func=5, order_by=_temporal_ordering)
+
+class LagTransformer:
+    """Access values from N periods ago.
+
+    Creates a feature containing the value from N rows back, ordered by
+    the entity's temporal index. Useful for comparing current values to
+    historical values.
+
+    Args:
+        periods: Number of periods to look back.
+
+    SQL: LAG(value, N) OVER (PARTITION BY id ORDER BY temporal_ix)
+
+    Examples:
+        - lag_1: Previous period's value
+        - lag_7: Value from 7 periods ago (e.g., same day last week)
+    """
+
+    def __init__(self, periods: int):
+        self.periods = periods
+        self.name = f"lag_{periods}"
+        self._input_types = ['numeric', 'categorical', 'date', 'timestamp', 'index']
+
+    def __call__(self, parent, feature):
+        if feature.type == 'key':
+            return feature
+        if feature.type not in self._input_types:
+            return feature
+        expression = _build_temporal_window("lag", parent, feature, args=[str(self.periods)])
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"LAG_{self.periods}({feature.entity.alias}.{feature.name})\"",
+            type=feature.type,
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class RollingStatisticTransformer:
+    """Rolling window statistics (mean, std, etc.).
+
+    Computes statistics over a sliding window of N rows preceding and
+    including the current row. Useful for smoothing time series and
+    detecting trends.
+
+    Args:
+        label: Base name for the transformer (e.g., 'rolling_mean').
+        function: SQL aggregate function to apply (e.g., 'avg', 'stddev').
+        window: Number of rows in the window (including current).
+
+    SQL: FUNCTION(value) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+
+    Examples:
+        - rolling_mean_7: 7-day moving average
+        - rolling_std_14: 14-day rolling standard deviation
+    """
+
+    def __init__(self, label: str, function: str, window: int):
+        self.label = label
+        self.function = function
+        self.window = window
+        self.name = f"{label}_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        expression = _build_temporal_window(self.function, parent, feature, frame=frame)
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"{self.label.upper()}_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class RollingMedianTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"rolling_median_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        expression = _build_percentile_window(parent, feature, 0.5, frame)
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"ROLLING_MEDIAN_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class RollingIQRTransformer:
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"rolling_iqr_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        p75 = _build_percentile_window(parent, feature, 0.75, frame)
+        p25 = _build_percentile_window(parent, feature, 0.25, frame)
+        if not p75 or not p25:
+            return None
+        expression = f"({p75}) - ({p25})"
+        return Feature(
+            name=f"\"ROLLING_IQR_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class ExponentialMovingAverageTransformer:
+    """Exponential Moving Average (EMA) with time-based weighting.
+
+    EMA gives more weight to recent observations, with weights decaying
+    exponentially based on time distance. More responsive to recent
+    changes than simple moving averages.
+
+    Args:
+        window: Number of rows in the window.
+        decay: Decay rate for exponential weighting (higher = faster decay).
+
+    SQL Pattern:
+        SUM(value * EXP(decay * time)) / SUM(EXP(decay * time)) OVER (...)
+
+    Use cases:
+        - Trend following in financial time series
+        - Smoothing noisy signals while preserving responsiveness
+    """
+
+    def __init__(self, window: int, decay: float):
+        self.window = window
+        self.decay = decay
+        self.name = f"ema_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        partition = parent.id.name if parent.id else None
+        order_by = _temporal_ordering(feature)
+        if not partition or not order_by:
+            return None
+        frame = _frame_for_window(self.window)
+        frame_clause = ""
+        if frame:
+            start, end = frame
+            frame_clause = f" rows between {start} and {end}"
+        timestamp_expr = f"(extract(epoch from {order_by}) / 86400.0)"
+        weight_expr = f"exp({self.decay} * {timestamp_expr})"
+        base_window = f"partition by {partition} order by {order_by}{frame_clause}"
+        numerator = f"sum({feature.name} * {weight_expr}) over ({base_window})"
+        denominator = f"sum({weight_expr}) over ({base_window})"
+        expression = f"{numerator} / NULLIF({denominator}, 0)"
+        return Feature(
+            name=f"\"EMA_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class HoltWintersLevelTransformer:
+    """Holt-Winters level component (smoothed average).
+
+    Extracts the level (base value) component from a time series,
+    implemented as a rolling average. Part of the Holt-Winters
+    exponential smoothing method for forecasting.
+
+    Args:
+        window: Number of rows for smoothing.
+
+    SQL: AVG(value) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+    """
+
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"holt_winters_level_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        frame = _frame_for_window(self.window)
+        expression = _build_temporal_window("avg", parent, feature, frame=frame)
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"HOLT_WINTERS_LEVEL_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class HoltWintersTrendTransformer:
+    """Holt-Winters trend component (slope over time).
+
+    Extracts the trend (direction) component from a time series using
+    linear regression slope. Part of the Holt-Winters exponential
+    smoothing method for forecasting.
+
+    Args:
+        window: Number of rows for trend calculation.
+
+    SQL: REGR_SLOPE(value, time) OVER (... ROWS BETWEEN N-1 PRECEDING AND CURRENT ROW)
+
+    Use cases:
+        - Detecting upward/downward trends
+        - Forecasting future values
+    """
+
+    def __init__(self, window: int):
+        self.window = window
+        self.name = f"holt_winters_trend_{window}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        order_by = _temporal_ordering(feature)
+        if order_by is None:
+            return None
+        frame = _frame_for_window(self.window)
+        expression = _build_temporal_window(
+            "regr_slope",
+            parent,
+            feature,
+            args=[order_by],
+            frame=frame,
+        )
+        if expression is None:
+            return None
+        return Feature(
+            name=f"\"HOLT_WINTERS_TREND_{self.window}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class PercentageChangeTransformer:
+    def __init__(self, periods: int):
+        self.periods = periods
+        self.name = f"pct_change_{periods}"
+
+    def __call__(self, parent, feature):
+        if feature.type != 'numeric':
+            return feature
+        lag_expr = _build_temporal_window("lag", parent, feature, args=[str(self.periods)])
+        if lag_expr is None:
+            return None
+        expression = f"""
+        case
+        when {lag_expr} is null or {lag_expr} = 0 then null
+        else ({feature.name} - {lag_expr}) / {lag_expr}
+        end
+        """
+        return Feature(
+            name=f"\"PCT_CHANGE_{self.periods}({feature.entity.alias}.{feature.name})\"",
+            type='numeric',
+            definition=expression,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
 
 class BinaryTransformer(Transformer):
     def __init__(self, name, operation, input_types=['numeric'], output_type='numeric', stackable=True):
@@ -402,22 +835,112 @@ class IsInArray(Transformer):
 
     def __call__(self, parent, feature, an_array):
         if feature.type not in self.input_types:
-            # Don't do anything
-            trans_feature = feature
-            trans_feature.definition = feature.name
-            trans_feature.stack_depth += 1
-        else:
-            trans_feature = Feature(name=self._build_name(self.name, feature),
-                                    type=self.output_type,
-                                    definition=self._build_transformer_call(feature, an_array),
-                                    parents = feature,
-                                    entity = parent,
-                                    stack_depth=feature.stack_depth + 1)
+            return feature
+        return Feature(
+            name=self._build_name(self.name, feature),
+            type=self.output_type,
+            definition=self._build_transformer_call(feature, an_array),
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
 
-        return trans_feature
 
 isnull = IsNull()
 inarray = IsInArray()
+
+
+DEFAULT_TRANSFORMERS = {
+    "identity": identity,
+    "abs": abs,
+    "exp": exp,
+    "ln": ln,
+    "log": log,
+    "sqrt": sqrt,
+    "cbrt": cbrt,
+    "sign": sign,
+    "num_chars": num_chars,
+    "ceil": ceil,
+    "floor": floor,
+    "trunc": trunc,
+    "day": day,
+    "dow": dow,
+    "dom": dom,
+    "doy": doy,
+    "year": year,
+    "month": month,
+    "hour": hour,
+    "century": century,
+    "quarter": quarter,
+    "week": week,
+    "week_of_year": week_of_year,
+    "tz": time_zone,
+    "tz_offset": tz_offset,
+    "hourly_bin": hourly_binning,
+    "daily_bin": daily_binning,
+    "cyclic_hour": cyclic_hour,
+    "cyclic_month": cyclic_month,
+    "cyclic_day": cyclic_day,
+    "cum_sum": cum_sum,
+    "cum_mean": cum_mean,
+    "cum_max": cum_max,
+    "cum_min": cum_min,
+    "cum_count": cum_count,
+    "first": first,
+    "last": last,
+    "previous": previous,
+    "diff": diff,
+    "time_since_previous": time_since_previous,
+    "cdf": cdf,
+    "percent_rank": percent_rank,
+    "ntile": ntile,
+    "is_null": isnull,
+    "in_array": inarray,
+}
+
+for _name, _transformer in DEFAULT_TRANSFORMERS.items():
+    register_transformer(_name, _transformer)
+
+for _periods in (1, 3, 7):
+    _lag_transformer = LagTransformer(_periods)
+    DEFAULT_TRANSFORMERS[_lag_transformer.name] = _lag_transformer
+    register_transformer(_lag_transformer.name, _lag_transformer)
+
+for _window in (3, 7, 14):
+    _rolling_mean = RollingStatisticTransformer("rolling_mean", "avg", _window)
+    _rolling_std = RollingStatisticTransformer("rolling_std", "stddev", _window)
+    DEFAULT_TRANSFORMERS[_rolling_mean.name] = _rolling_mean
+    DEFAULT_TRANSFORMERS[_rolling_std.name] = _rolling_std
+    register_transformer(_rolling_mean.name, _rolling_mean)
+    register_transformer(_rolling_std.name, _rolling_std)
+
+for _window in (5, 7):
+    _rolling_median = RollingMedianTransformer(_window)
+    DEFAULT_TRANSFORMERS[_rolling_median.name] = _rolling_median
+    register_transformer(_rolling_median.name, _rolling_median)
+
+for _window in (7, 14):
+    _rolling_iqr = RollingIQRTransformer(_window)
+    DEFAULT_TRANSFORMERS[_rolling_iqr.name] = _rolling_iqr
+    register_transformer(_rolling_iqr.name, _rolling_iqr)
+
+for _window, _decay in ((7, 0.25), (14, 0.15)):
+    _ema = ExponentialMovingAverageTransformer(_window, _decay)
+    DEFAULT_TRANSFORMERS[_ema.name] = _ema
+    register_transformer(_ema.name, _ema)
+
+for _window in (7, 14):
+    _hw_level = HoltWintersLevelTransformer(_window)
+    _hw_trend = HoltWintersTrendTransformer(_window)
+    DEFAULT_TRANSFORMERS[_hw_level.name] = _hw_level
+    DEFAULT_TRANSFORMERS[_hw_trend.name] = _hw_trend
+    register_transformer(_hw_level.name, _hw_level)
+    register_transformer(_hw_trend.name, _hw_trend)
+
+for _periods in (1, 3):
+    _pct = PercentageChangeTransformer(_periods)
+    DEFAULT_TRANSFORMERS[_pct.name] = _pct
+    register_transformer(_pct.name, _pct)
 
 #percentage above avg
 #percentage trues

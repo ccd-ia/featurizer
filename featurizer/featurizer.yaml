@@ -1,6 +1,12 @@
 # There is a table called as_of_dates
 
 target: patients
+max_depth: 2
+
+intervals:
+  - P1W
+  - P2W
+  - P1M
 
 # whitelist:
 #   transformations: ['']
@@ -15,26 +21,29 @@ entities:
     alias: patients
     id: patient
     table: semantic.patients
-    variables:  # Those things that define the target entity and doesn't depend of time
-      #bod:
-      #  type: date # Possible values: numeric, text, categorical, date, timestamp, boolean
+    temporal_ix: registered_at
+    variables:
       gender:
         type: categorical
-      #monitoring_plan_star_at:
-      #  type: date
   -
     alias: measurements
     id: ~
     table: semantic.measurements_view
-    temporal: measured_at   # This is the event time
-    spatial: ~
+    temporal_ix: measured_at   # This is the event time
+    spatial_ix: ~
     variables:
       peso:
         type: numeric
-        intervals: 1d, 2d, 3d, 4d, 5d, 1w, 1.5w, 2w, 1m, 2m, 3m
+        intervals:
+          - P1D
+          - P3D
+          - P1W
       frecuencia_cardiaca:
         type: numeric
-        intervals: 1d, 2d, 3d, 4d, 5d, 1w, 1.5w, 2w, 1m, 2m, 3m
+        intervals:
+          - P1D
+          - P3D
+          - P1W
 
   # -
   #   alias: gender
@@ -48,12 +57,25 @@ entities:
     alias: consultations
     id: medical_consultation
     table: semantic.medical_consultations
-    temporal: enter_date # Event time
-    spatial: ~
+    temporal_ix: enter_date # Event time
+    spatial_ix: ~
     variables:
       health_status:
         type: text
-        intervals: P1W, P2W, P1M, P2M # Supports ISO 8601 interval
+        intervals:
+          - P1W
+          - P2W
+          - P1M
+  -
+    alias: care_plans
+    id: care_plan
+    table: semantic.care_plans
+    temporal_ix: effective_at
+    variables:
+      plan_score:
+        type: numeric
+      plan_type:
+        type: categorical
 
 relationships:
   -
@@ -79,3 +101,13 @@ relationships:
     child:
       entity: consultations
       key: patient
+  -
+    parent:
+      entity: care_plans
+      key: patient
+    child:
+      entity: patients
+      key: patient
+    temporal:
+      mode: as_of
+      grace: P21D

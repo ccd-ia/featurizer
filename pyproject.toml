@@ -1,0 +1,68 @@
+[project]
+name = "featurizer"
+version = "0.1.0"
+description = "DFS implementation for PostgreSQL temporal datasources"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "icecream",
+  "loguru",
+  "pandas",
+  "psycopg",
+  "pyyaml",
+  "records",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "basedpyright>=1.31.7",
+    "jupyter-console>=6.6.3",
+    "pytest>=8.2",
+    "pytest-cov>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.coverage.run]
+source = ["featurizer"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/primitives/aggregations.py",  # Extensive primitive variants
+    "*/primitives/transformations.py",  # Extensive primitive variants
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[build-system]
+requires = ["hatchling>=1.13"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["featurizer"]

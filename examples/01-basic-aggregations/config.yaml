@@ -1,0 +1,37 @@
+# E-commerce feature generation: Customers with Orders
+
+target: customers
+max_depth: 2
+
+intervals:
+  - P7D   # Last 7 days
+  - P30D  # Last 30 days
+
+entities:
+  - alias: customers
+    id: customer_id
+    table: customers
+    temporal_ix: signup_date
+    variables:
+      country:
+        type: categorical
+      age:
+        type: numeric
+
+  - alias: orders
+    id: order_id
+    table: orders
+    temporal_ix: order_date
+    variables:
+      amount:
+        type: numeric
+      status:
+        type: categorical
+
+relationships:
+  - parent:
+      entity: customers
+      key: customer_id
+    child:
+      entity: orders
+      key: customer_id

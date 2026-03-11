@@ -102,3 +102,15 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Session handoff (local-only)
+docs/featurizer-session-summary.md
+working-outline.md
+TODO.org
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+GIT_REMOTE
+.project
+handoff-trace.log
+README.org
