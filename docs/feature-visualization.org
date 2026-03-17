@@ -1,0 +1,983 @@
+#+TITLE: Visualizing Multi-Entity Multidimensional Features
+#+AUTHOR: Adolfo De Unánue
+#+DATE: 2026-03-17
+#+KEYWORDS: visualization, feature engineering, multi-entity, time series
+#+LANGUAGE: en
+#+THEME: indigo-yellow
+#+OPTIONS: toc:1 tags:nil ^:nil ':t H:4 prop:nil todo:nil email:t num:3
+#+OPTIONS: eval:never-export
+#+PROPERTY: header-args :eval never-export :exports results
+
+* Introduction
+
+Featurizer produces a single DataFrame indexed by =(as_of_date, entity_id)= with
+potentially hundreds of feature columns per entity.  The generated SQL
+materializes features across relationship depths, temporal windows, and
+transformation stacks, yielding a wide matrix that is powerful for machine
+learning but difficult to reason about by inspection alone.
+
+Visualization of this feature space serves two distinct audiences with different
+needs:
+
+- *Data scientists doing feature selection for ML.* They need to identify
+  redundant features, detect distributional pathologies (zero-inflation, extreme
+  skew, high missingness), rank features by importance, and verify that no
+  temporal leakage has occurred.  Their decisions directly affect model
+  performance and training cost.
+
+- *Domain experts validating feature meaningfulness.* They need to confirm that
+  aggregated features behave as expected given their knowledge of the underlying
+  processes---for example, that monthly transaction counts for a customer
+  increase during known seasonal peaks, or that as-of-joined care plan features
+  reflect the most recent clinical state rather than a future one.
+
+This document describes a phased visualization strategy that addresses both
+audiences, ordered by the value each phase delivers to the modeling pipeline.
+
+* The Feature Space
+
+The output of a featurizer run is a three-dimensional structure: *entities* x
+*as_of_dates* x *features*.  For a configuration with 4 entities, 12 monthly
+as-of dates, and 80 generated features, the materialized DataFrame has
+=4 x 12 = 48= rows and 80 columns.  In production settings the numbers are
+larger: thousands of entities, dozens of as-of dates, and 200--500 features.
+
+Features are generated through three mechanisms, each producing characteristic
+naming patterns that carry structural meaning:
+
+1. *Backward aggregations* traverse child relationships and apply aggregate
+   functions with optional time windows.  A feature named =COUNT(orders.amount)[P1M]=
+   is a one-month count of the =amount= column from the =orders= child entity.
+   The bracketed duration identifies the temporal window.
+
+2. *Forward as-of joins* traverse parent relationships and pull the most recent
+   parent record as of the target row's timestamp.  A feature named
+   =care_plan.severity= is a direct lift from the parent entity, joined with
+   point-in-time semantics.
+
+3. *Transformations* are applied to any feature already synthesized.  A feature
+   named =LAG_1(COUNT(orders.amount)[P1M])= is a one-step lag of the
+   monthly order count.  Transformations can stack: =ABS(LAG_1(...))= is valid.
+
+At =max_depth > 1=, aggregations compose: features from depth-2 children are
+themselves aggregations, so a depth-2 feature like
+=MEAN(orders.COUNT(line_items.quantity)[P1W])[P1M]= is a monthly average of
+weekly line-item counts per order.  This compositional structure is the source of
+both the power and the interpretability challenge of DFS.
+
+Understanding this naming convention is essential for visualization: the feature
+name encodes the relationship path, the primitive applied, and the temporal
+window.  Visualization tools should parse these names to group, filter, and
+annotate plots meaningfully.
+
+* Phase 1: Data Quality and Redundancy
+
+This phase delivers the highest immediate value for ML pipelines because it
+identifies features that should be dropped before any model is trained.
+
+** Correlation and Redundancy
+
+Deep Feature Synthesis is a combinatorial process: it applies every requested
+aggregation to every variable across every relationship and time window.  This
+guarantees that many generated features are algebraically related.  For example,
+=SUM(orders.amount)[P1M]= and =COUNT(orders.amount)[P1M]= multiplied together
+approximate =MEAN(orders.amount)[P1M]=.  If all three are retained, two of them
+are redundant for most models.
+
+The primary visualization for detecting this is a *clustered Spearman rank
+correlation heatmap*.  Spearman is preferred over Pearson because DFS features
+often have non-linear monotonic relationships (e.g., a count and a sum that
+track each other but not linearly).  Hierarchical clustering on the correlation
+matrix groups correlated blocks visually, making it easy to identify clusters
+of features that move together.
+
+#+NAME: src-correlation-heatmap
+#+begin_src python :exports code
+  import pandas as pd
+  import seaborn as sns
+  import matplotlib.pyplot as plt
+  from scipy.cluster.hierarchy import linkage
+  from scipy.spatial.distance import squareform
+
+  def plot_correlation_clustermap(df_features: pd.DataFrame, figsize=(14, 12)):
+      """Plot a clustered Spearman correlation heatmap.
+
+      Args:
+          df_features: Feature matrix (rows = entity-date pairs, cols = features).
+          figsize: Figure dimensions.
+
+      Returns:
+          ClusterGrid object from seaborn.
+      """
+      corr = df_features.corr(method="spearman")
+
+      # Convert correlation to distance for linkage
+      dist = 1 - corr.abs()
+      dist_condensed = squareform(dist.values, checks=False)
+      link = linkage(dist_condensed, method="average")
+
+      g = sns.clustermap(
+          corr,
+          row_linkage=link,
+          col_linkage=link,
+          cmap="RdBu_r",
+          vmin=-1,
+          vmax=1,
+          figsize=figsize,
+          xticklabels=True,
+          yticklabels=True,
+      )
+      g.ax_heatmap.set_title("Spearman Correlation (Clustered)")
+      plt.tight_layout()
+      return g
+#+end_src
+
+For automated redundancy detection, build a *redundancy graph* where each
+feature is a node and edges connect features with absolute Spearman correlation
+above a threshold (typically 0.95).  Connected components in this graph are
+redundancy groups; from each group, retain only the feature with the highest
+variance or the simplest name (fewest nesting levels).
+
+#+NAME: src-redundancy-graph
+#+begin_src python :exports code
+  import networkx as nx
+
+  def build_redundancy_graph(
+      df_features: pd.DataFrame,
+      threshold: float = 0.95,
+  ) -> nx.Graph:
+      """Build a graph where edges indicate near-redundant feature pairs.
+
+      Args:
+          df_features: Feature matrix.
+          threshold: Absolute Spearman correlation above which features
+              are considered redundant.
+
+      Returns:
+          NetworkX graph with features as nodes and redundancy edges.
+      """
+      corr = df_features.corr(method="spearman").abs()
+      G = nx.Graph()
+      G.add_nodes_from(df_features.columns)
+
+      for i, col_a in enumerate(df_features.columns):
+          for col_b in df_features.columns[i + 1 :]:
+              if corr.loc[col_a, col_b] >= threshold:
+                  G.add_edge(col_a, col_b, weight=corr.loc[col_a, col_b])
+
+      return G
+
+
+  def select_from_redundancy_groups(
+      G: nx.Graph,
+      df_features: pd.DataFrame,
+  ) -> list[str]:
+      """Select one representative feature per redundancy group by variance.
+
+      Args:
+          G: Redundancy graph from build_redundancy_graph.
+          df_features: Feature matrix for computing variance.
+
+      Returns:
+          List of feature names to retain.
+      """
+      keep = []
+      variances = df_features.var()
+      for component in nx.connected_components(G):
+          best = max(component, key=lambda f: variances.get(f, 0))
+          keep.append(best)
+      return keep
+#+end_src
+
+** Missing Data Patterns
+
+Temporal features exhibit *structural missingness* that is fundamentally
+different from random missing values.  When a feature is defined as
+=LAG_7(COUNT(orders.amount)[P1W])=, any entity with fewer than 7 observed
+events will have a missing value---not because of data quality issues, but
+because the feature is undefined for that entity at that point in time.
+Similarly, interval-bounded aggregations like =SUM(orders.amount)[P1M]= will be
+null for entity-date pairs where the entity had no events in the preceding
+month.
+
+Two visualizations are essential for understanding missingness:
+
+1. *Missingness heatmap* (entities x features): Each cell is colored by whether
+   the value is present or missing.  Features are sorted by missingness rate and
+   entities by total missingness.  This immediately reveals features that are
+   missing for large fractions of entities (candidates for removal) and entities
+   that are missing many features (candidates for exclusion or imputation).
+
+2. *Missingness over time*: For each feature, plot the fraction of entities with
+   missing values at each as_of_date.  A feature whose missingness decreases
+   monotonically over time is exhibiting warm-up behavior (expected for lag and
+   rolling features).  A feature whose missingness increases over time may
+   indicate data pipeline issues.
+
+#+NAME: src-missingness-heatmap
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  import seaborn as sns
+
+  def plot_missingness_heatmap(
+      df_features: pd.DataFrame,
+      figsize=(16, 8),
+  ):
+      """Plot a binary heatmap of missing values (entities x features).
+
+      Args:
+          df_features: Feature matrix with entity/date index.
+          figsize: Figure dimensions.
+      """
+      missing = df_features.isnull().astype(int)
+
+      # Sort features by missingness rate, entities by total missing
+      feat_order = missing.sum().sort_values(ascending=False).index
+      row_order = missing.sum(axis=1).sort_values(ascending=False).index
+      missing = missing.loc[row_order, feat_order]
+
+      fig, ax = plt.subplots(figsize=figsize)
+      sns.heatmap(
+          missing,
+          cmap=["#2ecc71", "#e74c3c"],
+          cbar_kws={"label": "Missing", "ticks": [0, 1]},
+          xticklabels=True,
+          yticklabels=False,
+          ax=ax,
+      )
+      ax.set_title("Feature Missingness (red = missing)")
+      ax.set_xlabel("Features (sorted by missingness rate)")
+      ax.set_ylabel("Entity-date pairs (sorted by total missing)")
+      plt.tight_layout()
+      return fig
+
+
+  def plot_missingness_over_time(
+      df_features: pd.DataFrame,
+      date_col: str = "as_of_date",
+      top_n: int = 20,
+  ):
+      """Plot missingness fraction per feature over as_of_dates.
+
+      Args:
+          df_features: Feature matrix with as_of_date column or index level.
+          date_col: Name of the date column or index level.
+          top_n: Show only the top-N features by overall missingness.
+      """
+      if date_col in df_features.columns:
+          grouped = df_features.groupby(date_col)
+      else:
+          grouped = df_features.groupby(level=date_col)
+
+      miss_by_date = grouped.apply(lambda g: g.isnull().mean())
+
+      # Select features with highest overall missingness
+      top_features = miss_by_date.mean().nlargest(top_n).index
+
+      fig, ax = plt.subplots(figsize=(14, 6))
+      miss_by_date[top_features].plot(ax=ax, marker="o", markersize=3)
+      ax.set_ylabel("Fraction missing")
+      ax.set_title(f"Missingness Over Time (top {top_n} features)")
+      ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=7)
+      plt.tight_layout()
+      return fig
+#+end_src
+
+* Phase 2: Understanding Feature Behavior
+
+Once data quality and redundancy are addressed, the next step is understanding
+how individual features behave---their distributions across entities and their
+evolution over time.
+
+** Feature Distributions
+
+DFS-generated features often exhibit distributional pathologies that affect
+downstream models.  Event count features (=COUNT(...)=) are frequently
+zero-inflated: many entities have zero events in a given window, creating a
+spike at zero with a long right tail.  Sum features inherit the skewness of the
+underlying variable and amplify it through aggregation.
+
+*Violin plots* (or their simpler cousin, box plots) across entities for a fixed
+as_of_date reveal these patterns immediately.  A violin plot for
+=COUNT(orders.amount)[P1M]= that shows 60% of its mass at zero tells the data
+scientist to consider a binary indicator (has_orders_last_month) alongside or
+instead of the raw count.
+
+Grouping features by type (all counts together, all means together, all
+transformations together) leverages the naming convention described in the
+feature space section and produces plots that are easy to compare.
+
+#+NAME: src-distribution-violins
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  import seaborn as sns
+
+  def plot_feature_violins(
+      df_features: pd.DataFrame,
+      features: list[str] | None = None,
+      max_features: int = 20,
+      figsize=(14, 6),
+  ):
+      """Plot violin plots for selected features across all entity-date rows.
+
+      Args:
+          df_features: Feature matrix.
+          features: Specific feature columns to plot. If None, selects
+              the top max_features by variance.
+          max_features: Maximum number of features to display.
+          figsize: Figure dimensions.
+      """
+      if features is None:
+          features = (
+              df_features.var()
+              .nlargest(max_features)
+              .index
+              .tolist()
+          )
+      features = features[:max_features]
+
+      # Melt for seaborn
+      melted = df_features[features].melt(var_name="feature", value_name="value")
+
+      fig, ax = plt.subplots(figsize=figsize)
+      sns.violinplot(
+          data=melted,
+          x="feature",
+          y="value",
+          cut=0,
+          inner="quartile",
+          ax=ax,
+      )
+      ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right", fontsize=8)
+      ax.set_title("Feature Distributions (Violin Plots)")
+      plt.tight_layout()
+      return fig
+#+end_src
+
+** Temporal Evolution
+
+Temporal evolution plots answer the question: "Does this feature change over
+time the way I expect it to?"  This is critical for two reasons.
+
+First, *detecting look-ahead leakage*.  If a feature that should reflect only
+past information shows a sharp change at a known future event (e.g., a policy
+change, a product launch), the as-of join semantics may be incorrect.  Plotting
+a feature's value for a known entity over time and overlaying known events is the
+most direct way to catch this.
+
+Second, *validating rolling window behavior*.  A rolling mean with window 3
+should smooth out noise relative to the raw series.  A side-by-side sparkline
+comparison of the raw feature and its rolling transformation confirms that the
+SQL-generated rolling window is behaving correctly.
+
+The *sparkline grid* shows one small timeseries per feature for a single entity,
+making it possible to scan dozens of features at once for anomalies.
+
+For a higher-level view, the *entity-feature heatmap* z-scores each feature
+across time for a single entity (or across entities for a single date) and
+displays the result as a colored matrix.  This reveals which features are at
+extreme values and when, providing a compact summary of temporal dynamics.
+
+#+NAME: src-sparkline-grid
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+
+  def plot_sparkline_grid(
+      df_features: pd.DataFrame,
+      entity_id: str,
+      entity_col: str = "entity_id",
+      date_col: str = "as_of_date",
+      features: list[str] | None = None,
+      ncols: int = 4,
+      figsize_per_cell=(3, 1.2),
+  ):
+      """Plot a grid of sparklines for one entity across all as_of_dates.
+
+      Args:
+          df_features: Feature matrix with entity and date columns or index.
+          entity_id: The entity to plot.
+          entity_col: Name of entity column or index level.
+          date_col: Name of date column or index level.
+          features: Specific features to plot; defaults to all numeric columns.
+          ncols: Number of columns in the grid.
+          figsize_per_cell: Size of each individual sparkline cell.
+      """
+      # Extract single entity data
+      if entity_col in df_features.index.names:
+          subset = df_features.xs(entity_id, level=entity_col)
+      else:
+          subset = df_features[df_features[entity_col] == entity_id]
+
+      if date_col in subset.columns:
+          subset = subset.set_index(date_col)
+      elif date_col in subset.index.names:
+          subset = subset.droplevel(
+              [n for n in subset.index.names if n != date_col]
+          )
+
+      subset = subset.sort_index()
+
+      if features is None:
+          features = subset.select_dtypes("number").columns.tolist()
+
+      nrows = (len(features) + ncols - 1) // ncols
+      fig, axes = plt.subplots(
+          nrows,
+          ncols,
+          figsize=(figsize_per_cell[0] * ncols, figsize_per_cell[1] * nrows),
+      )
+      axes = axes.flatten() if nrows > 1 or ncols > 1 else [axes]
+
+      for i, feat in enumerate(features):
+          ax = axes[i]
+          ax.plot(subset.index, subset[feat], linewidth=1, color="#3498db")
+          ax.fill_between(
+              subset.index, subset[feat], alpha=0.15, color="#3498db"
+          )
+          ax.set_title(feat, fontsize=7, pad=2)
+          ax.tick_params(labelsize=6)
+          ax.set_xticks([])
+
+      # Hide unused axes
+      for j in range(len(features), len(axes)):
+          axes[j].set_visible(False)
+
+      fig.suptitle(f"Feature Sparklines: entity={entity_id}", fontsize=10)
+      plt.tight_layout()
+      return fig
+#+end_src
+
+#+NAME: src-entity-feature-heatmap
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  import seaborn as sns
+
+  def plot_entity_feature_heatmap(
+      df_features: pd.DataFrame,
+      entity_id: str,
+      entity_col: str = "entity_id",
+      date_col: str = "as_of_date",
+      features: list[str] | None = None,
+      figsize=(16, 8),
+  ):
+      """Plot a z-scored heatmap of features over time for one entity.
+
+      Each feature is standardized (z-scored) independently so that
+      the color scale reflects relative deviations, not absolute magnitude.
+
+      Args:
+          df_features: Feature matrix.
+          entity_id: Entity to visualize.
+          entity_col: Entity column name.
+          date_col: Date column name.
+          features: Subset of features to include.
+          figsize: Figure dimensions.
+      """
+      if entity_col in df_features.index.names:
+          subset = df_features.xs(entity_id, level=entity_col)
+      else:
+          subset = df_features[df_features[entity_col] == entity_id]
+
+      if date_col in subset.columns:
+          subset = subset.set_index(date_col)
+
+      subset = subset.sort_index()
+
+      if features is not None:
+          subset = subset[features]
+
+      numeric = subset.select_dtypes("number")
+
+      # Z-score each feature column
+      zscored = (numeric - numeric.mean()) / numeric.std().replace(0, 1)
+
+      fig, ax = plt.subplots(figsize=figsize)
+      sns.heatmap(
+          zscored.T,
+          cmap="RdBu_r",
+          center=0,
+          xticklabels=True,
+          yticklabels=True,
+          ax=ax,
+      )
+      ax.set_title(f"Feature Evolution (z-scored): entity={entity_id}")
+      ax.set_xlabel("as_of_date")
+      ax.set_ylabel("Feature")
+      plt.tight_layout()
+      return fig
+#+end_src
+
+* Phase 3: Feature Selection and Entity Clustering
+
+With clean, understood features in hand, the final visualization phase supports
+model building directly: selecting which features to use, and understanding how
+entities relate to one another in feature space.
+
+** Feature Importance
+
+When a prediction target is available, *mutual information* provides a
+model-agnostic measure of the statistical dependency between each feature and the
+target.  Unlike linear correlation, mutual information captures non-linear
+relationships, which is important because DFS features often have complex
+non-linear associations with outcomes.
+
+A horizontal bar chart sorted by mutual information score immediately shows which
+features carry the most predictive signal.  Features near zero can be
+dropped without loss.
+
+When no target is available (common during exploratory feature engineering),
+*variance-based filtering* provides a useful proxy: features with near-zero
+variance contribute no discriminative information regardless of the target.
+A simple bar chart of feature variances, with a threshold line, identifies
+candidates for removal.
+
+#+NAME: src-feature-importance
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
+
+  def plot_mutual_information(
+      df_features: pd.DataFrame,
+      target: pd.Series,
+      task: str = "regression",
+      top_n: int = 30,
+      figsize=(10, 8),
+  ):
+      """Plot mutual information scores between features and target.
+
+      Args:
+          df_features: Feature matrix (numeric columns only).
+          target: Target variable aligned with df_features index.
+          task: Either 'regression' or 'classification'.
+          top_n: Number of top features to display.
+          figsize: Figure dimensions.
+      """
+      numeric = df_features.select_dtypes("number").dropna(axis=1)
+      common_idx = numeric.index.intersection(target.index)
+      X = numeric.loc[common_idx].fillna(0)
+      y = target.loc[common_idx]
+
+      if task == "classification":
+          mi = mutual_info_classif(X, y, random_state=42)
+      else:
+          mi = mutual_info_regression(X, y, random_state=42)
+
+      mi_series = pd.Series(mi, index=X.columns).nlargest(top_n)
+
+      fig, ax = plt.subplots(figsize=figsize)
+      mi_series.sort_values().plot.barh(ax=ax, color="#2c3e50")
+      ax.set_xlabel("Mutual Information (nats)")
+      ax.set_title(f"Top {top_n} Features by Mutual Information")
+      plt.tight_layout()
+      return fig
+
+
+  def plot_variance_filter(
+      df_features: pd.DataFrame,
+      threshold: float = 0.01,
+      top_n: int = 40,
+      figsize=(10, 8),
+  ):
+      """Plot feature variances with a threshold line for filtering.
+
+      Args:
+          df_features: Feature matrix.
+          threshold: Minimum variance to retain a feature.
+          top_n: Number of lowest-variance features to display.
+          figsize: Figure dimensions.
+      """
+      variances = df_features.var().nsmallest(top_n)
+
+      fig, ax = plt.subplots(figsize=figsize)
+      colors = ["#e74c3c" if v < threshold else "#2ecc71" for v in variances]
+      variances.sort_values().plot.barh(ax=ax, color=colors)
+      ax.axvline(threshold, color="black", linestyle="--", label=f"threshold={threshold}")
+      ax.set_xlabel("Variance")
+      ax.set_title(f"Lowest-Variance Features (red = below threshold)")
+      ax.legend()
+      plt.tight_layout()
+      return fig
+#+end_src
+
+** Entity Similarity
+
+DFS produces a feature vector for each (entity, as_of_date) pair.  Projecting
+these vectors into two dimensions reveals the structure of the entity
+population: which entities behave similarly, whether known groups (e.g., customer
+segments, geographic regions) separate in feature space, and whether there are
+outliers that deserve investigation.
+
+*UMAP* is the recommended projection method because it preserves both local and
+global structure better than t-SNE for the feature counts typical of DFS output
+(100--500 dimensions).  The scatter plot should be colored by a domain attribute
+(e.g., customer tier, region, product category) to validate that the feature
+space captures meaningful distinctions.
+
+An *entity dendrogram* using hierarchical clustering on the full feature vectors
+provides a complementary view: it shows the nested grouping structure without the
+information loss inherent in 2D projection.
+
+#+NAME: src-entity-similarity
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  from sklearn.preprocessing import StandardScaler
+  from umap import UMAP
+
+  def plot_entity_umap(
+      df_features: pd.DataFrame,
+      color_by: pd.Series | None = None,
+      n_neighbors: int = 15,
+      min_dist: float = 0.1,
+      figsize=(10, 8),
+  ):
+      """Project entity feature vectors to 2D with UMAP and scatter plot.
+
+      Args:
+          df_features: Feature matrix (one row per entity or entity-date).
+          color_by: Categorical series aligned with df_features index for
+              coloring points. If None, all points are the same color.
+          n_neighbors: UMAP neighborhood size.
+          min_dist: UMAP minimum distance parameter.
+          figsize: Figure dimensions.
+      """
+      numeric = df_features.select_dtypes("number").fillna(0)
+      scaled = StandardScaler().fit_transform(numeric)
+
+      reducer = UMAP(
+          n_neighbors=n_neighbors,
+          min_dist=min_dist,
+          random_state=42,
+      )
+      embedding = reducer.fit_transform(scaled)
+
+      fig, ax = plt.subplots(figsize=figsize)
+      if color_by is not None:
+          for label in color_by.unique():
+              mask = color_by == label
+              ax.scatter(
+                  embedding[mask, 0],
+                  embedding[mask, 1],
+                  label=label,
+                  alpha=0.6,
+                  s=20,
+              )
+          ax.legend(title=color_by.name, bbox_to_anchor=(1.05, 1))
+      else:
+          ax.scatter(embedding[:, 0], embedding[:, 1], alpha=0.6, s=20)
+
+      ax.set_xlabel("UMAP 1")
+      ax.set_ylabel("UMAP 2")
+      ax.set_title("Entity Similarity (UMAP Projection)")
+      plt.tight_layout()
+      return fig
+#+end_src
+
+#+NAME: src-entity-dendrogram
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  from scipy.cluster.hierarchy import linkage, dendrogram
+  from sklearn.preprocessing import StandardScaler
+
+  def plot_entity_dendrogram(
+      df_features: pd.DataFrame,
+      entity_labels: list[str] | None = None,
+      method: str = "ward",
+      figsize=(14, 6),
+  ):
+      """Plot hierarchical clustering dendrogram of entities.
+
+      Args:
+          df_features: Feature matrix (one row per entity).
+          entity_labels: Labels for the leaf nodes.
+          method: Linkage method (ward, average, complete).
+          figsize: Figure dimensions.
+      """
+      numeric = df_features.select_dtypes("number").fillna(0)
+      scaled = StandardScaler().fit_transform(numeric)
+
+      Z = linkage(scaled, method=method)
+
+      fig, ax = plt.subplots(figsize=figsize)
+      dendrogram(
+          Z,
+          labels=entity_labels,
+          leaf_rotation=90,
+          leaf_font_size=8,
+          ax=ax,
+      )
+      ax.set_title("Entity Dendrogram (Hierarchical Clustering)")
+      ax.set_ylabel("Distance")
+      plt.tight_layout()
+      return fig
+#+end_src
+
+* Library Recommendations
+
+The following table summarizes when to use each visualization library.  The
+general principle is: use plotly for interactive exploration in Jupyter notebooks,
+and matplotlib/seaborn for static publication-quality figures.
+
+#+latex: \rowcolors[]{1}{}{gray!10}
+#+attr_latex: :placement [H]
+#+attr_latex: :environment tabular :font \small :center t :booktabs t :rmlines t :align L{0.18\textwidth}|L{0.25\textwidth}|L{0.40\textwidth}
+#+caption: Visualization library recommendations by use case
+#+name: tbl:library-recommendations
+| Library        | Use When                          | Notes                                                                     |
+|----------------+-----------------------------------+---------------------------------------------------------------------------|
+| matplotlib     | Publication figures, fine control  | Foundation for seaborn; required for sparkline grids and custom layouts    |
+| seaborn        | Statistical plots, heatmaps       | Best for correlation heatmaps, violin plots, and clustermaps              |
+| plotly         | Jupyter exploration, dashboards   | Hover tooltips show feature names and values; ideal for entity UMAP plots |
+| scikit-learn   | Mutual information, preprocessing | Use for StandardScaler, mutual_info_regression/classif                    |
+| umap-learn     | Dimensionality reduction          | Preferred over t-SNE for 100+ feature dimensions; faster, better global structure |
+| networkx       | Redundancy graphs                 | Small graphs only (< 1000 features); use graphviz layout for larger       |
+| scipy          | Hierarchical clustering, linkage  | Required for dendrograms and clustered heatmaps                           |
+
+All visualization dependencies should be optional: the core featurizer package
+should not require matplotlib or plotly.  The =viz= module should use lazy
+imports and raise informative errors when a required library is missing.
+
+* Integration with Featurizer
+
+The visualization module is organized as a subpackage within the featurizer
+package.  Each phase of the visualization strategy maps to one or two modules,
+and a shared utilities module provides common helpers for parsing feature names,
+extracting structural metadata, and standardizing plot styling.
+
+The proposed directory structure is:
+
+#+begin_example
+featurizer/viz/
+  __init__.py           # Public API: from featurizer.viz import correlation_clustermap
+  correlation.py        # Phase 1: Spearman heatmap, redundancy graph
+  missing.py            # Phase 1: Missingness heatmap, missingness over time
+  distributions.py      # Phase 2: Violin/box plots, distribution summaries
+  temporal.py           # Phase 2: Sparkline grid, entity-feature heatmap
+  importance.py         # Phase 3: Mutual information, variance filtering
+  similarity.py         # Phase 3: UMAP scatter, entity dendrogram
+  _utils.py             # Shared: feature name parsing, style defaults, lazy imports
+#+end_example
+
+** Lazy Imports for Optional Dependencies
+
+Every module in =featurizer/viz/= should use lazy imports to avoid making
+heavy visualization libraries mandatory for users who only need SQL generation.
+
+#+NAME: src-lazy-import-pattern
+#+begin_src python :exports code
+  # featurizer/viz/_utils.py
+
+  def _lazy_import(module_name: str, package: str | None = None):
+      """Import a module lazily, raising a helpful error if missing.
+
+      Args:
+          module_name: The module to import (e.g., 'seaborn').
+          package: The pip package name if different from module_name.
+
+      Returns:
+          The imported module.
+
+      Raises:
+          ImportError: With installation instructions if module is missing.
+      """
+      try:
+          import importlib
+          return importlib.import_module(module_name)
+      except ImportError:
+          pkg = package or module_name
+          raise ImportError(
+              f"{module_name} is required for featurizer.viz but is not installed. "
+              f"Install it with: uv add {pkg}"
+          ) from None
+#+end_src
+
+** Convenience Access from Featurizer Class
+
+For ergonomic access, the =Featurizer= class can expose a =.viz= property that
+returns a visualization namespace bound to the current feature DataFrame.  This
+allows workflows like:
+
+#+NAME: src-featurizer-viz-property
+#+begin_src python :exports code
+  # Proposed usage pattern
+  from featurizer import Featurizer
+
+  f = Featurizer("config.yaml")
+  df = f.execute(db_url="postgresql://...")
+
+  # Direct access to visualization functions
+  f.viz.correlation_clustermap(df)
+  f.viz.missingness_heatmap(df)
+  f.viz.sparkline_grid(df, entity_id="customer_42")
+#+end_src
+
+This pattern keeps the core =Featurizer= class lightweight (the =viz= property
+returns a thin namespace object) while providing discoverability through
+tab-completion in Jupyter environments.
+
+* Practical Recipes
+
+This section provides end-to-end workflows for the most common visualization
+tasks a practitioner encounters after generating features with featurizer.
+
+** Recipe 1: "I generated features, now what?"
+
+The first thing to do after materializing a feature DataFrame is assess data
+quality and redundancy.  This recipe produces the two most informative plots:
+a clustered correlation heatmap to identify redundant feature blocks, and a
+missingness heatmap to understand data coverage.
+
+#+NAME: src-recipe-first-look
+#+begin_src python :exports code
+  import pandas as pd
+  from featurizer import Featurizer
+  from featurizer.viz.correlation import plot_correlation_clustermap
+  from featurizer.viz.missing import plot_missingness_heatmap
+
+  # Generate features
+  f = Featurizer("config.yaml")
+  df = f.execute(db_url="postgresql://user:pass@localhost/mydb")
+
+  # Drop non-feature columns for visualization
+  feature_cols = [c for c in df.columns if c not in ("as_of_date", "entity_id")]
+  df_feat = df[feature_cols]
+
+  # 1. Correlation clustermap -- look for large red/blue blocks
+  #    indicating groups of redundant features
+  g = plot_correlation_clustermap(df_feat)
+  g.savefig("correlation_clustermap.png", dpi=150)
+
+  # 2. Missingness heatmap -- look for features with >50% missing
+  #    and entities with systematically missing features
+  fig = plot_missingness_heatmap(df_feat)
+  fig.savefig("missingness_heatmap.png", dpi=150)
+#+end_src
+
+** Recipe 2: "Which features should I keep?"
+
+After the initial quality assessment, the next step is narrowing the feature set.
+Start with variance filtering (no target needed), then add mutual information
+ranking if a target variable is available.
+
+#+NAME: src-recipe-feature-selection
+#+begin_src python :exports code
+  import pandas as pd
+  from featurizer.viz.importance import plot_variance_filter, plot_mutual_information
+  from featurizer.viz.correlation import build_redundancy_graph, select_from_redundancy_groups
+
+  # Assume df_feat is the feature matrix from Recipe 1
+
+  # Step 1: Remove near-zero variance features
+  fig = plot_variance_filter(df_feat, threshold=0.01)
+  fig.savefig("variance_filter.png", dpi=150)
+
+  low_var = df_feat.var()[df_feat.var() < 0.01].index.tolist()
+  df_filtered = df_feat.drop(columns=low_var)
+  print(f"Dropped {len(low_var)} low-variance features")
+
+  # Step 2: Remove redundant features (Spearman > 0.95)
+  G = build_redundancy_graph(df_filtered, threshold=0.95)
+  keep = select_from_redundancy_groups(G, df_filtered)
+  df_selected = df_filtered[keep]
+  print(f"Retained {len(keep)} features after redundancy removal")
+
+  # Step 3: Rank by mutual information (if target available)
+  target = pd.Series(...)  # your prediction target
+  fig = plot_mutual_information(df_selected, target, task="regression", top_n=25)
+  fig.savefig("mutual_information.png", dpi=150)
+#+end_src
+
+** Recipe 3: "Are my entities clustering?"
+
+This recipe projects the entity feature vectors into 2D using UMAP and colors
+them by a known domain attribute to validate that the feature space captures
+meaningful behavioral differences.
+
+#+NAME: src-recipe-entity-clustering
+#+begin_src python :exports code
+  import pandas as pd
+  from featurizer.viz.similarity import plot_entity_umap, plot_entity_dendrogram
+
+  # Assume df is the full feature DataFrame with entity_id and as_of_date
+
+  # Use the latest as_of_date for a snapshot view
+  latest_date = df["as_of_date"].max()
+  snapshot = df[df["as_of_date"] == latest_date].set_index("entity_id")
+
+  feature_cols = [c for c in snapshot.columns if c != "as_of_date"]
+  df_snapshot = snapshot[feature_cols]
+
+  # Color by a known attribute (e.g., customer segment from a lookup table)
+  segments = pd.Series(
+      {"cust_1": "premium", "cust_2": "standard", "cust_3": "premium"},
+      name="segment",
+  )
+  color = segments.reindex(df_snapshot.index)
+
+  # UMAP scatter -- look for separation between groups
+  fig = plot_entity_umap(df_snapshot, color_by=color)
+  fig.savefig("entity_umap.png", dpi=150)
+
+  # Dendrogram -- see hierarchical grouping structure
+  fig = plot_entity_dendrogram(df_snapshot, entity_labels=df_snapshot.index.tolist())
+  fig.savefig("entity_dendrogram.png", dpi=150)
+#+end_src
+
+** Recipe 4: "Is there temporal leakage?"
+
+Temporal leakage occurs when a feature inadvertently incorporates information
+from the future.  The most effective detection method is visual: plot feature
+timeseries for entities where you know the ground truth timeline and verify that
+features only reflect past information.
+
+#+NAME: src-recipe-leakage-detection
+#+begin_src python :exports code
+  import pandas as pd
+  import matplotlib.pyplot as plt
+  from featurizer.viz.temporal import plot_sparkline_grid, plot_entity_feature_heatmap
+
+  # Assume df is the full feature DataFrame
+
+  # Pick an entity you understand well
+  test_entity = "customer_42"
+
+  # Sparkline grid -- scan all features for unexpected jumps
+  # that coincide with known future events
+  fig = plot_sparkline_grid(df, entity_id=test_entity)
+  fig.savefig("sparklines_customer_42.png", dpi=150)
+
+  # Entity-feature heatmap -- z-scored view highlights anomalous
+  # feature values at specific dates
+  fig = plot_entity_feature_heatmap(df, entity_id=test_entity)
+  fig.savefig("heatmap_customer_42.png", dpi=150)
+
+  # Manual inspection: overlay known events on a specific feature
+  entity_data = df[df["entity_id"] == test_entity].sort_values("as_of_date")
+
+  fig, ax = plt.subplots(figsize=(12, 4))
+  ax.plot(
+      entity_data["as_of_date"],
+      entity_data["COUNT(orders.amount)[P1M]"],
+      marker="o",
+      label="COUNT(orders.amount)[P1M]",
+  )
+
+  # Mark a known event date -- the feature should NOT react before this date
+  known_event = pd.Timestamp("2025-06-15")
+  ax.axvline(known_event, color="red", linestyle="--", label="Product launch (known)")
+  ax.legend()
+  ax.set_title("Leakage Check: feature should not anticipate the red line")
+  plt.tight_layout()
+  fig.savefig("leakage_check.png", dpi=150)
+#+end_src
+
+If the feature value increases *before* the red line, the as-of join is likely
+pulling future data.  Check the =temporal= block in the configuration: ensure
+=mode: as_of= is set and that the =child_timestamp= field correctly identifies
+the event time column.

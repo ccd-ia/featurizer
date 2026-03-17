@@ -12,7 +12,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
 from icecream import ic
 from loguru import logger
 
-from .primitives import ERGraph, Entity, Feature, Relationship
+from .primitives import Entity, ERGraph, Feature, Relationship
 
 
 @dataclass(frozen=True)
@@ -56,9 +56,14 @@ class FeaturePlanner:
         try:
             self._target = self.graph.entities[self.target_alias]
         except KeyError as exc:
-            raise ValueError(f"Target entity '{self.target_alias}' not found in config.") from exc
+            raise ValueError(
+                f"Target entity '{self.target_alias}' not found in config."
+            ) from exc
 
-        self._features = {entity.alias: set(entity.features) for entity in self.graph.entities.values()}
+        self._features = {
+            entity.alias: set(entity.features)
+            for entity in self.graph.entities.values()
+        }
         self._joins = {entity.alias: [] for entity in self.graph.entities.values()}
         self._ctes = []
         self._path = []
@@ -68,7 +73,9 @@ class FeaturePlanner:
 
         return PlannerResult(
             target=self._target,
-            features={alias: set(features) for alias, features in self._features.items()},
+            features={
+                alias: set(features) for alias, features in self._features.items()
+            },
             joins={alias: list(joins) for alias, joins in self._joins.items()},
             ctes=list(self._ctes),
         )
@@ -78,7 +85,11 @@ class FeaturePlanner:
     # ------------------------------------------------------------------ #
 
     def _build_features(self, target_entity: Entity, depth: int = 0) -> None:
-        logger.debug("build_features({alias}) depth={depth}", alias=target_entity.alias, depth=depth)
+        logger.debug(
+            "build_features({alias}) depth={depth}",
+            alias=target_entity.alias,
+            depth=depth,
+        )
         self._debug("build_features", entity=target_entity.alias, depth=depth)
 
         depth += 1
@@ -119,13 +130,17 @@ class FeaturePlanner:
     # Aggregations / transformations / CTE assembly
     # ------------------------------------------------------------------ #
 
-    def _build_aggregations(self, target: Entity, source: Entity, relationship: Relationship) -> None:
+    def _build_aggregations(
+        self, target: Entity, source: Entity, relationship: Relationship
+    ) -> None:
         logger.debug("Processing backward relationship {}", relationship)
         aggregations: List[Feature] = []
 
         for feature in self._features[source.alias]:
             for aggregator in self.aggregations.values():
-                new_feature = aggregator(target, source, feature)
+                new_feature = aggregator(
+                    target, source, feature, relationship=relationship
+                )
                 if new_feature:
                     aggregations.append(new_feature)
 
@@ -136,23 +151,41 @@ class FeaturePlanner:
                             feature.entity,
                         )
                         break
-                    interval_feature = aggregator(target, source, feature, interval=interval)
+                    interval_feature = aggregator(
+                        target,
+                        source,
+                        feature,
+                        interval=interval,
+                        relationship=relationship,
+                    )
                     if interval_feature:
                         aggregations.append(interval_feature)
 
         aggregation_set = set(aggregations)
         sorted_aggs = self._sort_features(aggregation_set)
-        self._debug("aggregations", target=target.alias, source=source.alias, count=len(sorted_aggs))
+        self._debug(
+            "aggregations",
+            target=target.alias,
+            source=source.alias,
+            count=len(sorted_aggs),
+        )
 
         self._features[source.alias].update(aggregation_set)
         self._features[target.alias].update(aggregation_set)
 
         self._build_aggregations_cte(target, source, relationship, sorted_aggs)
 
-    def _build_direct(self, target: Entity, source: Entity, relationship: Relationship) -> None:
+    def _build_direct(
+        self, target: Entity, source: Entity, relationship: Relationship
+    ) -> None:
         logger.debug("Processing forward relationship {}", relationship)
         directs = self._sort_features(self._features[source.alias])
-        self._debug("direct_features", target=target.alias, source=source.alias, count=len(directs))
+        self._debug(
+            "direct_features",
+            target=target.alias,
+            source=source.alias,
+            count=len(directs),
+        )
 
         self._features[target.alias].update(directs)
         if getattr(relationship, "temporal_mode", None) == "as_of":
@@ -165,7 +198,7 @@ class FeaturePlanner:
 
         transformed: List[Feature | Iterable[Feature]] = []
         for feature in self._features[target.alias]:
-            if feature.type != 'index':
+            if feature.type != "index":
                 for transformer in self.transformations.values():
                     new_feature = transformer(target, feature)
                     if new_feature:
@@ -204,9 +237,13 @@ class FeaturePlanner:
             f"{relationship.parent.table}.{relationship.parent_key} "
         )
 
-        rendered_features = [feature.query for feature in features if feature.type not in ['key']]
+        rendered_features = [
+            feature.query for feature in features if feature.type not in ["key"]
+        ]
         where_clause = (
-            f"where aod.as_of_date >= {source.temporal_ix.name}" if source.temporal_ix else ''
+            f"where aod.as_of_date >= {source.temporal_ix.name}"
+            if source.temporal_ix
+            else ""
         )
 
         cte_query = f"""
@@ -231,12 +268,17 @@ class FeaturePlanner:
         features: Iterable[Feature],
     ) -> None:
         if source.id is None:
-            logger.debug("Skipping direct features for {} because it lacks an id column.", source.alias)
+            logger.debug(
+                "Skipping direct features for {} because it lacks an id column.",
+                source.alias,
+            )
             return
 
         cte_name = f"{source.alias}_direct_transfers_for_{target.alias}"
 
-        feature_names = [feature.name for feature in features if feature.type not in ['index', 'key']]
+        feature_names = [
+            feature.name for feature in features if feature.type not in ["index", "key"]
+        ]
         cte_query = f"""
         -- direct features for {target.alias}
         {cte_name} as (
@@ -261,9 +303,8 @@ class FeaturePlanner:
         features: Iterable[Feature],
     ) -> None:
         target_temporal = target.temporal_ix.name if target.temporal_ix else None
-        source_temporal = (
-            relationship.temporal_child_field
-            or (source.temporal_ix.name if source.temporal_ix else None)
+        source_temporal = relationship.temporal_child_field or (
+            source.temporal_ix.name if source.temporal_ix else None
         )
         if not target_temporal or not source_temporal:
             logger.warning(
@@ -275,9 +316,9 @@ class FeaturePlanner:
             return
 
         projected = [
-            f"{source.alias}_transform.{feature.name} as \"{feature.name}\""
+            f'{source.alias}_transform.{feature.name} as "{feature.name}"'
             for feature in features
-            if feature.type not in {'index', 'key'}
+            if feature.type not in {"index", "key"}
         ]
         if not projected:
             return
@@ -315,7 +356,7 @@ class FeaturePlanner:
         feature_names = [
             feature.name
             for feature in self._sort_features(self._features[target.alias])
-            if feature.type not in ['index', 'key']
+            if feature.type not in ["index", "key"]
         ]
 
         cte_query = f"""
@@ -336,7 +377,11 @@ class FeaturePlanner:
 
         indexes = [f"{ix.name}" for ix in target.indexes]
         keys = [f"{key.name}" for key in target.keys]
-        rendered_features = [feature.query for feature in features if feature.type not in ['index', 'key']]
+        rendered_features = [
+            feature.query
+            for feature in features
+            if feature.type not in ["index", "key"]
+        ]
 
         cte_query = f"""
         -- transform {target.alias}

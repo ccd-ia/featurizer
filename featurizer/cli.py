@@ -15,9 +15,11 @@ import argparse
 import sys
 from typing import Any, Dict, List, Optional
 
-from .primitives.utils import list_aggregations, list_transformations, _AGGREGATIONS, _TRANSFORMATIONS
+from .primitives.utils import (
+    list_aggregations,
+    list_transformations,
+)
 from .validation import validate_config
-
 
 # Primitive metadata for documentation
 AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
@@ -153,6 +155,182 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "output_type": "numeric",
         "sql_example": "EXP(AVG(LOG(value)))",
         "temporal": False,
+    },
+    # Percentile aggregations
+    "p10": {
+        "description": "10th percentile",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "p25": {
+        "description": "25th percentile (first quartile)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "p75": {
+        "description": "75th percentile (third quartile)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "p90": {
+        "description": "90th percentile",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "p95": {
+        "description": "95th percentile",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "p99": {
+        "description": "99th percentile",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    # Distribution metrics
+    "iqr": {
+        "description": "Interquartile range (P75 - P25)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY amount) - PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY amount)",
+        "temporal": False,
+    },
+    "cv": {
+        "description": "Coefficient of variation (STDDEV / MEAN)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "STDDEV(amount) / NULLIF(AVG(amount), 0)",
+        "temporal": False,
+    },
+    "range": {
+        "description": "Range (MAX - MIN)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "MAX(amount) - MIN(amount)",
+        "temporal": True,
+    },
+    # Temporal metrics
+    "event_rate": {
+        "description": "Events per unit time",
+        "input_types": ["categorical", "index"],
+        "output_type": "numeric",
+        "sql_example": "COUNT(*) / EXTRACT(EPOCH FROM MAX(ts) - MIN(ts))",
+        "temporal": True,
+    },
+    "time_span": {
+        "description": "Time span between first and last event",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "EXTRACT(EPOCH FROM MAX(ts) - MIN(ts))",
+        "temporal": True,
+    },
+    # Inter-event gap statistics
+    "gap_mean": {
+        "description": "Mean inter-event gap duration",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "AVG(ts - LAG(ts) OVER (ORDER BY ts))",
+        "temporal": True,
+    },
+    "gap_stddev": {
+        "description": "Standard deviation of inter-event gaps",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "STDDEV(ts - LAG(ts) OVER (ORDER BY ts))",
+        "temporal": True,
+    },
+    "gap_min": {
+        "description": "Minimum inter-event gap duration",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "MIN(ts - LAG(ts) OVER (ORDER BY ts))",
+        "temporal": True,
+    },
+    "gap_max": {
+        "description": "Maximum inter-event gap duration",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "MAX(ts - LAG(ts) OVER (ORDER BY ts))",
+        "temporal": True,
+    },
+    "gap_cv": {
+        "description": "Coefficient of variation of inter-event gaps",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "STDDEV(gap) / NULLIF(AVG(gap), 0)",
+        "temporal": True,
+    },
+    # Temporal patterns
+    "burstiness": {
+        "description": "Goh-Barabasi burstiness index (-1 to 1)",
+        "input_types": ["date", "timestamp", "index"],
+        "output_type": "numeric",
+        "sql_example": "(STDDEV(gap) - AVG(gap)) / NULLIF(STDDEV(gap) + AVG(gap), 0)",
+        "temporal": True,
+    },
+    # Categorical distribution
+    "entropy": {
+        "description": "Shannon entropy of categorical distribution",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "-SUM(p * LN(p)) where p = COUNT(val) / SUM(COUNT(val))",
+        "temporal": False,
+    },
+    "hhi": {
+        "description": "Herfindahl-Hirschman Index (concentration measure)",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "SUM(p^2) where p = COUNT(val) / SUM(COUNT(val))",
+        "temporal": False,
+    },
+    # Inequality
+    "gini": {
+        "description": "Gini coefficient (inequality measure, 0-1)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "2 * SUM(rank * val) / (n * SUM(val)) - (n+1)/n",
+        "temporal": False,
+    },
+    # Sequence features
+    "ngram_2_freq": {
+        "description": "Bigram frequency distribution of categorical sequences",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "COUNT(DISTINCT val || '->' || LEAD(val)) / COUNT(*)",
+        "temporal": True,
+    },
+    "ngram_3_freq": {
+        "description": "Trigram frequency distribution of categorical sequences",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "COUNT(DISTINCT val || '->' || LEAD(val,1) || '->' || LEAD(val,2)) / COUNT(*)",
+        "temporal": True,
+    },
+    "sequence_entropy": {
+        "description": "Transition entropy of categorical sequences",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "-SUM(p_ij * LN(p_ij)) over transition matrix",
+        "temporal": True,
+    },
+    "longest_streak": {
+        "description": "Longest consecutive streak of same value",
+        "input_types": ["categorical", "boolean"],
+        "output_type": "numeric",
+        "sql_example": "MAX(streak_length) using gaps-and-islands",
+        "temporal": True,
     },
 }
 
@@ -666,6 +844,48 @@ TRANSFORMATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "value = ANY(ARRAY[...])",
         "category": "boolean",
     },
+    # Population window transformers
+    "cross_entity_zscore": {
+        "description": "Z-score normalized across all entities in the population",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "(value - AVG(value) OVER ()) / NULLIF(STDDEV(value) OVER (), 0)",
+        "category": "population_window",
+        "requires_temporal": False,
+    },
+    "cross_entity_percentile": {
+        "description": "Percentile rank across all entities in the population",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "PERCENT_RANK() OVER (ORDER BY value)",
+        "category": "population_window",
+        "requires_temporal": False,
+    },
+    # Change-point detection
+    "mean_shift_ratio_7": {
+        "description": "Ratio of recent 7-period mean to overall mean (change-point detection)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "AVG(value) OVER (... ROWS 6 PRECEDING) / NULLIF(AVG(value) OVER (), 0)",
+        "category": "change_point",
+        "requires_temporal": True,
+    },
+    "mean_shift_ratio_14": {
+        "description": "Ratio of recent 14-period mean to overall mean (change-point detection)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "AVG(value) OVER (... ROWS 13 PRECEDING) / NULLIF(AVG(value) OVER (), 0)",
+        "category": "change_point",
+        "requires_temporal": True,
+    },
+    "cusum": {
+        "description": "CUSUM: cumulative sum of deviations from target mean",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "SUM(value - target_mean) OVER (PARTITION BY id ORDER BY date)",
+        "category": "change_point",
+        "requires_temporal": True,
+    },
 }
 
 
@@ -686,17 +906,27 @@ def list_primitives_command(args: argparse.Namespace) -> int:
 
         if args.category:
             # Group by whether they support temporal intervals
-            temporal = [a for a in aggs if AGGREGATION_DOCS.get(a, {}).get("temporal", False)]
-            non_temporal = [a for a in aggs if not AGGREGATION_DOCS.get(a, {}).get("temporal", False)]
+            temporal = [
+                a for a in aggs if AGGREGATION_DOCS.get(a, {}).get("temporal", False)
+            ]
+            non_temporal = [
+                a
+                for a in aggs
+                if not AGGREGATION_DOCS.get(a, {}).get("temporal", False)
+            ]
 
             if temporal:
-                print(f"\n  Temporal (support interval windows):")
+                print("\n  Temporal (support interval windows):")
                 for name in sorted(temporal):
-                    _print_primitive(name, AGGREGATION_DOCS.get(name, {}), args.show_sql)
+                    _print_primitive(
+                        name, AGGREGATION_DOCS.get(name, {}), args.show_sql
+                    )
             if non_temporal:
-                print(f"\n  Non-temporal:")
+                print("\n  Non-temporal:")
                 for name in sorted(non_temporal):
-                    _print_primitive(name, AGGREGATION_DOCS.get(name, {}), args.show_sql)
+                    _print_primitive(
+                        name, AGGREGATION_DOCS.get(name, {}), args.show_sql
+                    )
         else:
             for name in aggs:
                 _print_primitive(name, AGGREGATION_DOCS.get(name, {}), args.show_sql)
@@ -715,15 +945,32 @@ def list_primitives_command(args: argparse.Namespace) -> int:
                 categories.setdefault(cat, []).append(name)
 
             category_order = [
-                "basic", "math", "text", "date", "binning", "cyclical",
-                "cumulative", "window", "distribution", "lag", "rolling",
-                "ema", "holt_winters", "pct_change", "boolean", "other"
+                "basic",
+                "math",
+                "text",
+                "date",
+                "binning",
+                "cyclical",
+                "cumulative",
+                "window",
+                "distribution",
+                "lag",
+                "rolling",
+                "ema",
+                "holt_winters",
+                "pct_change",
+                "boolean",
+                "population_window",
+                "change_point",
+                "other",
             ]
             for cat in category_order:
                 if cat in categories:
                     print(f"\n  {cat.upper().replace('_', ' ')}:")
                     for name in sorted(categories[cat]):
-                        _print_primitive(name, TRANSFORMATION_DOCS.get(name, {}), args.show_sql)
+                        _print_primitive(
+                            name, TRANSFORMATION_DOCS.get(name, {}), args.show_sql
+                        )
         else:
             for name in transforms:
                 _print_primitive(name, TRANSFORMATION_DOCS.get(name, {}), args.show_sql)
@@ -788,18 +1035,21 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="List available aggregation and transformation primitives",
     )
     list_parser.add_argument(
-        "--type", "-t",
+        "--type",
+        "-t",
         choices=["agg", "transform", "all"],
         default="all",
         help="Type of primitives to list (default: all)",
     )
     list_parser.add_argument(
-        "--show-sql", "-s",
+        "--show-sql",
+        "-s",
         action="store_true",
         help="Show example SQL for each primitive",
     )
     list_parser.add_argument(
-        "--category", "-c",
+        "--category",
+        "-c",
         action="store_true",
         help="Group primitives by category",
     )

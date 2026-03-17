@@ -62,6 +62,80 @@ Aggregation primitives are applied when traversing **backward relationships** (p
 | `harmonic_mean` | Harmonic mean (for rates) | numeric | numeric | `COUNT(val) / SUM(1.0/val)` |
 | `geometric_mean` | Geometric mean (for growth) | numeric | numeric | `EXP(AVG(LOG(val)))` |
 
+### Percentile Aggregations
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `p10` | 10th percentile | numeric | numeric | `PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY amount)` |
+| `p25` | 25th percentile (first quartile) | numeric | numeric | `PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY amount)` |
+| `p75` | 75th percentile (third quartile) | numeric | numeric | `PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY amount)` |
+| `p90` | 90th percentile | numeric | numeric | `PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY amount)` |
+| `p95` | 95th percentile | numeric | numeric | `PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY amount)` |
+| `p99` | 99th percentile | numeric | numeric | `PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY amount)` |
+
+### Distribution Metrics
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `iqr` | Interquartile range (P75 - P25) | numeric | numeric | `PERCENTILE_CONT(0.75) - PERCENTILE_CONT(0.25)` |
+| `cv` | Coefficient of variation (STDDEV / MEAN) | numeric | numeric | `STDDEV(amount) / NULLIF(AVG(amount), 0)` |
+| `range` | Range (MAX - MIN) | numeric | numeric | `MAX(amount) - MIN(amount)` |
+
+### Temporal Metrics
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `event_rate` | Events per unit time | categorical, index | numeric | `COUNT(*) / EXTRACT(EPOCH FROM MAX(ts) - MIN(ts))` |
+| `time_span` | Time span between first and last event | date, timestamp, index | numeric | `EXTRACT(EPOCH FROM MAX(ts) - MIN(ts))` |
+
+### Inter-Event Gap Statistics
+
+Compute statistics over the time gaps between consecutive events. Require `temporal_ix` on the child entity.
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `gap_mean` | Mean inter-event gap duration | date, timestamp, index | numeric | `AVG(ts - LAG(ts) OVER (ORDER BY ts))` |
+| `gap_stddev` | Standard deviation of inter-event gaps | date, timestamp, index | numeric | `STDDEV(ts - LAG(ts) OVER (ORDER BY ts))` |
+| `gap_min` | Minimum inter-event gap duration | date, timestamp, index | numeric | `MIN(ts - LAG(ts) OVER (ORDER BY ts))` |
+| `gap_max` | Maximum inter-event gap duration | date, timestamp, index | numeric | `MAX(ts - LAG(ts) OVER (ORDER BY ts))` |
+| `gap_cv` | Coefficient of variation of inter-event gaps | date, timestamp, index | numeric | `STDDEV(gap) / NULLIF(AVG(gap), 0)` |
+
+### Temporal Patterns
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `burstiness` | Goh-Barabasi burstiness index (-1 to 1) | date, timestamp, index | numeric | `(STDDEV(gap) - AVG(gap)) / NULLIF(STDDEV(gap) + AVG(gap), 0)` |
+
+A burstiness value of 1 indicates highly bursty behavior (events clustered together), 0 indicates random (Poisson) arrivals, and -1 indicates perfectly regular spacing.
+
+### Categorical Distribution
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `entropy` | Shannon entropy of categorical distribution | categorical | numeric | `-SUM(p * LN(p))` where p = proportion |
+| `hhi` | Herfindahl-Hirschman Index (concentration) | categorical | numeric | `SUM(p^2)` where p = proportion |
+
+Higher entropy indicates more uniform distribution; lower indicates dominance by few categories. HHI ranges from 1/N (perfectly uniform) to 1 (single category dominates).
+
+### Inequality
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `gini` | Gini coefficient (inequality measure, 0-1) | numeric | numeric | `2 * SUM(rank * val) / (n * SUM(val)) - (n+1)/n` |
+
+A Gini of 0 means perfect equality; 1 means maximum inequality.
+
+### Sequence Features
+
+These primitives analyze sequential patterns in categorical event streams. They require `temporal_ix` on the child entity.
+
+| Name | Description | Input Types | Output | SQL Example |
+|------|-------------|-------------|--------|-------------|
+| `ngram_2_freq` | Bigram frequency distribution | categorical | numeric | `COUNT(DISTINCT val->LEAD(val)) / COUNT(*)` |
+| `ngram_3_freq` | Trigram frequency distribution | categorical | numeric | `COUNT(DISTINCT val->LEAD(val,1)->LEAD(val,2)) / COUNT(*)` |
+| `sequence_entropy` | Transition entropy of categorical sequences | categorical | numeric | `-SUM(p_ij * LN(p_ij))` over transition matrix |
+| `longest_streak` | Longest consecutive streak of same value | categorical, boolean | numeric | `MAX(streak_length)` using gaps-and-islands |
+
 ### Temporal Interval Support
 
 Most basic aggregations support temporal intervals (e.g., `P7D`, `P30D`). When an interval is specified and the entity has a `temporal_ix`, the aggregation is filtered to include only records within that time window:
@@ -233,6 +307,27 @@ Compute relative change from N periods ago:
 |------|-------------|-------------|--------|
 | `is_null` | Check if null | numeric, categorical, date | boolean |
 | `in_array` | Check membership | numeric, categorical, date | boolean |
+
+### Population Window Transformers
+
+These transformers normalize values across the entire population of entities rather than within a single entity's history. Useful for comparing an entity's feature values to the overall distribution.
+
+| Name | Description | Input Types | Output | SQL Pattern |
+|------|-------------|-------------|--------|-------------|
+| `cross_entity_zscore` | Z-score across all entities | numeric | numeric | `(value - AVG(value) OVER ()) / NULLIF(STDDEV(value) OVER (), 0)` |
+| `cross_entity_percentile` | Percentile rank across all entities | numeric | numeric | `PERCENT_RANK() OVER (ORDER BY value)` |
+
+### Change-Point Detection
+
+These transformers detect shifts in feature behavior over time. Useful for identifying regime changes, anomalies, and trend breaks.
+
+| Name | Description | Input Types | Window | SQL Pattern |
+|------|-------------|-------------|--------|-------------|
+| `mean_shift_ratio_7` | Ratio of recent 7-period mean to overall mean | numeric | 7 | `AVG(val) OVER (... ROWS 6 PRECEDING) / NULLIF(AVG(val) OVER (), 0)` |
+| `mean_shift_ratio_14` | Ratio of recent 14-period mean to overall mean | numeric | 14 | `AVG(val) OVER (... ROWS 13 PRECEDING) / NULLIF(AVG(val) OVER (), 0)` |
+| `cusum` | Cumulative sum of deviations from target mean | numeric | all | `SUM(val - target_mean) OVER (PARTITION BY id ORDER BY date)` |
+
+A `mean_shift_ratio` near 1.0 indicates stability; values significantly above or below 1.0 signal a change point. CUSUM accumulates deviations and is sensitive to sustained small shifts that rolling averages might miss.
 
 ---
 
