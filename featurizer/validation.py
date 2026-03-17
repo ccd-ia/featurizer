@@ -88,8 +88,8 @@ class ConfigValidator:
     }
 
     ISO8601_DURATION_PATTERN = re.compile(
-        r'^P(?:(?P<years>\d+)Y)?(?:(?P<months>\d+)M)?(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?'
-        r'(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?$'
+        r"^P(?:(?P<years>\d+)Y)?(?:(?P<months>\d+)M)?(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?"
+        r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?$"
     )
 
     def __init__(self, mode: str = "strict") -> None:
@@ -289,13 +289,19 @@ class ConfigValidator:
 
                         var_type = var_def["type"]
                         if var_type not in self.VALID_VARIABLE_TYPES:
-                            suggestion = self._suggest_similar(var_type, self.VALID_VARIABLE_TYPES)
+                            suggestion = self._suggest_similar(
+                                var_type, self.VALID_VARIABLE_TYPES
+                            )
                             self.errors.append(
                                 ValidationError(
                                     message=f"Invalid variable type: '{var_type}'",
                                     location=f"entities[{i}].variables.{var_name}.type",
                                     suggestion=f"Valid types: {', '.join(sorted(self.VALID_VARIABLE_TYPES))}"
-                                    + (f"\n  Did you mean '{suggestion}'?" if suggestion else ""),
+                                    + (
+                                        f"\n  Did you mean '{suggestion}'?"
+                                        if suggestion
+                                        else ""
+                                    ),
                                 )
                             )
 
@@ -309,8 +315,12 @@ class ConfigValidator:
             return
 
         # Build entity lookup
-        entity_aliases = {e.get("alias") for e in entities if isinstance(e, dict) and "alias" in e}
-        entity_map = {e["alias"]: e for e in entities if isinstance(e, dict) and "alias" in e}
+        entity_aliases: set[str] = {
+            str(e["alias"]) for e in entities if isinstance(e, dict) and "alias" in e
+        }
+        entity_map = {
+            e["alias"]: e for e in entities if isinstance(e, dict) and "alias" in e
+        }
 
         # Validate target exists
         if target and target not in entity_aliases:
@@ -336,13 +346,19 @@ class ConfigValidator:
                 if isinstance(parent, dict) and "entity" in parent:
                     parent_entity = parent["entity"]
                     if parent_entity not in entity_aliases:
-                        suggestion = self._suggest_similar(parent_entity, entity_aliases)
+                        suggestion = self._suggest_similar(
+                            parent_entity, entity_aliases
+                        )
                         self.errors.append(
                             ValidationError(
                                 message=f"Relationship references unknown entity '{parent_entity}'",
                                 location=f"relationships[{i}].parent.entity",
                                 suggestion=f"Available entities: {', '.join(sorted(entity_aliases))}"
-                                + (f"\n  Did you mean '{suggestion}'?" if suggestion else ""),
+                                + (
+                                    f"\n  Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else ""
+                                ),
                             )
                         )
 
@@ -355,7 +371,11 @@ class ConfigValidator:
                                 message=f"Relationship references unknown entity '{child_entity}'",
                                 location=f"relationships[{i}].child.entity",
                                 suggestion=f"Available entities: {', '.join(sorted(entity_aliases))}"
-                                + (f"\n  Did you mean '{suggestion}'?" if suggestion else ""),
+                                + (
+                                    f"\n  Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else ""
+                                ),
                             )
                         )
 
@@ -363,8 +383,12 @@ class ConfigValidator:
                 if "temporal" in rel and isinstance(rel["temporal"], dict):
                     temporal_mode = rel["temporal"].get("mode")
                     if temporal_mode == "as_of":
-                        parent_entity = parent.get("entity") if isinstance(parent, dict) else None
-                        child_entity = child.get("entity") if isinstance(child, dict) else None
+                        parent_entity = (
+                            parent.get("entity") if isinstance(parent, dict) else None
+                        )
+                        child_entity = (
+                            child.get("entity") if isinstance(child, dict) else None
+                        )
 
                         missing_temporal = []
                         if parent_entity and parent_entity in entity_map:
@@ -426,7 +450,9 @@ class ConfigValidator:
         return ConfigValidator.ISO8601_DURATION_PATTERN.match(duration) is not None
 
     @staticmethod
-    def _suggest_similar(value: str, candidates: Set[str], max_distance: int = 2) -> Optional[str]:
+    def _suggest_similar(
+        value: str, candidates: Set[str], max_distance: int = 2
+    ) -> Optional[str]:
         """Suggest similar string from candidates using Levenshtein distance."""
         if not candidates:
             return None
