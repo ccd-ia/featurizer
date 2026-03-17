@@ -22,6 +22,7 @@
   "reportInconsistentConstructor": "error",
   "ignore": [
     "featurizer/primitives/aggregations.py",
-    "featurizer/primitives/transformations.py"
+    "featurizer/primitives/transformations.py",
+    "featurizer/viz"
   ]
 }
