@@ -251,7 +251,7 @@ class FeaturePlanner:
         {cte_name} as (
         select
         {source.alias}_transform.{relationship.parent_key},
-        {','.join(rendered_features)}
+        {",".join(rendered_features)}
         from {source.alias}_transform
         {where_clause}
         group by {relationship.parent_key}
@@ -284,7 +284,7 @@ class FeaturePlanner:
         {cte_name} as (
         select
         {source.id.name},
-        {','.join(feature_names)}
+        {",".join(feature_names)}
         from {source.alias}_transform
         )
         """
@@ -363,10 +363,10 @@ class FeaturePlanner:
         -- sythetize aggregations and direct features for {target.alias}
         {cte_table} as (
         select
-        {', '.join(indexes + keys + feature_names)}
+        {", ".join(indexes + keys + feature_names)}
         from {target.table}
-        {' left join ' if self._joins[target.alias] else '' }
-        {' left join '.join(self._joins[target.alias])}
+        {" left join " if self._joins[target.alias] else ""}
+        {" left join ".join(self._joins[target.alias])}
         )
         """
 
@@ -387,7 +387,7 @@ class FeaturePlanner:
         -- transform {target.alias}
         {cte_table} as (
         select
-        {', '.join(indexes + keys + rendered_features)}
+        {", ".join(indexes + keys + rendered_features)}
         from {target.alias}_synth
         )
         """

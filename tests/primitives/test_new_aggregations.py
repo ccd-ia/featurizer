@@ -199,6 +199,7 @@ class TestPercentileAggregations:
         agg = get_aggregations([name])[name]
         result = agg(parent, child, feature)
         assert isinstance(result, Feature)
+        assert result.definition is not None
         assert f"percentile_cont({frac})" in result.definition
 
 
@@ -460,6 +461,7 @@ class TestGapMean:
         agg = get_aggregations(["gap_mean"])["gap_mean"]
         result = agg(parent, child, feature, interval="P1W", relationship=rel)
         assert isinstance(result, Feature)
+        assert result.definition is not None
         assert "daterange" in result.definition
         assert "P1W" in result.definition
 
@@ -472,6 +474,7 @@ class TestGapStddev:
         agg = get_aggregations(["gap_stddev"])["gap_stddev"]
         result = agg(parent, child, feature, relationship=rel)
         assert isinstance(result, Feature)
+        assert result.definition is not None
         assert "STDDEV" in result.definition
 
 
@@ -522,6 +525,7 @@ class TestBurstiness:
         agg = get_aggregations(["burstiness"])["burstiness"]
         result = agg(parent, child, feature, relationship=rel)
         assert isinstance(result, Feature)
+        assert result.definition is not None
         assert "STDDEV" in result.definition
         assert "AVG" in result.definition
 
@@ -792,7 +796,7 @@ class TestLongestStreak:
 
 class TestCrossEntityZscore:
     def test_returns_feature_for_numeric(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cross_entity_zscore"])["cross_entity_zscore"]
         result = tx(child, feature)
@@ -800,7 +804,7 @@ class TestCrossEntityZscore:
         assert result is not feature
 
     def test_returns_feature_unchanged_for_key(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         # Manually add a key (normally ERGraph does this)
         key_feature = Key(name="customer_id", entity=child)
         child.add_key(key_feature)
@@ -809,7 +813,7 @@ class TestCrossEntityZscore:
         assert result is key_feature
 
     def test_definition_contains_avg_stddev_over(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cross_entity_zscore"])["cross_entity_zscore"]
         result = tx(child, feature)
@@ -820,7 +824,7 @@ class TestCrossEntityZscore:
 
 class TestCrossEntityPercentile:
     def test_returns_feature_for_numeric(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cross_entity_percentile"])["cross_entity_percentile"]
         result = tx(child, feature)
@@ -828,7 +832,7 @@ class TestCrossEntityPercentile:
         assert result is not feature
 
     def test_definition_contains_percent_rank(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cross_entity_percentile"])["cross_entity_percentile"]
         result = tx(child, feature)
@@ -837,7 +841,7 @@ class TestCrossEntityPercentile:
 
 class TestMeanShiftRatio:
     def test_returns_feature_for_numeric_with_temporal(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["mean_shift_ratio_7"])["mean_shift_ratio_7"]
         result = tx(child, feature)
@@ -852,15 +856,16 @@ class TestMeanShiftRatio:
         assert result is None
 
     def test_definition_contains_two_avg_windows(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["mean_shift_ratio_7"])["mean_shift_ratio_7"]
         result = tx(child, feature)
         # Should contain two AVG OVER windows (recent and prior)
+        assert result.definition is not None
         assert result.definition.count("AVG(") >= 2
 
     def test_mean_shift_ratio_14_also_works(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["mean_shift_ratio_14"])["mean_shift_ratio_14"]
         result = tx(child, feature)
@@ -869,7 +874,7 @@ class TestMeanShiftRatio:
 
 class TestCusum:
     def test_returns_feature_for_numeric_with_temporal(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cusum"])["cusum"]
         result = tx(child, feature)
@@ -884,7 +889,7 @@ class TestCusum:
         assert result is None
 
     def test_definition_contains_sum_row_number_avg(self):
-        parent, child = _make_parent_entity(), _make_child_entity()
+        _, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
         tx = get_transformers(["cusum"])["cusum"]
         result = tx(child, feature)
@@ -916,5 +921,6 @@ class TestIntervalBugFixes:
         agg = get_aggregations(["median"])["median"]
         result = agg(parent, child, feature, interval="P1M")
         assert isinstance(result, Feature)
+        assert result.definition is not None
         assert "filter" in result.definition.lower()
         assert "P1M" in result.definition

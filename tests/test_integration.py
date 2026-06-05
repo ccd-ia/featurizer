@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from featurizer import Featurizer
 
@@ -13,7 +12,7 @@ class TestBasicWorkflows:
 
     def test_single_entity_no_relationships(self):
         """Single entity with no relationships generates base features."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 1
@@ -49,7 +48,7 @@ entities:
 
     def test_parent_child_aggregation(self):
         """Parent-child relationship generates aggregations."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 2
@@ -94,7 +93,7 @@ relationships:
 
     def test_temporal_join_generates_lateral(self):
         """Temporal as-of join generates lateral clause."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: patients
 max_depth: 2
@@ -137,7 +136,7 @@ relationships:
 
     def test_multiple_depths(self):
         """Multiple depth traversal generates features from grandchildren."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 3
@@ -192,7 +191,7 @@ relationships:
 
     def test_interval_based_aggregations(self):
         """Interval specifications generate time-windowed aggregations."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 2
@@ -240,7 +239,7 @@ relationships:
 
     def test_transformations_applied(self):
         """Transformations generate derived features."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: sensors
 max_depth: 2
@@ -279,7 +278,7 @@ class TestEdgeCases:
 
     def test_entity_without_temporal_index_no_intervals(self):
         """Entity without temporal_ix doesn't break interval aggregation."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 2
@@ -317,7 +316,7 @@ relationships:
 
     def test_empty_intervals_list(self):
         """Empty intervals list is valid."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: test
 max_depth: 1
@@ -336,7 +335,7 @@ entities:
 
     def test_max_depth_1_stops_early(self):
         """max_depth=1 doesn't traverse relationships."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: users
 max_depth: 1
@@ -375,7 +374,7 @@ relationships:
 
     def test_entity_properties_accessible(self):
         """Featurizer exposes graph properties."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: test
 max_depth: 2

@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from featurizer import validate_config, ValidationError, ValidationResult, ValidationWarning
+from featurizer import (
+    validate_config,
+    ValidationError,
+    ValidationResult,
+    ValidationWarning,
+)
 from featurizer.validation import ConfigValidator
 
 
@@ -355,8 +360,14 @@ class TestCircularRelationshipDetection:
                 {"alias": "B", "table": "b", "id": "id"},
             ],
             "relationships": [
-                {"parent": {"entity": "A", "key": "id"}, "child": {"entity": "B", "key": "a_id"}},
-                {"parent": {"entity": "B", "key": "id"}, "child": {"entity": "A", "key": "b_id"}},
+                {
+                    "parent": {"entity": "A", "key": "id"},
+                    "child": {"entity": "B", "key": "a_id"},
+                },
+                {
+                    "parent": {"entity": "B", "key": "id"},
+                    "child": {"entity": "A", "key": "b_id"},
+                },
             ],
         }
 
@@ -386,7 +397,9 @@ class TestBestPracticesValidation:
 
         assert result.is_valid  # Valid but with warning
         assert len(result.warnings) > 0
-        assert any("max_depth" in warning.message.lower() for warning in result.warnings)
+        assert any(
+            "max_depth" in warning.message.lower() for warning in result.warnings
+        )
 
     def test_many_intervals_warns(self):
         """Many intervals generate warning."""
@@ -448,7 +461,7 @@ class TestValidateConfigFunction:
 
     def test_validate_config_with_valid_file(self):
         """validate_config returns valid result for good config."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: test
 max_depth: 2
@@ -469,7 +482,7 @@ entities:
 
     def test_validate_config_with_invalid_file(self):
         """validate_config returns errors for bad config."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: unknown
 max_depth: 2
@@ -494,7 +507,7 @@ class TestFeaturizerIntegration:
 
     def test_featurizer_uses_validation_by_default(self):
         """Featurizer runs validation by default."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: unknown_entity
 max_depth: 2
@@ -515,7 +528,7 @@ entities:
 
     def test_featurizer_can_skip_validation(self):
         """Featurizer can skip enhanced validation if requested."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
 target: test
 max_depth: 2

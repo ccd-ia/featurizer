@@ -68,10 +68,7 @@ def create_database():
 
         patients.append((i, admission_date.date(), age, severity))
 
-    cursor.executemany(
-        "INSERT INTO patients VALUES (?, ?, ?, ?)",
-        patients
-    )
+    cursor.executemany("INSERT INTO patients VALUES (?, ?, ?, ?)", patients)
 
     # Generate care plans (temporal events)
     plans = []
@@ -84,7 +81,9 @@ def create_database():
         for plan_num in range(num_plans):
             # Plans occur after admission, spread over time
             days_after_admission = random.randint(1, 500)
-            plan_date = datetime.strptime(str(patient_admission), "%Y-%m-%d") + timedelta(days=days_after_admission)
+            plan_date = datetime.strptime(
+                str(patient_admission), "%Y-%m-%d"
+            ) + timedelta(days=days_after_admission)
 
             treatment = random.choice(TREATMENT_TYPES)
             cost = round(random.uniform(500.0, 50000.0), 2)
@@ -92,10 +91,7 @@ def create_database():
             plans.append((plan_id, patient_id, plan_date.date(), treatment, cost))
             plan_id += 1
 
-    cursor.executemany(
-        "INSERT INTO care_plans VALUES (?, ?, ?, ?, ?)",
-        plans
-    )
+    cursor.executemany("INSERT INTO care_plans VALUES (?, ?, ?, ?, ?)", plans)
 
     # Generate as_of_dates (quarterly snapshots for 2023-2024)
     as_of_dates = []
@@ -104,10 +100,7 @@ def create_database():
             date = datetime(year, month, 1).date()
             as_of_dates.append((date,))
 
-    cursor.executemany(
-        "INSERT INTO as_of_dates VALUES (?)",
-        as_of_dates
-    )
+    cursor.executemany("INSERT INTO as_of_dates VALUES (?)", as_of_dates)
 
     conn.commit()
 
@@ -140,7 +133,7 @@ def create_database():
     conn.close()
 
     print("✓ Database created successfully!")
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  Patients: {num_patients}")
     print(f"  Care plans: {num_plans}")
     print(f"  As-of dates: {num_dates}")

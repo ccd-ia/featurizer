@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 import pandas as pd
-import records
+import records  # type: ignore[import-untyped]
 
 
 class QueryExecutor:
@@ -34,5 +34,5 @@ class QueryExecutor:
         """
         db = self._database_factory()
         rows = db.query(query)
-        df = rows.export('df')
-        return df.set_index(['as_of_date', target_id], inplace=False)
+        df = rows.export("df")
+        return df.set_index(["as_of_date", target_id], inplace=False)

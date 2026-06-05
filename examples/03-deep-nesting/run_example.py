@@ -14,10 +14,16 @@ from featurizer import Featurizer
 
 def main():
     parser = argparse.ArgumentParser(description="Run Example 3: Deep Nesting")
-    parser.add_argument("--show-sql", action="store_true", help="Print generated SQL query")
-    parser.add_argument("--execute", action="store_true", help="Execute query against database")
+    parser.add_argument(
+        "--show-sql", action="store_true", help="Print generated SQL query"
+    )
+    parser.add_argument(
+        "--execute", action="store_true", help="Execute query against database"
+    )
     parser.add_argument("--output", type=str, help="Save results to CSV file")
-    parser.add_argument("--show-depth", action="store_true", help="Show feature breakdown by depth")
+    parser.add_argument(
+        "--show-depth", action="store_true", help="Show feature breakdown by depth"
+    )
     args = parser.parse_args()
 
     # Check if database exists
@@ -33,7 +39,7 @@ def main():
     featurizer = Featurizer(str(config_path))
 
     # Show statistics
-    print(f"\n📊 Feature Generation Summary")
+    print("\n📊 Feature Generation Summary")
     print(f"  Target entity: {featurizer.target.alias}")
     print(f"  Max depth: {featurizer.max_depth}")
     print(f"  Intervals: {', '.join(featurizer.intervals)}")
@@ -45,7 +51,7 @@ def main():
 
     # Show depth breakdown if requested
     if args.show_depth:
-        print(f"\n🔍 Features by Entity:")
+        print("\n🔍 Features by Entity:")
         for entity_alias, features in featurizer.features.items():
             print(f"  {entity_alias}: {len(features)} features")
             # Sample a few feature names
@@ -54,13 +60,13 @@ def main():
                 print(f"    - {feat.name}")
 
     # Show sample features
-    print(f"\n🔍 Sample Target Features (first 15):")
+    print("\n🔍 Sample Target Features (first 15):")
     for i, feature in enumerate(sorted(target_features, key=lambda f: f.name)[:15], 1):
         print(f"  {i}. {feature.name}")
 
     # Show SQL if requested
     if args.show_sql:
-        print(f"\n📝 Generated SQL Query (with deep nesting):")
+        print("\n📝 Generated SQL Query (with deep nesting):")
         print("=" * 80)
         print(featurizer.query)
         print("=" * 80)
@@ -75,10 +81,10 @@ def main():
         try:
             df = featurizer.to_dataframe()
 
-            print(f"✓ Query executed successfully!")
+            print("✓ Query executed successfully!")
             print(f"\nResults shape: {df.shape}")
             print(f"\nColumn count: {len(df.columns)}")
-            print(f"\nFirst 5 rows (first 10 columns):")
+            print("\nFirst 5 rows (first 10 columns):")
             print(df.iloc[:, :10].head())
 
             # Save to CSV if requested
@@ -90,10 +96,11 @@ def main():
         except Exception as e:
             print(f"\n✗ Error executing query: {e}")
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
 
-    print(f"\n✓ Done!")
+    print("\n✓ Done!")
 
 
 if __name__ == "__main__":

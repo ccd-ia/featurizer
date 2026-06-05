@@ -1,7 +1,5 @@
 """Tests for core abstractions: Entity, Relationship, Feature, ERGraph."""
 
-import pytest
-
 from featurizer.primitives.abstractions import (
     Entity,
     ERGraph,
@@ -22,6 +20,7 @@ class TestEntity:
 
         assert entity.alias == "test"
         assert entity.table == "test.table"
+        assert entity.id is not None
         assert entity.id.name == "test_id"
         assert entity.spatial_ix is None
         assert entity.temporal_ix is None
@@ -40,7 +39,7 @@ class TestEntity:
             alias="events",
             table="analytics.events",
             id="event_id",
-            temporal_ix="occurred_at"
+            temporal_ix="occurred_at",
         )
 
         assert entity.temporal_ix is not None
@@ -53,7 +52,7 @@ class TestEntity:
             alias="locations",
             table="geo.locations",
             id="loc_id",
-            spatial_ix="coordinates"
+            spatial_ix="coordinates",
         )
 
         assert entity.spatial_ix is not None
@@ -66,10 +65,7 @@ class TestEntity:
             alias="users",
             table="users",
             id="user_id",
-            variables={
-                "age": {"type": "numeric"},
-                "name": {"type": "categorical"}
-            }
+            variables={"age": {"type": "numeric"}, "name": {"type": "categorical"}},
         )
 
         variable_names = {f.name for f in entity.features if isinstance(f, Variable)}
@@ -79,11 +75,7 @@ class TestEntity:
     def test_entity_indexes_property(self):
         """indexes property returns all non-None indexes."""
         entity = Entity(
-            alias="events",
-            table="events",
-            id="id",
-            temporal_ix="ts",
-            spatial_ix="loc"
+            alias="events", table="events", id="id", temporal_ix="ts", spatial_ix="loc"
         )
 
         indexes = entity.indexes
@@ -101,7 +93,7 @@ class TestEntity:
             alias="users",
             table="users",
             id="user_id",
-            variables={"age": {"type": "numeric"}}
+            variables={"age": {"type": "numeric"}},
         )
 
         info = entity.info()
@@ -153,10 +145,7 @@ class TestRelationship:
         child = Entity(alias="child", table="child", id="id")
 
         rel = Relationship(
-            parent=parent,
-            child=child,
-            parent_key="id",
-            child_key="parent_id"
+            parent=parent, child=child, parent_key="id", child_key="parent_id"
         )
 
         assert rel.parent is parent
@@ -176,7 +165,7 @@ class TestRelationship:
             child_key="p_id",
             temporal_mode="as_of",
             temporal_grace="P7D",
-            temporal_child_field="custom_ts"
+            temporal_child_field="custom_ts",
         )
 
         assert rel.temporal_mode == "as_of"
@@ -188,7 +177,9 @@ class TestRelationship:
         parent = Entity(alias="parent", table="parent", id="id")
         child = Entity(alias="child", table="child", id="id")
 
-        rel = Relationship(parent=parent, child=child, parent_key="pid", child_key="cid")
+        rel = Relationship(
+            parent=parent, child=child, parent_key="pid", child_key="cid"
+        )
 
         repr_str = repr(rel)
         assert "parent" in repr_str
@@ -273,11 +264,7 @@ class TestFeature:
 
     def test_feature_with_definition(self):
         """Feature can have SQL definition."""
-        feat = Feature(
-            name="derived",
-            type="numeric",
-            definition="original * 2"
-        )
+        feat = Feature(name="derived", type="numeric", definition="original * 2")
 
         assert feat.definition == "original * 2"
 
@@ -286,9 +273,9 @@ class TestFeature:
         feat = Feature(name="test", type="numeric", definition="value")
 
         query = feat.query
-        assert 'test' in query
-        assert 'value' in query
-        assert ' as ' in query
+        assert "test" in query
+        assert "value" in query
+        assert " as " in query
 
     def test_feature_short_name_under_limit(self):
         """short_name returns name if under 63 chars."""
@@ -368,12 +355,12 @@ class TestERGraph:
         """ERGraph constructs from entity and relationship dicts."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 
@@ -395,12 +382,12 @@ class TestERGraph:
         """ERGraph automatically adds foreign keys to child entities."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 
@@ -414,12 +401,12 @@ class TestERGraph:
         """get_backward_entities returns children of an entity."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 
@@ -435,12 +422,12 @@ class TestERGraph:
         """get_forward_entities returns parents of an entity."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 
@@ -456,12 +443,12 @@ class TestERGraph:
         """get_backward_relationships returns relationships where entity is parent."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 
@@ -478,12 +465,12 @@ class TestERGraph:
         """get_forward_relationships returns relationships where entity is child."""
         entities = [
             {"alias": "parent", "table": "parent", "id": "id"},
-            {"alias": "child", "table": "child", "id": "id"}
+            {"alias": "child", "table": "child", "id": "id"},
         ]
         relationships = [
             {
                 "parent": {"entity": "parent", "key": "id"},
-                "child": {"entity": "child", "key": "parent_id"}
+                "child": {"entity": "child", "key": "parent_id"},
             }
         ]
 

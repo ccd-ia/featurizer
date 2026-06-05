@@ -19,7 +19,7 @@ class SQLRenderer:
         Returns:
             Complete SQL query string with CTEs wrapped in lateral join
         """
-        ctes = ','.join(plan.ctes)
+        ctes = ",".join(plan.ctes)
         target_alias = plan.target.alias
         return f"""
         select aod.as_of_date, t.*

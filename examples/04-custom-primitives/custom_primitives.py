@@ -1,15 +1,16 @@
 """Custom aggregation and transformation primitives for financial analytics."""
 
-from featurizer.primitives.abstractions import Aggregation, Feature, Transformation
-from featurizer.primitives.utils import register_aggregation, register_transformation
-
+from featurizer.primitives.abstractions import Feature
+from featurizer.primitives.aggregations import Aggregator
+from featurizer.primitives.transformations import Transformer
+from featurizer.primitives.utils import register_aggregation, register_transformer
 
 # ============================================================================
 # Custom Aggregations
 # ============================================================================
 
 
-class Median(Aggregation):
+class Median(Aggregator):
     """Calculate median value."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
@@ -21,15 +22,17 @@ class Median(Aggregation):
         return f"percentile_cont(0.5) WITHIN GROUP (ORDER BY {feature.name}) AS {alias}"
 
 
-class Percentile95(Aggregation):
+class Percentile95(Aggregator):
     """Calculate 95th percentile."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
         """Generate SQL for 95th percentile calculation."""
-        return f"percentile_cont(0.95) WITHIN GROUP (ORDER BY {feature.name}) AS {alias}"
+        return (
+            f"percentile_cont(0.95) WITHIN GROUP (ORDER BY {feature.name}) AS {alias}"
+        )
 
 
-class Range(Aggregation):
+class Range(Aggregator):
     """Calculate range (max - min)."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
@@ -42,7 +45,7 @@ class Range(Aggregation):
 # ============================================================================
 
 
-class Log(Transformation):
+class Log(Transformer):
     """Natural logarithm transformation."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
@@ -51,7 +54,7 @@ class Log(Transformation):
         return f"LN({feature.name} + 1) AS {alias}"
 
 
-class ZScore(Transformation):
+class ZScore(Transformer):
     """Z-score standardization transformation."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
@@ -66,7 +69,7 @@ class ZScore(Transformation):
         """.strip()
 
 
-class BinCount(Transformation):
+class BinCount(Transformer):
     """Discretize continuous values into 5 bins."""
 
     def to_sql(self, feature: Feature, alias: str) -> str:
@@ -97,9 +100,9 @@ def register_all_custom_primitives():
     register_aggregation("range", Range)
 
     # Register transformations
-    register_transformation("log", Log)
-    register_transformation("zscore", ZScore)
-    register_transformation("bin", BinCount)
+    register_transformer("log", Log)
+    register_transformer("zscore", ZScore)
+    register_transformer("bin", BinCount)
 
     print("✓ Registered custom primitives:")
     print("  Aggregations: median, p95, range")

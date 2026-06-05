@@ -105,6 +105,7 @@ venv.bak/
 
 # Session handoff (local-only)
 docs/featurizer-session-summary.md
+docs/featurizer-session-summary.org
 working-outline.md
 TODO.org
 CLAUDE.md

@@ -14,8 +14,12 @@ from featurizer import Featurizer
 
 def main():
     parser = argparse.ArgumentParser(description="Run Example 2: Temporal Joins")
-    parser.add_argument("--show-sql", action="store_true", help="Print generated SQL query")
-    parser.add_argument("--execute", action="store_true", help="Execute query against database")
+    parser.add_argument(
+        "--show-sql", action="store_true", help="Print generated SQL query"
+    )
+    parser.add_argument(
+        "--execute", action="store_true", help="Execute query against database"
+    )
     parser.add_argument("--output", type=str, help="Save results to CSV file")
     args = parser.parse_args()
 
@@ -32,7 +36,7 @@ def main():
     featurizer = Featurizer(str(config_path))
 
     # Show statistics
-    print(f"\n📊 Feature Generation Summary")
+    print("\n📊 Feature Generation Summary")
     print(f"  Target entity: {featurizer.target.alias}")
     print(f"  Max depth: {featurizer.max_depth}")
     print(f"  Intervals: {', '.join(featurizer.intervals)}")
@@ -40,32 +44,36 @@ def main():
     print(f"  Relationships: {len(featurizer.relationships)}")
 
     # Check for temporal relationships
-    temporal_rels = [r for r in featurizer.relationships if hasattr(r, 'temporal') and r.temporal]
+    temporal_rels = [
+        r for r in featurizer.relationships if hasattr(r, "temporal") and r.temporal
+    ]
     if temporal_rels:
         print(f"  Temporal relationships: {len(temporal_rels)}")
         for rel in temporal_rels:
-            mode = rel.temporal.get('mode', 'N/A')
-            grace = rel.temporal.get('grace', 'none')
-            print(f"    - {rel.parent.entity.alias} → {rel.child.entity.alias} (mode: {mode}, grace: {grace})")
+            mode = rel.temporal.get("mode", "N/A")
+            grace = rel.temporal.get("grace", "none")
+            print(
+                f"    - {rel.parent.entity.alias} → {rel.child.entity.alias} (mode: {mode}, grace: {grace})"
+            )
 
     target_features = featurizer.features[featurizer.target.alias]
     print(f"  Generated features: {len(target_features)}")
 
     # Show sample features
-    print(f"\n🔍 Sample Features (first 10):")
+    print("\n🔍 Sample Features (first 10):")
     for i, feature in enumerate(sorted(target_features, key=lambda f: f.name)[:10], 1):
         print(f"  {i}. {feature.name}")
 
     # Show SQL if requested
     if args.show_sql:
-        print(f"\n📝 Generated SQL Query (with temporal joins):")
+        print("\n📝 Generated SQL Query (with temporal joins):")
         print("=" * 80)
         print(featurizer.query)
         print("=" * 80)
 
     # Execute if requested
     if args.execute:
-        print(f"\n⚙️  Executing query with temporal joins...")
+        print("\n⚙️  Executing query with temporal joins...")
 
         # Set DATABASE_URL for records library
         os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
@@ -73,9 +81,9 @@ def main():
         try:
             df = featurizer.to_dataframe()
 
-            print(f"✓ Query executed successfully!")
+            print("✓ Query executed successfully!")
             print(f"\nResults shape: {df.shape}")
-            print(f"\nFirst 5 rows:")
+            print("\nFirst 5 rows:")
             print(df.head())
 
             # Save to CSV if requested
@@ -88,7 +96,7 @@ def main():
             print(f"\n✗ Error executing query: {e}")
             sys.exit(1)
 
-    print(f"\n✓ Done!")
+    print("\n✓ Done!")
 
 
 if __name__ == "__main__":

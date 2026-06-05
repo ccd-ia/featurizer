@@ -68,10 +68,7 @@ def create_database():
 
         customers.append((i, signup_date.date(), country, age))
 
-    cursor.executemany(
-        "INSERT INTO customers VALUES (?, ?, ?, ?)",
-        customers
-    )
+    cursor.executemany("INSERT INTO customers VALUES (?, ?, ?, ?)", customers)
 
     # Generate orders
     orders = []
@@ -84,7 +81,9 @@ def create_database():
         for _ in range(num_orders):
             # Orders happen after signup
             days_after_signup = random.randint(1, 365)
-            order_date = datetime.strptime(str(customer_signup), "%Y-%m-%d") + timedelta(days=days_after_signup)
+            order_date = datetime.strptime(
+                str(customer_signup), "%Y-%m-%d"
+            ) + timedelta(days=days_after_signup)
 
             amount = round(random.uniform(10.0, 500.0), 2)
             status = random.choice(STATUSES)
@@ -92,10 +91,7 @@ def create_database():
             orders.append((order_id, customer_id, order_date.date(), amount, status))
             order_id += 1
 
-    cursor.executemany(
-        "INSERT INTO orders VALUES (?, ?, ?, ?, ?)",
-        orders
-    )
+    cursor.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orders)
 
     # Generate as_of_dates (monthly snapshots for 2024)
     as_of_dates = []
@@ -103,10 +99,7 @@ def create_database():
         date = datetime(2024, month, 1).date()
         as_of_dates.append((date,))
 
-    cursor.executemany(
-        "INSERT INTO as_of_dates VALUES (?)",
-        as_of_dates
-    )
+    cursor.executemany("INSERT INTO as_of_dates VALUES (?)", as_of_dates)
 
     conn.commit()
 
@@ -129,12 +122,14 @@ def create_database():
     conn.close()
 
     print("✓ Database created successfully!")
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  Customers: {num_customers}")
     print(f"  Orders: {num_orders}")
     print(f"  As-of dates: {num_dates}")
     print(f"  Date range: {min_date} to {max_date}")
-    print(f"  Order amounts: ${min_amount:.2f} - ${max_amount:.2f} (avg: ${avg_amount:.2f})")
+    print(
+        f"  Order amounts: ${min_amount:.2f} - ${max_amount:.2f} (avg: ${avg_amount:.2f})"
+    )
     print(f"\nDatabase: {db_path}")
 
 

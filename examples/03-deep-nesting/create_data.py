@@ -131,7 +131,9 @@ def create_database():
 
         for _ in range(num_orders):
             days_after_open = random.randint(1, 500)
-            order_date = datetime.strptime(str(store_open), "%Y-%m-%d") + timedelta(days=days_after_open)
+            order_date = datetime.strptime(str(store_open), "%Y-%m-%d") + timedelta(
+                days=days_after_open
+            )
             status = random.choice(ORDER_STATUSES)
             orders.append((order_id, store_id, order_date.date(), status))
             order_id += 1
@@ -199,7 +201,7 @@ def create_database():
     conn.close()
 
     print("✓ Database created successfully!")
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  Stores (depth 0): {num_stores}")
     print(f"  Orders (depth 1): {num_orders}")
     print(f"  Order items (depth 2): {num_items}")

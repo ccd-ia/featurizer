@@ -1,5 +1,7 @@
 # Example 4: Custom Primitives
 
+> **Note (2026-03-17):** Since the primitives expansion in commit `6b25339`, several primitives demonstrated here — Median, Percentile95, Range, Log, and ZScore — are now available as built-in primitives (`median`, `p95`, `range`, `ln`, `cross_entity_zscore`). This example is retained to demonstrate the **registration pattern** for creating truly custom primitives. To use the built-in versions, simply reference them by name in your configuration — no custom code needed.
+
 This example demonstrates how to extend Featurizer by registering custom aggregation and transformation primitives.
 
 ## Scenario: Financial Analytics
@@ -54,6 +56,21 @@ The example shows:
 - `create_data.py` - Generates sample SQLite database
 - `run_example.py` - Runs feature generation with custom primitives
 - `data.db` - SQLite database (generated)
+
+## Using Built-in Equivalents
+
+```yaml
+# These primitives are now built-in — no custom code required:
+# - median     (was: Median)
+# - p95        (was: Percentile95)
+# - range      (was: Range)
+# - ln         (was: Log)
+# - cross_entity_zscore  (was: ZScore)
+#
+# Just request them via get_aggregations() or get_transformers():
+from featurizer.primitives.utils import get_aggregations
+aggs = get_aggregations(["median", "p95", "range"])
+```
 
 ## Usage
 

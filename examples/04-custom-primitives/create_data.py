@@ -82,12 +82,16 @@ def create_database():
 
     for account_id in range(1, NUM_ACCOUNTS + 1):
         account_open = accounts[account_id - 1][1]
-        num_transactions = random.randint(MIN_TRANSACTIONS_PER_ACCOUNT, MAX_TRANSACTIONS_PER_ACCOUNT)
+        num_transactions = random.randint(
+            MIN_TRANSACTIONS_PER_ACCOUNT, MAX_TRANSACTIONS_PER_ACCOUNT
+        )
 
         for _ in range(num_transactions):
             # Transactions happen after account opening
             days_after_open = random.randint(1, 400)
-            transaction_date = datetime.strptime(str(account_open), "%Y-%m-%d") + timedelta(days=days_after_open)
+            transaction_date = datetime.strptime(
+                str(account_open), "%Y-%m-%d"
+            ) + timedelta(days=days_after_open)
 
             # Amount distribution varies by transaction type
             tx_type = random.choice(TRANSACTION_TYPES)
@@ -100,13 +104,12 @@ def create_database():
             else:
                 amount = round(random.uniform(-1000.0, 1000.0), 2)
 
-            transactions.append((transaction_id, account_id, transaction_date.date(), amount, tx_type))
+            transactions.append(
+                (transaction_id, account_id, transaction_date.date(), amount, tx_type)
+            )
             transaction_id += 1
 
-    cursor.executemany(
-        "INSERT INTO transactions VALUES (?, ?, ?, ?, ?)",
-        transactions
-    )
+    cursor.executemany("INSERT INTO transactions VALUES (?, ?, ?, ?, ?)", transactions)
 
     # Generate as_of_dates (monthly for 2024)
     as_of_dates = []
@@ -128,7 +131,9 @@ def create_database():
     cursor.execute("SELECT COUNT(*) FROM as_of_dates")
     num_dates = cursor.fetchone()[0]
 
-    cursor.execute("SELECT MIN(transaction_date), MAX(transaction_date) FROM transactions")
+    cursor.execute(
+        "SELECT MIN(transaction_date), MAX(transaction_date) FROM transactions"
+    )
     min_date, max_date = cursor.fetchone()
 
     cursor.execute("SELECT AVG(amount), MIN(amount), MAX(amount) FROM transactions")
@@ -147,12 +152,12 @@ def create_database():
     conn.close()
 
     print("✓ Database created successfully!")
-    print(f"\nStatistics:")
+    print("\nStatistics:")
     print(f"  Accounts: {num_accounts}")
     print(f"  Transactions: {num_transactions}")
     print(f"  As-of dates: {num_dates}")
     print(f"  Transaction date range: {min_date} to {max_date}")
-    print(f"  Transaction amounts:")
+    print("  Transaction amounts:")
     print(f"    Mean: ${avg_amount:.2f}")
     print(f"    Median: ${median_amount:.2f}")
     print(f"    Range: ${min_amount:.2f} to ${max_amount:.2f}")

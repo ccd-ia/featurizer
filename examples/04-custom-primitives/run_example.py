@@ -17,10 +17,16 @@ from custom_primitives import register_all_custom_primitives
 
 def main():
     parser = argparse.ArgumentParser(description="Run Example 4: Custom Primitives")
-    parser.add_argument("--show-sql", action="store_true", help="Print generated SQL query")
-    parser.add_argument("--execute", action="store_true", help="Execute query against database")
+    parser.add_argument(
+        "--show-sql", action="store_true", help="Print generated SQL query"
+    )
+    parser.add_argument(
+        "--execute", action="store_true", help="Execute query against database"
+    )
     parser.add_argument("--output", type=str, help="Save results to CSV file")
-    parser.add_argument("--list-primitives", action="store_true", help="List all registered primitives")
+    parser.add_argument(
+        "--list-primitives", action="store_true", help="List all registered primitives"
+    )
     args = parser.parse_args()
 
     # Register custom primitives BEFORE loading configuration
@@ -31,11 +37,11 @@ def main():
     if args.list_primitives:
         from featurizer.primitives.utils import list_aggregations, list_transformations
 
-        print(f"\n📋 Registered Aggregations:")
+        print("\n📋 Registered Aggregations:")
         for name in sorted(list_aggregations()):
             print(f"  - {name}")
 
-        print(f"\n📋 Registered Transformations:")
+        print("\n📋 Registered Transformations:")
         for name in sorted(list_transformations()):
             print(f"  - {name}")
 
@@ -55,7 +61,7 @@ def main():
     featurizer = Featurizer(str(config_path))
 
     # Show statistics
-    print(f"\n📊 Feature Generation Summary")
+    print("\n📊 Feature Generation Summary")
     print(f"  Target entity: {featurizer.target.alias}")
     print(f"  Max depth: {featurizer.max_depth}")
     print(f"  Intervals: {', '.join(featurizer.intervals)}")
@@ -66,10 +72,11 @@ def main():
     print(f"  Generated features: {len(target_features)}")
 
     # Show features using custom primitives
-    print(f"\n🔍 Features using custom primitives:")
+    print("\n🔍 Features using custom primitives:")
     custom_primitives = ["median", "p95", "range", "log", "zscore", "bin"]
     custom_features = [
-        f for f in target_features
+        f
+        for f in target_features
         if any(prim in f.name.lower() for prim in custom_primitives)
     ]
 
@@ -78,23 +85,25 @@ def main():
             print(f"  - {feat.name}")
     else:
         print("  (No features using custom primitives found)")
-        print("  Note: Custom primitives need to be explicitly used in feature generation")
+        print(
+            "  Note: Custom primitives need to be explicitly used in feature generation"
+        )
 
     # Show sample features
-    print(f"\n🔍 Sample Features (first 10):")
+    print("\n🔍 Sample Features (first 10):")
     for i, feature in enumerate(sorted(target_features, key=lambda f: f.name)[:10], 1):
         print(f"  {i}. {feature.name}")
 
     # Show SQL if requested
     if args.show_sql:
-        print(f"\n📝 Generated SQL Query (with custom primitives):")
+        print("\n📝 Generated SQL Query (with custom primitives):")
         print("=" * 80)
         print(featurizer.query)
         print("=" * 80)
 
     # Execute if requested
     if args.execute:
-        print(f"\n⚙️  Executing query...")
+        print("\n⚙️  Executing query...")
 
         # Set DATABASE_URL for records library
         os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
@@ -102,9 +111,9 @@ def main():
         try:
             df = featurizer.to_dataframe()
 
-            print(f"✓ Query executed successfully!")
+            print("✓ Query executed successfully!")
             print(f"\nResults shape: {df.shape}")
-            print(f"\nFirst 5 rows:")
+            print("\nFirst 5 rows:")
             print(df.head())
 
             # Save to CSV if requested
@@ -116,10 +125,11 @@ def main():
         except Exception as e:
             print(f"\n✗ Error executing query: {e}")
             import traceback
+
             traceback.print_exc()
             sys.exit(1)
 
-    print(f"\n✓ Done!")
+    print("\n✓ Done!")
 
 
 if __name__ == "__main__":
