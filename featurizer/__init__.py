@@ -1,6 +1,21 @@
 # coding: utf-8
 
 from .featurizer import Featurizer
-from .validation import validate_config, ValidationResult, ValidationError, ValidationWarning
+from .imputation import impute_features
+from .validation import (
+    ValidationError,
+    ValidationResult,
+    ValidationWarning,
+    validate_config,
+)
+from .viz import FeaturizerViz
 
-__all__ = ["Featurizer", "validate_config", "ValidationResult", "ValidationError", "ValidationWarning"]
+__all__ = [
+    "Featurizer",
+    "FeaturizerViz",
+    "impute_features",
+    "validate_config",
+    "ValidationResult",
+    "ValidationError",
+    "ValidationWarning",
+]
