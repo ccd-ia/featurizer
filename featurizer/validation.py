@@ -124,6 +124,11 @@ class ConfigValidator:
         if self.errors and self.mode == "strict":
             return ValidationResult(errors=self.errors, warnings=self.warnings)
 
+        # Stage 2b: Optional primitive selection
+        self._validate_primitives(config)
+        if self.errors and self.mode == "strict":
+            return ValidationResult(errors=self.errors, warnings=self.warnings)
+
         # Stage 3: Semantic validation
         self._validate_semantics(config)
 
@@ -304,6 +309,58 @@ class ConfigValidator:
                                     ),
                                 )
                             )
+
+    def _validate_primitives(self, config: Dict[str, Any]) -> None:
+        """Validate the optional `aggregations` / `transformations` selection.
+
+        Either key may be omitted (the module defaults apply). When present it
+        must be a list of registered primitive names; unknown names get a
+        "Did you mean?" suggestion from the registry.
+        """
+        from .primitives.utils import list_aggregations, list_transformations
+
+        checks = [
+            ("aggregations", set(list_aggregations())),
+            ("transformations", set(list_transformations())),
+        ]
+        for key, available in checks:
+            value = config.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list):
+                self.errors.append(
+                    ValidationError(
+                        message=f"'{key}' must be a list of primitive names "
+                        f"(got: {type(value).__name__})",
+                        location=key,
+                        suggestion=f"Example: {key}: [sum, mean]",
+                    )
+                )
+                continue
+            singular = key[:-1]  # "aggregation" / "transformation"
+            for i, name in enumerate(value):
+                if not isinstance(name, str):
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Primitive name must be a string "
+                            f"(got: {type(name).__name__})",
+                            location=f"{key}[{i}]",
+                        )
+                    )
+                    continue
+                if name not in available:
+                    suggestion = self._suggest_similar(name, available)
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Unknown {singular} primitive: '{name}'",
+                            location=f"{key}[{i}]",
+                            suggestion=(
+                                f"Did you mean '{suggestion}'?"
+                                if suggestion
+                                else "See: python -m featurizer list-primitives"
+                            ),
+                        )
+                    )
 
     def _validate_semantics(self, config: Dict[str, Any]) -> None:
         """Validate semantic relationships between config parts."""

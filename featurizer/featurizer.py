@@ -3,22 +3,37 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Iterable, List, Sequence, Set
+from typing import Any, Dict, Iterable, List, Set
 
+import pandas as pd
 import yaml
 from icecream import ic
 from loguru import logger
 
 from .executor import QueryExecutor
 from .planner import FeaturePlanner, PlannerResult
-from .primitives import ERGraph, Entity, Feature
-from .primitives.utils import get_aggregations, get_transformers, AggregationRegistry, TransformationRegistry
+from .primitives import Entity, ERGraph, Feature
+from .primitives.utils import (
+    AggregationRegistry,
+    TransformationRegistry,
+    get_aggregations,
+    get_transformers,
+)
 from .sql import SQLRenderer
-from .validation import ConfigValidator, ValidationResult
+from .validation import ConfigValidator
 
-import pandas as pd
-
-DEFAULT_AGGREGATIONS = ("count", "mean", "sum", "stddev")
+DEFAULT_AGGREGATIONS = (
+    "count",
+    "mean",
+    "sum",
+    "stddev",
+    "min",
+    "max",
+    "median",
+    "nunique",
+    "recency",
+    "tenure",
+)
 DEFAULT_TRANSFORMATIONS = (
     "identity",
     "abs",
@@ -48,7 +63,9 @@ class Featurizer:
     database execution.
     """
 
-    def __init__(self, config_file: str, *, debug: bool = False, validate: bool = True) -> None:
+    def __init__(
+        self, config_file: str, *, debug: bool = False, validate: bool = True
+    ) -> None:
         """Initialize Featurizer from a YAML configuration file.
 
         Args:
@@ -72,8 +89,13 @@ class Featurizer:
         self.graph: ERGraph = ERGraph(config["entities"], config["relationships"])
         self.target: Entity = self._get_entity(config["target"])
 
-        self.aggregations: AggregationRegistry = get_aggregations(DEFAULT_AGGREGATIONS)
-        self.transformations: TransformationRegistry = get_transformers(DEFAULT_TRANSFORMATIONS)
+        # Primitive selection: config may override the active set; otherwise the
+        # curated module defaults apply. Unknown names raise in get_* (and are
+        # caught earlier with suggestions by the validator when validate=True).
+        agg_names = config.get("aggregations") or DEFAULT_AGGREGATIONS
+        tx_names = config.get("transformations") or DEFAULT_TRANSFORMATIONS
+        self.aggregations: AggregationRegistry = get_aggregations(agg_names)
+        self.transformations: TransformationRegistry = get_transformers(tx_names)
 
         planner = FeaturePlanner(
             graph=self.graph,
@@ -86,9 +108,13 @@ class Featurizer:
         )
         self._plan: PlannerResult = planner.plan()
 
-        self.features: Dict[str, Set[Feature]] = {alias: set(features) for alias, features in self._plan.features.items()}
+        self.features: Dict[str, Set[Feature]] = {
+            alias: set(features) for alias, features in self._plan.features.items()
+        }
         self.ctes: List[str] = list(self._plan.ctes)
-        self.joins: Dict[str, List[str]] = {alias: list(joins) for alias, joins in self._plan.joins.items()}
+        self.joins: Dict[str, List[str]] = {
+            alias: list(joins) for alias, joins in self._plan.joins.items()
+        }
 
         self._renderer: SQLRenderer = SQLRenderer()
         self._executor: QueryExecutor = QueryExecutor()
@@ -112,8 +138,18 @@ class Featurizer:
         """Generate the SQL query for this featurizer configuration."""
         return self._renderer.render(self._plan)
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(
+        self, *, impute: bool = False, **impute_kwargs: Any
+    ) -> pd.DataFrame:
         """Execute the query and return results as a DataFrame.
+
+        Args:
+            impute: When True, run the opt-in imputation pass (count-like
+                features → 0, measures left NULL unless ``measure_strategy`` is
+                given, with ``<feature>__missing`` indicator columns). The
+                default keeps the raw NULLs, since missingness is signal.
+            **impute_kwargs: Forwarded to
+                :func:`featurizer.imputation.impute_features`.
 
         Returns:
             DataFrame indexed by ['as_of_date', target_id]
@@ -122,8 +158,15 @@ class Featurizer:
             ValueError: If target entity doesn't define a primary ID
         """
         if self.target.id is None:
-            raise ValueError(f"Target entity '{self.target.alias}' does not define a primary id.")
-        return self._executor.to_dataframe(self.query, self.target.id.name)
+            raise ValueError(
+                f"Target entity '{self.target.alias}' does not define a primary id."
+            )
+        df = self._executor.to_dataframe(self.query, self.target.id.name)
+        if impute:
+            from .imputation import impute_features
+
+            df = impute_features(df, **impute_kwargs)
+        return df
 
     # ------------------------------------------------------------------ #
     # Internal helpers
@@ -181,7 +224,9 @@ class Featurizer:
             result = validator.validate(config)
 
             if not result.is_valid:
-                raise ValueError(f"Configuration validation failed:\n{result.format_errors()}")
+                raise ValueError(
+                    f"Configuration validation failed:\n{result.format_errors()}"
+                )
 
             # Log warnings
             for warning in result.warnings:
@@ -208,7 +253,9 @@ class Featurizer:
 
         relationships = config.get("relationships")
         if relationships is None:
-            logger.debug("No relationships defined in config; defaulting to empty list.")
+            logger.debug(
+                "No relationships defined in config; defaulting to empty list."
+            )
             config["relationships"] = []
         elif not isinstance(relationships, list):
             raise ValueError("'relationships' must be a list when provided.")

@@ -332,6 +332,167 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "MAX(streak_length) using gaps-and-islands",
         "temporal": True,
     },
+    # As-of state
+    "recency": {
+        "description": "Days since the most recent event (aod - max event ts)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "aod.as_of_date - max(event_ts)",
+        "temporal": True,
+    },
+    "tenure": {
+        "description": "Days since the first observed event (age in system)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "aod.as_of_date - min(event_ts)",
+        "temporal": True,
+    },
+    "age_in_system": {
+        "description": "Alias of tenure: days since the first observed event",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "aod.as_of_date - min(event_ts)",
+        "temporal": True,
+    },
+    "inter_event_hazard_proxy": {
+        "description": "Events per day over the observed lifespan (count / tenure)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "count(*) / (aod.as_of_date - min(event_ts))",
+        "temporal": True,
+    },
+    # Distributional reductions
+    "theil": {
+        "description": "Theil-T inequality index over positive values",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "AVG((x/mean) * LN(x/mean))",
+        "temporal": True,
+    },
+    "trimmed_mean_10": {
+        "description": "Mean of values within the 10th-90th percentile range",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "AVG(x) WHERE x BETWEEN p10 AND p90",
+        "temporal": True,
+    },
+    "median_absolute_deviation": {
+        "description": "Robust spread: median(|x - median(x)|)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(x - median))",
+        "temporal": True,
+    },
+    # Sequence / process-mining reductions
+    "state_volatility": {
+        "description": "Count of categorical value changes over time",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "count(*) WHERE prev IS DISTINCT FROM curr",
+        "temporal": True,
+    },
+    "transition_matrix_summary": {
+        "description": "Number of distinct observed (prev -> curr) transitions",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "count(DISTINCT (prev, curr))",
+        "temporal": True,
+    },
+    "rework_count": {
+        "description": "Count of consecutive repeats (self-loops, prev == curr)",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "count(*) WHERE prev = curr",
+        "temporal": True,
+    },
+    "time_in_current_state": {
+        "description": "Days since the most recent change of a categorical attribute",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "aod.as_of_date - max(ts WHERE value changed)",
+        "temporal": True,
+    },
+    # Numeric-stream reductions
+    "acf_1": {
+        "description": "Lag-1 autocorrelation: corr(x_t, x_{t-1})",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "corr(x, LAG(x,1) OVER (ORDER BY ts))",
+        "temporal": True,
+    },
+    "variance_ratio": {
+        "description": "Variance ratio: var(value) / var(first difference)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "var_samp(x) / NULLIF(var_samp(x - LAG(x)), 0)",
+        "temporal": True,
+    },
+    "cosinor_amplitude_weekly": {
+        "description": "Weekly cosinor amplitude (sin/cos regression approximation)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "sqrt(regr_slope(x,sin)^2 + regr_slope(x,cos)^2)",
+        "temporal": True,
+    },
+    # Two-window distributional drift (interval-only)
+    "kl_drift": {
+        "description": "KL divergence: recent vs prior-window category distribution",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "SUM(p_recent * LN(p_recent / p_baseline)) over shared support",
+        "temporal": True,
+    },
+    "wasserstein_drift": {
+        "description": "Quantile L1 drift: recent vs prior-window numeric distribution",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "|q10_r - q10_b| + |q50_r - q50_b| + |q90_r - q90_b|",
+        "temporal": True,
+    },
+    # Predicate-driven (needs `predicates` on the variable config)
+    "right_censoring_indicator": {
+        "description": "1 if the terminal event has not occurred by t0 (censored)",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "(count(*) FILTER (WHERE col = 'terminal') = 0)::int",
+        "temporal": True,
+    },
+    "cross_type_latency": {
+        "description": "Mean seconds from an A-typed event to the next B-typed event",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "AVG(MIN(b.ts) - a.ts) for a=A-rows, b=next B-rows",
+        "temporal": True,
+    },
+    # Spatial (needs spatial_ix {lat, lon} on the entity)
+    "distance_travelled": {
+        "description": "Total great-circle distance over consecutive events (m)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "SUM(haversine(lag(lat,lon), (lat,lon)))",
+        "temporal": True,
+    },
+    "radius_of_gyration": {
+        "description": "RMS great-circle distance of events from their centroid (m)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "sqrt(AVG(haversine(centroid, point)^2))",
+        "temporal": True,
+    },
+    "spatial_std": {
+        "description": "Degree-space dispersion: sqrt(var(lat) + var(lon))",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "sqrt(var_samp(lat) + var_samp(lon))",
+        "temporal": True,
+    },
+    "bbox_area": {
+        "description": "Approximate latitude-corrected bounding-box area (m^2)",
+        "input_types": ["index"],
+        "output_type": "numeric",
+        "sql_example": "(max(lat)-min(lat))*(max(lon)-min(lon))*cos(avg(lat))*111320^2",
+        "temporal": True,
+    },
 }
 
 TRANSFORMATION_DOCS: Dict[str, Dict[str, Any]] = {
@@ -886,6 +1047,31 @@ TRANSFORMATION_DOCS: Dict[str, Dict[str, Any]] = {
         "category": "change_point",
         "requires_temporal": True,
     },
+    # Higher-order differences and running product
+    "diff2": {
+        "description": "Second difference (acceleration): x - 2*lag1 + lag2",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "value - 2*LAG(value,1) OVER w + LAG(value,2) OVER w",
+        "category": "window",
+        "requires_temporal": True,
+    },
+    "diff3": {
+        "description": "Third difference (jerk): x - 3*lag1 + 3*lag2 - lag3",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "value - 3*LAG(value,1) + 3*LAG(value,2) - LAG(value,3) OVER w",
+        "category": "window",
+        "requires_temporal": True,
+    },
+    "cumprod": {
+        "description": "Running product via log-sum-exp (positive series only)",
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": "exp(sum(ln(value)) OVER (PARTITION BY id ORDER BY date))",
+        "category": "cumulative",
+        "requires_temporal": True,
+    },
 }
 
 
@@ -900,9 +1086,9 @@ def list_primitives_command(args: argparse.Namespace) -> int:
 
     if show_agg:
         aggs = list(list_aggregations())
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"AGGREGATION PRIMITIVES ({len(aggs)} available)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         if args.category:
             # Group by whether they support temporal intervals
@@ -933,9 +1119,9 @@ def list_primitives_command(args: argparse.Namespace) -> int:
 
     if show_transform:
         transforms = list(list_transformations())
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"TRANSFORMATION PRIMITIVES ({len(transforms)} available)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         if args.category:
             # Group by category

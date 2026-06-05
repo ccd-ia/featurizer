@@ -1,0 +1,146 @@
+#+TITLE: Temporal Feature Coverage — Featurizer vs. the Taxonomy
+#+SUBTITLE: What featurizer generates today, what is missing, and what is out of scope
+#+AUTHOR: Adolfo De Unánue
+#+DATE: 2026-06-04
+#+OPTIONS: toc:2 num:t
+#+STARTUP: showall
+
+* Orientation
+
+This document maps [[file:temporal-feature-taxonomy.org][the temporal-feature taxonomy]] onto the primitives
+=featurizer= actually generates, identifies the gaps, and records a decision for
+every leakage-prone (=[care]=) family. It is the reference the primitive-
+expansion phases execute against.
+
+The taxonomy organizes features by *substrate* — where the feature reads from:
+
+- *A* — entity-attribute (as-of state)
+- *B* — the entity's own event-log stream (where the classic TS canon lives)
+- *C* — the relational graph (parents, peers)
+- *D* — spatio-temporal (every event also carries a place)
+
+and tags each family by *causal-safety* (=[safe]= backward-only / =[care]=
+non-causal if computed naively) and *cost* (=●○○= cheap SQL window / =●●○=
+medium / =●●●= out-of-DB).
+
+Featurizer's design center is the cheap, backward-only SQL tier: the matrix is
+rendered as ~from as_of_dates aod cross join lateral (<CTEs>)~ with every window
+bounded by ~daterange((aod.as_of_date - interval 'W')::date, aod.as_of_date::date,
+'[]') @> event_ts~. That bound is the leakage guarantee, and it is exactly why
+the cheap tier of substrates A/B/C/D is in reach while the heavy tier is not.
+
+* What featurizer covers today
+
+Coverage is described by *functional family*, not by a primitive count (the
+registered total is roughly ~43 aggregations / ~71 transformers, but the exact
+tally depends on how percentile/rolling variants are counted).
+
+** Substrate B (own stream) — well covered
+- *Distribution*: =mean=, =median=, =min=, =max=, =range=, =stddev=, =variance=,
+  =skewness=, =kurtosis=, =p10…p99=, =iqr=, =cv=, =gini=, =geometric_mean=,
+  =harmonic_mean=, =mean_deviation=, =z_score=, =min_max_scale=, =mode=, =nunique=.
+- *Derivatives / cumulative / rolling*: =diff=, =pct_change=, =cum_sum/mean/max/min/count=,
+  =rolling_mean/std/median/iqr_{3,7,14}=, =ema_{7,14}=, =holt_winters_level/trend_{7,14}=.
+- *Timing*: =count=, =event_rate=, =time_span=, =gap_mean/stddev/min/max/cv=, =burstiness=.
+- *Within-history rank*: =percent_rank=, =ntile=, =cdf=; =first/last/previous=, =time_since_previous=.
+- *Categorical concentration*: =entropy=, =hhi=.
+- *Sequence*: =ngram_2_freq=, =ngram_3_freq=, =sequence_entropy=, =longest_streak=.
+- *Change-point (causal proxy)*: =cusum=, =mean_shift_ratio_{7,14}=.
+- *Scalar transforms φ*: =abs=, =exp=, =ln=, =log=, =sqrt=, =cbrt=, =sign=, =ceil=,
+  =floor=, =trunc=, =num_chars=, =is_null=, =in_array=; date-parts + =cyclic_{hour,month,day}=.
+
+** Substrate A (as-of state) — partial
+- *As-of attribute snapshot* via base =Variable= features. *Covered.*
+- *Cross-sectional rank vs population @ t₀* via =cross_entity_zscore=,
+  =cross_entity_percentile=. *Covered* — and notable, because the taxonomy flags
+  this as a common =[GAP]=.
+- Tenure, recency, dwell, state-volatility — *missing* (see gaps).
+
+** Substrate C (relational) — partial
+- *As-of parent/SCD pull* via relationship =temporal: {mode: as_of, grace}=. *Covered.*
+- Hierarchical roll-up via multi-depth traversal. *Partial.*
+- Peer / ego / contagion, cross-stream dependence — *missing*.
+
+** Substrate D (spatio-temporal) — absent
+- =spatial_ix= is parsed but unused; no kinematics/dispersion/occupancy/co-location.
+
+* The gaps
+
+Organized by tier. "Status" reflects the plan that accompanies this doc.
+
+#+CAPTION: Missing families that are SQL-feasible and causally safe (in scope).
+| Tier | Substrate | Missing family | Plan phase |
+|------+-----------+----------------+------------|
+| ●○○ | A | recency (t₀ − last event), tenure/age, time-in-state (dwell), state volatility | 3 |
+| ●○○ | A/B | inter-event hazard proxy, throughput-time / time-since-onset (aliases) | 3 |
+| ●○○ | B.1 | 2nd/3rd differences (accel/jerk), cumprod | 4 |
+| ●●○ | B.1 | Theil index, trimmed mean, median-absolute-deviation | 5 |
+| ●●○ | B.2 | cosinor (mesor/amplitude/acrophase), windowed regr (intercept, R², momentum), ACF-k, variance-ratio | 4 |
+| ●●○ | B.5 | distributional drift (KL / KS / Wasserstein, two-window) | 7 |
+| ●○○ | B.5 | survival / censoring indicator, cross-type latency A→B | 6 |
+| ●●○ | B.5 | typed-event transition-matrix summary, rework/loop count | 5 |
+| ●○○ | B/C | intervention pre/post deltas + dose | 6 |
+| ●●○ | C | peer / ego aggregation, contagion proxy, lag-0 cross-stream correlation | 8 |
+| ●○○–●●○ | D | kinematics, dispersion, place occupancy, calendar×space | 9 |
+| ●●○ | D | co-location, distance-to-nearest-facility, KDE intensity | 10 |
+
+* Causality decisions for the =[care]= families
+
+Every =[care]=-tagged family was analyzed for whether it can be expressed
+*backward-only* in featurizer's per-(entity, as-of-date) lateral model. The rule:
+restrict all reads to ~[t₀−W, t₀)~; if the estimator additionally needs an
+iterative fit / LAPACK / multi-scale regression, it is out-of-DB.
+
+#+CAPTION: Verdicts. SAFE = ship now; CARE = ship the backward-only proxy; DEFER = out-of-DB.
+| Family | Verdict | Note |
+|--------+---------+------|
+| Cosinor (regression on sin/cos basis) | IMPLEMENT-SAFE | closed-form OLS over the window (Phase 4) |
+| Windowed trend (regr_intercept/R², momentum) | IMPLEMENT-SAFE | safe sibling of existing holt_winters_trend (Phase 4) |
+| ACF at fixed lag k; variance-ratio | IMPLEMENT-SAFE | =corr(x, lag(x,k))= windowed (Phase 4/8) |
+| lag-0 cross-stream correlation | IMPLEMENT-SAFE | needs the two-stream join (Phase 8) |
+| Intervention pre/post deltas + dose | IMPLEMENT-SAFE | conditional FILTERs split at a *past* action time (Phase 6) |
+| Changepoint | IMPLEMENT-WITH-CARE | ship CUSUM / mean-shift (already present); no offline PELT |
+| PACF / Ljung-Box (small fixed k) | IMPLEMENT-WITH-CARE | verbose SQL; gate by effort |
+| Cross-correlation at backward lag −k | IMPLEMENT-WITH-CARE | +k is forbidden (reads the future) |
+| Contagion / propagation | IMPLEMENT-WITH-CARE | backward peer-aggregation proxy only (Phase 8) |
+| =lead= transformer | DEFER (forbidden) | is the future by definition; model scheduled rows as an as-of join |
+| STL / LOESS seasonal strength | DEFER | iterative two-sided smoother |
+| Hurst / DFA / KPSS / ADF | DEFER | multi-scale / unit-root machinery |
+| Corr-matrix eigenvalues, coherence, MI, Granger, transfer-entropy, VAR, Johansen | DEFER | LAPACK / multi-equation fits |
+| ARIMA / GARCH / ETS / Prophet / state-space + residuals | DEFER | iterative MLE per (entity, as-of) |
+| Self-supervised embeddings (TS2Vec, PatchTST, …) | DEFER | GPU training loop |
+
+* Explicitly out of scope (SQL-first boundary)
+
+These are the taxonomy's heavy ●●● tier — genuinely out-of-database, to be
+materialized back as feature columns by a separate service if ever needed:
+
+- Spectral / wavelet / time-frequency (FFT, DWT/CWT, spectrogram, scattering).
+- Complexity / recurrence / topology (sample/permutation entropy, Lempel–Ziv,
+  Lyapunov, RQA, persistent homology, visibility graph).
+- Symbolic / subsequence (SAX, bag-of-patterns, matrix-profile, shapelets).
+- Model-coefficient and learned-embedding features.
+
+* Implementation roadmap
+
+| Phase | Scope | Planner change | Status (2026-06-04) |
+|-------+-------+----------------+---------------------|
+| 0 | Finish the =viz= module | — | DONE |
+| 1 | Opt-in imputation helper | — | DONE |
+| 2 | This document | — | DONE |
+| 3 | As-of state (recency, tenure, …) | none | DONE |
+| 3.5 | Config-driven selection + expanded defaults | none | DONE |
+| 3.6 | Causal-safety fix: bound all SubqueryAggregators | none | DONE |
+| 4 | Cheap transformers (diff2/diff3, cumprod) | none | DONE |
+| 5 | SubqueryAggregator reductions (+ acf/vr/cosinor) | none | DONE |
+| 7 | Two-window distributional drift (kl, wasserstein) | none (interval-only) | DONE |
+| 6 | Predicate-carriage (censoring, cross-type latency) | small (abstractions) | DONE |
+| 9 | Spatial substrate (distance, gyration, std, bbox) | SpatialIx parse only | DONE |
+| 8 | Peer / cross-stream | yes (new planner pass) | pending |
+| 10 | Spatial second-table / PostGIS | yes (new planner pass) | pending |
+
+The cheap, no-planner-change phases (3–5, 7) carry the bulk of the predictive
+value (recency alone is the single most-cited feature in the taxonomy's
+grounding table) at the lowest risk. The structural phases (6, 8, 9, 10) touch
+the planner / abstractions and must add an explicit ~<= aod.as_of_date~ bound to
+every new query — see the causal-safety verification in the plan.

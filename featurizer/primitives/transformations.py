@@ -87,8 +87,8 @@ class Transformer:
 
     @staticmethod
     def _build_name(name, feature):
-        name = f"{ str.upper(name) }({feature.entity.alias}.{feature.name})"
-        return f'''"{name.replace('"', '')}"'''
+        name = f"{str.upper(name)}({feature.entity.alias}.{feature.name})"
+        return f'''"{name.replace('"', "")}"'''
 
     def _build_transformer_call(self, feature):
         return f""" {self.transformer}({feature.name}) """
@@ -133,7 +133,7 @@ class Identity(Transformer):
     @staticmethod
     def _build_name(name, feature):
         name = f"{feature.entity.alias}.{feature.name}"
-        return f'''"{name.replace('"', '')}"'''
+        return f'''"{name.replace('"', "")}"'''
 
     def _build_transformer_call(self, feature):
         return f""" {feature.name} """
@@ -156,7 +156,7 @@ class DateTransformer(Transformer):
         )
 
     def _build_transformer_call(self, feature):
-        return f"to_char({ feature.name }, '{self.date_part}')"
+        return f"to_char({feature.name}, '{self.date_part}')"
 
     def __call__(self, parent, feature):
         if feature.type == "key":
@@ -205,13 +205,13 @@ class HourlyBinning(Transformer):
         return f"""
         (
         case
-        when extract(hour from { feature.name }) <@ int4range(0,5) then 'night'
-        when extract(hour from { feature.name }) <@ int4range(5,8) then 'early_morning'
-        when extract(hour from { feature.name }) <@ int4range(8,11) then 'morning'
-        when extract(hour from { feature.name }) <@ int4range(11,14) then 'midday'
-        when extract(hour from { feature.name }) <@ int4range(14,19) then 'afternoon'
-        when extract(hour from { feature.name }) <@ int4range(19,22) then 'evening'
-        when extract(hour from { feature.name }) <@ int4range(22,24) then 'night'
+        when extract(hour from {feature.name}) <@ int4range(0,5) then 'night'
+        when extract(hour from {feature.name}) <@ int4range(5,8) then 'early_morning'
+        when extract(hour from {feature.name}) <@ int4range(8,11) then 'morning'
+        when extract(hour from {feature.name}) <@ int4range(11,14) then 'midday'
+        when extract(hour from {feature.name}) <@ int4range(14,19) then 'afternoon'
+        when extract(hour from {feature.name}) <@ int4range(19,22) then 'evening'
+        when extract(hour from {feature.name}) <@ int4range(22,24) then 'night'
         )
         """
 
@@ -335,8 +335,8 @@ class WindowFunctionTransformer:
 
     @staticmethod
     def _build_name(name, feature):
-        name = f"{ str.upper(name) }({feature.entity.alias}.{feature.name})"
-        return f'''"{name.replace('"', '')}"'''
+        name = f"{str.upper(name)}({feature.entity.alias}.{feature.name})"
+        return f'''"{name.replace('"', "")}"'''
 
     def _resolve_order_by(self, feature: Feature) -> Optional[str]:
         if callable(self.order_by):
@@ -358,14 +358,14 @@ class WindowFunctionTransformer:
         if not partition:
             return None
         window_args = [expression] + list(self._resolve_args(feature))
-        window_call = [f"{ self.function }({ ', '.join(window_args) })"]
+        window_call = [f"{self.function}({', '.join(window_args)})"]
         if self.filter and feature.specials:
             # filter by clause
             window_call.append(f" filter (where {feature.name} = {feature.specials}) ")
-        window_call.append(f" over (partition by { partition }")
+        window_call.append(f" over (partition by {partition}")
         order_clause = self._resolve_order_by(feature)
         if order_clause:
-            window_call.append(f" order by { order_clause }")
+            window_call.append(f" order by {order_clause}")
         if self.frame:
             start, end = self.frame
             window_call.append(f" rows between {start} and {end}")
@@ -515,6 +515,89 @@ time_since_previous = Diff(
 )
 
 
+class NthDiff:
+    """N-th order finite difference (acceleration, jerk) via binomial lags.
+
+    ``diff2 = x - 2*lag1 + lag2`` (acceleration); ``diff3 = x - 3*lag1 +
+    3*lag2 - lag3`` (jerk). Backward-only: built only from lags over the
+    entity's temporal order.
+    """
+
+    def __init__(self, name, order, input_types=["numeric"], output_type="numeric"):
+        self.name = name
+        self.order = order
+        self.input_types = input_types
+        self.output_type = output_type
+
+    def __call__(self, parent, feature):
+        if feature.type not in self.input_types:
+            return feature
+        lags = {}
+        for k in range(1, self.order + 1):
+            expr = _build_temporal_window("lag", parent, feature, args=[str(k)])
+            if expr is None:
+                return None
+            lags[k] = expr
+        x = feature.name
+        if self.order == 2:
+            definition = f"({x}) - 2*({lags[1]}) + ({lags[2]})"
+        elif self.order == 3:
+            definition = f"({x}) - 3*({lags[1]}) + 3*({lags[2]}) - ({lags[3]})"
+        else:
+            raise ValueError(f"Unsupported difference order: {self.order}")
+        return Feature(
+            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            type=self.output_type,
+            definition=definition,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+class CumProd:
+    """Running product via the log-sum-exp identity (positive series).
+
+    ``exp(sum(ln x) over (partition by id order by ts))``. Returns NULL once a
+    non-positive value enters the running window — a documented limitation,
+    since ``ln`` is undefined there. Backward-only.
+    """
+
+    def __init__(self, name="cumprod", input_types=["numeric"], output_type="numeric"):
+        self.name = name
+        self.input_types = input_types
+        self.output_type = output_type
+
+    def __call__(self, parent, feature):
+        if feature.type not in self.input_types:
+            return feature
+        partition = parent.id.name if parent.id else None
+        if partition is None:
+            return None
+        order_by = _temporal_ordering(feature)
+        if order_by is None:
+            return None
+        x = feature.name
+        window = f"over (partition by {partition} order by {order_by})"
+        definition = (
+            f"case when min({x}) {window} > 0 "
+            f"then exp(sum(ln({x})) {window}) else null end"
+        )
+        return Feature(
+            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            type=self.output_type,
+            definition=definition,
+            parents=feature,
+            entity=parent,
+            stack_depth=feature.stack_depth + 1,
+        )
+
+
+diff2 = NthDiff(name="diff2", order=2)
+diff3 = NthDiff(name="diff3", order=3)
+cumprod = CumProd()
+
+
 class DistributionTransformer(WindowFunctionTransformer):
     def __init__(
         self,
@@ -540,17 +623,17 @@ class DistributionTransformer(WindowFunctionTransformer):
             return None
         pieces = []
         if self.arg_func:
-            pieces.append(f"{ self.function }({ self.arg_func })")
+            pieces.append(f"{self.function}({self.arg_func})")
         else:
-            pieces.append(f"{ self.function }()")
-        pieces.append(f" over (partition by { partition }")
+            pieces.append(f"{self.function}()")
+        pieces.append(f" over (partition by {partition}")
         order_clause = (
             self._resolve_order_by(feature)
             if hasattr(self, "_resolve_order_by")
             else None
         )
         if order_clause:
-            pieces.append(f" order by { order_clause }")
+            pieces.append(f" order by {order_clause}")
         if self.frame:
             start, end = self.frame
             pieces.append(f" rows between {start} and {end}")
@@ -873,11 +956,11 @@ class BinaryTransformer(Transformer):
 
     @staticmethod
     def _build_name(name, feature1, feature2):
-        name = f"{ str.upper(name) }({feature1.entity.alias}.{feature1.name}, {feature2.entity.alias}.{feature2.name})"
-        return f'''"{name.replace('"', '')}"'''
+        name = f"{str.upper(name)}({feature1.entity.alias}.{feature1.name}, {feature2.entity.alias}.{feature2.name})"
+        return f'''"{name.replace('"', "")}"'''
 
     def _build_transformer_call(self, feature1, feature2):
-        return f"{feature1.entity.alias}.{ feature1.name } { self.operation }  {feature2.entity.alias}.{ feature2.name }"
+        return f"{feature1.entity.alias}.{feature1.name} {self.operation}  {feature2.entity.alias}.{feature2.name}"
 
     def __call__(self, parent, feature1, feature2):
         if (
@@ -946,7 +1029,7 @@ class IsNull(Transformer):
         )
 
     def _build_transformer_call(self, feature):
-        return f"({ feature.name } is null)"
+        return f"({feature.name} is null)"
 
 
 class IsInArray(Transformer):
@@ -1198,6 +1281,12 @@ for _window in (7, 14):
     _msr = MeanShiftRatioTransformer(_window)
     DEFAULT_TRANSFORMERS[_msr.name] = _msr
     register_transformer(_msr.name, _msr)
+
+
+# --- Higher-order differences and running product ---
+for _t in (diff2, diff3, cumprod):
+    DEFAULT_TRANSFORMERS[_t.name] = _t
+    register_transformer(_t.name, _t)
 
 
 # percentage above avg
