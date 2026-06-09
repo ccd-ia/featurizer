@@ -4,11 +4,27 @@ from featurizer.primitives.abstractions import (
     Entity,
     ERGraph,
     Feature,
+    FeatureType,
     Id,
     Key,
     Relationship,
     Variable,
 )
+
+
+class TestFeatureType:
+    """The enum is the canonical type vocabulary; keep it accurate."""
+
+    def test_user_declarable_types_present(self):
+        members = {m.name for m in FeatureType}
+        # Every user-declarable variable type must be representable.
+        for t in ("numeric", "categorical", "text", "boolean", "vector"):
+            assert t in members
+
+    def test_internal_index_roles_present(self):
+        members = {m.name for m in FeatureType}
+        for t in ("index", "spatial_ix", "temporal_ix", "key"):
+            assert t in members
 
 
 class TestEntity:

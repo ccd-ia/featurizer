@@ -5,8 +5,15 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
+# Canonical feature-type vocabulary. The user-declarable variable types
+# (numeric, categorical, text, boolean, date, timestamp, vector) are kept in
+# sync with ``ConfigValidator.VALID_VARIABLE_TYPES``; the remaining members
+# (index, spatial_ix, temporal_ix, key) are internal index roles assigned by
+# ``Entity`` construction, not declared in ``variables:``. ``vector`` carries
+# pgvector / embedding columns materialized by the bridge layer.
 FeatureType = Enum(
-    "FeatureType", "index spatial_ix temporal_ix date timestamp numeric categorical key"
+    "FeatureType",
+    "index spatial_ix temporal_ix date timestamp numeric categorical text boolean vector key",
 )
 
 

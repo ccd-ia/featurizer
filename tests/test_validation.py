@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 
 from featurizer import (
-    validate_config,
     ValidationError,
     ValidationResult,
     ValidationWarning,
+    validate_config,
 )
 from featurizer.validation import ConfigValidator
 
@@ -163,6 +163,7 @@ class TestVariableTypeValidation:
             "date",
             "timestamp",
             "index",
+            "vector",
         ]
 
         for var_type in valid_types:

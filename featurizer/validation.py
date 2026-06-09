@@ -85,6 +85,7 @@ class ConfigValidator:
         "date",
         "timestamp",
         "index",
+        "vector",
     }
 
     ISO8601_DURATION_PATTERN = re.compile(
