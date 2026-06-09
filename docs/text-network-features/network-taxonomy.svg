@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 920" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect width="1180" height="920" fill="#fbfaf7"/>
+<text x="30" y="42" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="25" fill="#1c1c1a">Substrate C, expanded: network &amp; graph features</text>
+<text x="30" y="66" font-size="12.5" fill="#56544e">In an event ontology the graph is not given — events induce the edges. Decide the graph, then the time representation, then read off families by radius.</text>
+<text x="30" y="100" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#1c1c1a" font-weight="bold">① What is the graph?</text>
+<rect x="30.0" y="108" width="209.6" height="38" rx="7" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.4"/>
+<circle cx="47.0" cy="127.0" r="10" fill="#2f5d8a"/>
+<text x="47.0" y="131.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">1</text>
+<text x="62.0" y="131.0" font-size="11" fill="#1c1c1a">Interaction</text>
+<rect x="257.6" y="108" width="209.6" height="38" rx="7" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.4"/>
+<circle cx="274.6" cy="127.0" r="10" fill="#2f5d8a"/>
+<text x="274.6" y="131.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">2</text>
+<text x="289.6" y="131.0" font-size="11" fill="#1c1c1a">Affiliation / bipartite</text>
+<rect x="485.2" y="108" width="209.6" height="38" rx="7" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.4"/>
+<circle cx="502.2" cy="127.0" r="10" fill="#2f5d8a"/>
+<text x="502.2" y="131.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">3</text>
+<text x="517.2" y="131.0" font-size="11" fill="#1c1c1a">Similarity (induced)</text>
+<rect x="712.8" y="108" width="209.6" height="38" rx="7" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.4"/>
+<circle cx="729.8" cy="127.0" r="10" fill="#2f5d8a"/>
+<text x="729.8" y="131.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">4</text>
+<text x="744.8" y="131.0" font-size="11" fill="#1c1c1a">Given ontological</text>
+<rect x="940.4" y="108" width="209.6" height="38" rx="7" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.4"/>
+<circle cx="957.4" cy="127.0" r="10" fill="#2f5d8a"/>
+<text x="957.4" y="131.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">5</text>
+<text x="972.4" y="131.0" font-size="11" fill="#1c1c1a">Spatial-proximity</text>
+<text x="30" y="174" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#1c1c1a" font-weight="bold">② Temporal representation</text>
+<rect x="30.0" y="182" width="361.3" height="38" rx="7" fill="#eaedf2" stroke="#445163" stroke-opacity="0.4"/>
+<circle cx="47.0" cy="201.0" r="10" fill="#445163"/>
+<text x="47.0" y="205.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">1</text>
+<text x="62.0" y="195.0" font-size="11" fill="#1c1c1a">Snapshot sequence → metric per window → re-enter the</text>
+<text x="62.0" y="208.0" font-size="11" fill="#1c1c1a">spine</text>
+<rect x="409.3" y="182" width="361.3" height="38" rx="7" fill="#eaedf2" stroke="#445163" stroke-opacity="0.4"/>
+<circle cx="426.3" cy="201.0" r="10" fill="#445163"/>
+<text x="426.3" y="205.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">2</text>
+<text x="441.3" y="205.0" font-size="11" fill="#1c1c1a">Continuous-time edge stream (time-respecting paths)</text>
+<rect x="788.7" y="182" width="361.3" height="38" rx="7" fill="#eaedf2" stroke="#445163" stroke-opacity="0.4"/>
+<circle cx="805.7" cy="201.0" r="10" fill="#445163"/>
+<text x="805.7" y="205.0" text-anchor="middle" font-size="11" fill="#fff" font-weight="bold">3</text>
+<text x="820.7" y="205.0" font-size="11" fill="#1c1c1a">Temporal motifs (ordered within Δt)</text>
+<text x="30" y="252" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#1c1c1a" font-weight="bold">③ Feature families, by radius</text>
+<rect x="30.0" y="262.0" width="361.3" height="301.0" rx="9" fill="#e7f2ef" stroke="#1f6f64" stroke-opacity="0.35"/>
+<rect x="30.0" y="262.0" width="361.3" height="28" rx="9" fill="#1f6f64"/>
+<rect x="30.0" y="281.0" width="361.3" height="9" fill="#1f6f64"/>
+<text x="43.0" y="281.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Node / ego</text>
+<rect x="42.0" y="298.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="298.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="318.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="318.0" r="2.6" fill="#e6e3da"/>
+<circle cx="367.3" cy="318.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="316.5" font-size="11" fill="#1c1c1a">Degree: in / out / weighted (strength)</text>
+<rect x="42.0" y="333.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="333.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="353.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="351.5" font-size="11" fill="#1c1c1a">Local clustering coefficient</text>
+<rect x="42.0" y="368.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="368.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="349.3" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="388.0" r="2.6" fill="#8a8780"/>
+<text x="54.0" y="386.5" font-size="11" fill="#1c1c1a">Centralities: betweenness, eigenvector, PageRank, Katz</text>
+<rect x="42.0" y="403.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="403.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="423.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="423.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="423.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="421.5" font-size="11" fill="#1c1c1a">Core number / k-truss membership</text>
+<rect x="42.0" y="438.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="438.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="458.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="458.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="458.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="456.5" font-size="11" fill="#1c1c1a">Structural holes (Burt constraint, effective size)</text>
+<rect x="42.0" y="473.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="473.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="493.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="493.0" r="2.6" fill="#e6e3da"/>
+<circle cx="367.3" cy="493.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="491.5" font-size="11" fill="#1c1c1a">Reciprocity of the node&#x27;s edges</text>
+<rect x="42.0" y="508.0" width="337.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="508.0" width="5" height="43" rx="2.5" fill="#2f8f4e"/>
+<circle cx="349.3" cy="542.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="542.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="542.0" r="2.6" fill="#e6e3da"/>
+<text x="54.0" y="523.5" font-size="11" fill="#1c1c1a">Temporal: new-neighbour rate, neighbour churn,</text>
+<text x="54.0" y="536.5" font-size="11" fill="#1c1c1a">triadic-closure rate, burstiness</text>
+<rect x="409.3" y="262.0" width="361.3" height="147.0" rx="9" fill="#eaf2e3" stroke="#4a7c2f" stroke-opacity="0.35"/>
+<rect x="409.3" y="262.0" width="361.3" height="28" rx="9" fill="#4a7c2f"/>
+<rect x="409.3" y="281.0" width="361.3" height="9" fill="#4a7c2f"/>
+<text x="422.3" y="281.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Neighbour aggregation</text>
+<rect x="421.3" y="298.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="421.3" y="298.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="728.7" cy="318.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="318.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="318.0" r="2.6" fill="#e6e3da"/>
+<text x="433.3" y="316.5" font-size="11" fill="#1c1c1a">k-hop neighbour feature aggregates (= hand-crafted GNN)</text>
+<rect x="421.3" y="333.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="421.3" y="333.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="728.7" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="353.0" r="2.6" fill="#e6e3da"/>
+<text x="749.7" y="346.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="433.3" y="351.5" font-size="11" fill="#1c1c1a">Peer rate: peer churn / flagged-neighbour share</text>
+<rect x="421.3" y="368.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="421.3" y="368.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="728.7" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="388.0" r="2.6" fill="#e6e3da"/>
+<text x="749.7" y="381.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="433.3" y="386.5" font-size="11" fill="#1c1c1a">Network autocorrelation (Moran&#x27;s I on the graph)</text>
+<rect x="788.7" y="262.0" width="361.3" height="217.0" rx="9" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.35"/>
+<rect x="788.7" y="262.0" width="361.3" height="28" rx="9" fill="#2f5d8a"/>
+<rect x="788.7" y="281.0" width="361.3" height="9" fill="#2f5d8a"/>
+<text x="801.7" y="281.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Dyad / link</text>
+<rect x="800.7" y="298.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="298.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="318.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="318.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="318.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="316.5" font-size="11" fill="#1c1c1a">Common neighbours, Jaccard, Adamic-Adar</text>
+<rect x="800.7" y="333.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="333.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="353.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="353.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="351.5" font-size="11" fill="#1c1c1a">Resource allocation, preferential attachment</text>
+<rect x="800.7" y="368.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="368.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="388.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="388.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="386.5" font-size="11" fill="#1c1c1a">Embeddedness (# shared neighbours)</text>
+<rect x="800.7" y="403.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="403.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="423.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="423.0" r="2.6" fill="#e6e3da"/>
+<circle cx="1126.0" cy="423.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="421.5" font-size="11" fill="#1c1c1a">Edge age, weight trend, inter-event time</text>
+<rect x="800.7" y="438.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="438.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="458.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="458.0" r="2.6" fill="#e6e3da"/>
+<circle cx="1126.0" cy="458.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="456.5" font-size="11" fill="#1c1c1a">Dyadic reciprocity</text>
+<rect x="409.3" y="427.0" width="361.3" height="217.0" rx="9" fill="#f0eaf6" stroke="#6b4a9c" stroke-opacity="0.35"/>
+<rect x="409.3" y="427.0" width="361.3" height="28" rx="9" fill="#6b4a9c"/>
+<rect x="409.3" y="446.0" width="361.3" height="9" fill="#6b4a9c"/>
+<text x="422.3" y="446.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Community / block (SBM)</text>
+<rect x="421.3" y="463.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="421.3" y="463.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="728.7" cy="483.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="483.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="483.0" r="2.6" fill="#8a8780"/>
+<text x="433.3" y="481.5" font-size="11" fill="#1c1c1a">Modularity community (Louvain / Leiden)</text>
+<rect x="421.3" y="498.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="421.3" y="498.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="728.7" cy="518.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="518.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="518.0" r="2.6" fill="#8a8780"/>
+<text x="433.3" y="516.5" font-size="11" fill="#1c1c1a">Nested-SBM block assignment</text>
+<rect x="421.3" y="533.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="421.3" y="533.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="728.7" cy="553.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="553.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="553.0" r="2.6" fill="#8a8780"/>
+<text x="749.7" y="546.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="433.3" y="551.5" font-size="11" fill="#1c1c1a">Block-membership posterior entropy</text>
+<rect x="421.3" y="568.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="421.3" y="568.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="728.7" cy="588.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="588.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="588.0" r="2.6" fill="#8a8780"/>
+<text x="749.7" y="581.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="433.3" y="586.5" font-size="11" fill="#1c1c1a">Edge MDL surprise vs degree-corrected SBM</text>
+<rect x="421.3" y="603.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="421.3" y="603.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="728.7" cy="623.0" r="2.6" fill="#8a8780"/>
+<circle cx="737.7" cy="623.0" r="2.6" fill="#8a8780"/>
+<circle cx="746.7" cy="623.0" r="2.6" fill="#8a8780"/>
+<text x="749.7" y="616.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="433.3" y="621.5" font-size="11" fill="#1c1c1a">Community persistence / switching over time</text>
+<rect x="788.7" y="497.0" width="361.3" height="182.0" rx="9" fill="#f5ece1" stroke="#8a5a2b" stroke-opacity="0.35"/>
+<rect x="788.7" y="497.0" width="361.3" height="28" rx="9" fill="#8a5a2b"/>
+<rect x="788.7" y="516.0" width="361.3" height="9" fill="#8a5a2b"/>
+<text x="801.7" y="516.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Global</text>
+<rect x="800.7" y="533.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="533.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="553.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="553.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="553.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="551.5" font-size="11" fill="#1c1c1a">Density, assortativity, degree-exponent</text>
+<rect x="800.7" y="568.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="568.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="588.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="588.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="588.0" r="2.6" fill="#8a8780"/>
+<text x="812.7" y="586.5" font-size="11" fill="#1c1c1a">Spectral gap / algebraic connectivity</text>
+<rect x="800.7" y="603.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="800.7" y="603.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="623.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="623.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="623.0" r="2.6" fill="#e6e3da"/>
+<text x="812.7" y="621.5" font-size="11" fill="#1c1c1a">Largest-component fraction, # components</text>
+<rect x="800.7" y="638.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<rect x="800.7" y="638.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="1108.0" cy="658.0" r="2.6" fill="#8a8780"/>
+<circle cx="1117.0" cy="658.0" r="2.6" fill="#8a8780"/>
+<circle cx="1126.0" cy="658.0" r="2.6" fill="#e6e3da"/>
+<text x="1129.0" y="651.0" text-anchor="end" font-size="8.5" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#c0392b" font-weight="bold">GAP</text>
+<text x="812.7" y="656.5" font-size="11" fill="#1c1c1a">Temporal: densification rate, diameter trend</text>
+<rect x="30.0" y="581.0" width="361.3" height="147.0" rx="9" fill="#f6e9ef" stroke="#9c4a6b" stroke-opacity="0.35"/>
+<rect x="30.0" y="581.0" width="361.3" height="28" rx="9" fill="#9c4a6b"/>
+<rect x="30.0" y="600.0" width="361.3" height="9" fill="#9c4a6b"/>
+<text x="43.0" y="600.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13.5" fill="#fff" font-weight="bold">Embedding</text>
+<rect x="42.0" y="617.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="617.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="349.3" cy="637.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="637.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="637.0" r="2.6" fill="#8a8780"/>
+<text x="54.0" y="635.5" font-size="11" fill="#1c1c1a">node2vec / DeepWalk / GraphSAGE</text>
+<rect x="42.0" y="652.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="652.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="349.3" cy="672.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="672.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="672.0" r="2.6" fill="#8a8780"/>
+<text x="54.0" y="670.5" font-size="11" fill="#1c1c1a">Temporal GNN (TGAT, TGN)</text>
+<rect x="42.0" y="687.0" width="337.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="42.0" y="687.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="349.3" cy="707.0" r="2.6" fill="#8a8780"/>
+<circle cx="358.3" cy="707.0" r="2.6" fill="#8a8780"/>
+<circle cx="367.3" cy="707.0" r="2.6" fill="#8a8780"/>
+<text x="54.0" y="705.5" font-size="11" fill="#1c1c1a">Spectral / Laplacian-eigenmap</text>
+<rect x="30" y="746" width="1120" height="68" rx="8" fill="#fffaf0" stroke="#6b4a9c" stroke-width="1.4"/>
+<rect x="30" y="746" width="5" height="68" rx="2.5" fill="#6b4a9c"/>
+<text x="46" y="768" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13" fill="#1c1c1a" font-weight="bold">Coordination case (e.g. coordinated-behaviour detection)</text>
+<text x="46" y="786" font-size="11" fill="#56544e">Signal = temporal synchrony (activity cross-correlation, phase-locking, tight inter-arrival Δt) × anomalous co-affiliation (bipartite projection edge-weight z-scored vs a configuration null) ×</text>
+<text x="46" y="801" font-size="11" fill="#56544e">SBM surprise (sudden block densification, motifs over-represented relative to a TIMESTAMP-SHUFFLED null). The temporal null model is what separates coordination from popularity.</text>
+<rect x="30" y="830" width="1120" height="74" rx="8" fill="#ffffff" stroke="#d8d4c8"/>
+<text x="48" y="849" font-size="11.5" fill="#1c1c1a" font-weight="bold">Reading a chip</text>
+<rect x="48" y="858" width="6" height="20" rx="3" fill="#2f8f4e"/>
+<text x="61" y="872" font-size="10.5" fill="#56544e">stripe = causal-safe</text>
+<rect x="48" y="884" width="6" height="20" rx="3" fill="#c98a1b"/>
+<text x="61" y="898" font-size="10.5" fill="#56544e">amber = leakage-prone (build/refit strictly pre-t₀)</text>
+<circle cx="368" cy="868" r="3" fill="#8a8780"/>
+<circle cx="379" cy="868" r="3" fill="#8a8780"/>
+<circle cx="390" cy="868" r="3" fill="#8a8780"/>
+<text x="406" y="872" font-size="10.5" fill="#56544e">dots = cost. ●●● = centralities / SBM / TDA / embeddings</text>
+<rect x="368" y="890" width="20" height="15" rx="3" fill="#fff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="406" y="902" font-size="10.5" fill="#56544e">dashed = absent from standard catalogs</text>
+</svg>

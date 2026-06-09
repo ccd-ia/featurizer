@@ -64,9 +64,11 @@ The featurizer is designed for the left column.  Every design decision --- the =
 
 * Currently Implemented Primitives
 
-The featurizer ships with 89 default primitives: 19 aggregations and 70 transformations.  These are registered at import time and available without configuration.
+The featurizer shipped with 89 default primitives at the time of this analysis: 19 aggregations and 70 transformations.  These are registered at import time and available without configuration.
 
-** Aggregations (19 primitives)
+*Update (2026-03-17):* The gap analysis below has been fully implemented in commit =6b25339=, adding 29 new aggregation primitives and the =SubqueryAggregator= base class.  The featurizer now provides 114 primitives: 43 aggregations and 71 transformations.
+
+** Aggregations (19 primitives at time of analysis; now 43)
 
 #+latex: \rowcolors[]{1}{}{gray!10}
 #+attr_latex: :placement [H]
@@ -780,3 +782,16 @@ The existing interval filtering (=FILTER (WHERE daterange(...) @> event_date)=) 
 |    4 | P8: Sequence / bigram features         | High     | Multi-step CTE chains, planner modification             |
 
 Tier 1 can be shipped immediately.  Tier 2 items share the =SubqueryAggregator= infrastructure and should be built together.  Tier 3 items are independent of each other but each requires a new transformer class.  Tier 4 is the most invasive change and should be deferred until the planner's CTE generation is refactored to support variable-length CTE chains.
+
+* Implementation Status
+
+*All tiers from the priority roadmap above have been implemented* in commit =6b25339= (2026-03-17).  The implementation added:
+
+- 29 new aggregation primitives (from 19 to 43 total)
+- 1 new transformation primitive (from 70 to 71 total)
+- =SubqueryAggregator= base class for aggregations requiring correlated subqueries (gap statistics, categorical distribution, inequality, sequence features)
+- =PopulationWindowTransformer= for cross-entity normalization (=cross_entity_zscore=, =cross_entity_percentile=)
+- Change-point detection transformers (=mean_shift_ratio_7=, =mean_shift_ratio_14=, =cusum=)
+- 219 tests passing (up from 120)
+
+The featurizer now provides 114 registered primitives: 43 aggregations and 71 transformations.

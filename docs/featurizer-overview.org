@@ -1,0 +1,736 @@
+#+TITLE: Featurizer
+#+AUTHOR: Adolfo De Un\aacute{}nue
+#+EMAIL: adolfo@uchicago.edu
+#+DATE: 2026-03-17
+#+KEYWORDS: feature engineering, DFS, PostgreSQL, temporal data, machine learning
+#+LANGUAGE: en
+#+THEME: navy-gold
+#+OPTIONS: toc:1 tags:nil ^:nil ':t H:4 prop:nil todo:nil email:t num:3
+#+OPTIONS: eval:never-export
+#+PROPERTY: header-args :eval never-export :exports results
+#+startup: beamer
+#+BEAMER_FRAME_LEVEL: 1
+#+BEAMER_THEME: UnofficialUChicago
+#+BEAMER_HEADER: \subtitle{Automated Feature Engineering for Temporal Data in PostgreSQL}
+#+BEAMER_HEADER: \institute[DSaPP]{Center for Data Science and Public Policy\\\url{http://dsapp.uchicago.edu}}
+
+* The Feature Engineering Bottleneck
+
+Feature engineering consumes the majority of data scientist time in ML pipelines.
+
+- Data scientists spend ~80% of their time on data preparation and feature engineering
+- Manual SQL for features is repetitive, error-prone, and hard to maintain
+- Each new prediction problem requires rewriting similar aggregation queries
+
+* Relational Data is Everywhere
+
+Most real-world ML operates on relational databases.
+
+#+begin_example
+Customers ──< Orders ──< OrderItems >── Products >── Suppliers
+Patients  ──< Visits ──< Diagnoses
+Students  ──< Enrollments ──< Grades
+#+end_example
+
+The features we need live in the /relationships/ between tables, not in any single table.
+
+* The Manual Approach
+
+#+begin_src sql
+-- Just three features, already verbose and error-prone:
+select c.customer_id,
+       sum(o.amount) as total_spend,
+       count(*) as order_count,
+       avg(o.amount) as avg_order_value
+from customers c
+left join orders o on c.customer_id = o.customer_id
+group by c.customer_id;
+#+end_src
+
+Now imagine: 5 aggregations \times 3 variables \times 4 time windows \times 20 transformations = 1,200 features...
+
+* What Goes Wrong: Data Leakage
+
+The most dangerous mistake in temporal ML: using future data to compute training features.
+
+- A model trained on January 2025 must not see February orders when computing features
+- Manual SQL makes this easy to get wrong --- a missing =WHERE= clause leaks the future
+- Point-in-time correctness requires discipline that doesn't scale manually
+
+* Point-in-Time Correctness
+
+For each =as_of_date=, features must only use data available /at that point/:
+
+#+begin_example
+Timeline:  ──|────────|────────|────────|──→
+          Jan 1    Feb 1    Mar 1    Apr 1
+
+as_of = Feb 1:  ←─ visible ─→  [hidden]
+                Jan data only    Feb/Mar/Apr invisible
+#+end_example
+
+Featurizer enforces this automatically via =CROSS JOIN LATERAL= against =as_of_dates=.
+
+* What If We Could Automate This?
+
+Given:
+
+- An entity-relationship graph (YAML config)
+- A set of feature primitives (aggregations + transformations)
+- Temporal semantics (as-of dates, intervals)
+
+Generate: hundreds of point-in-time correct features as pure SQL.
+
+That is *Featurizer*.
+
+* Why Not Featuretools?
+
+Featuretools (Python DFS library) works well for in-memory data, but:
+
+- *Data movement*: Loads tables into Python memory --- fails on large datasets
+- *No temporal guarantees*: Point-in-time correctness is opt-in, easy to miss
+- *No SQL output*: Cannot inspect, audit, or deploy the generated logic
+- *Single-node*: Cannot leverage PostgreSQL's query optimizer and parallelism
+
+Featurizer generates pure SQL --- data never leaves the database.
+
+* Deep Feature Synthesis: The Core Idea
+
+DFS (Kanter & Veeramachaneni, 2015) automates feature engineering by:
+
+1. Traversing the entity graph
+2. At each edge: applying aggregations (backward) or lookups (forward)
+3. At each node: applying transformations
+4. Composing these across multiple depths
+
+#+begin_example
+Entity Graph:     Customers ←── Orders ←── Items
+DFS Traversal:    ← aggregate   ← aggregate
+                  transform     transform
+#+end_example
+
+* Forward vs Backward Relationships
+
+Two traversal directions yield different feature types:
+
+- *Backward* (parent \leftarrow child): Aggregate many child rows into one parent value
+  - =SUM(orders.amount)=, =COUNT(orders.status)=
+- *Forward* (child \rightarrow parent): Look up parent attributes
+  - =customer.country=, =customer.age=
+
+Backward relationships are where the richness lives.
+
+* Aggregation Primitives
+
+Reduce many rows to a single value:
+
+| Category | Examples |
+|----------+--------------------------------------------------|
+| Basic | =sum=, =mean=, =count=, =min=, =max=, =stddev= |
+| Ordered-set | =median=, =mode=, =p25=, =p75=, =p95= |
+| Statistical | =skewness=, =kurtosis=, =cv=, =iqr= |
+| Temporal | =event_rate=, =time_span=, =gap_mean=, =burstiness= |
+| Distribution | =entropy=, =hhi=, =gini= |
+| Sequence | =ngram_2_freq=, =sequence_entropy=, =longest_streak= |
+
+Featurizer ships with *43 aggregations* across 10 categories.
+
+* Transformation Primitives
+
+Enrich features within an entity:
+
+| Category | Examples |
+|------------+--------------------------------------------------|
+| Math | =abs=, =ln=, =sqrt=, =exp=, =sign= |
+| Temporal | =lag_1=, =lag_7=, =diff=, =time_since_previous= |
+| Rolling | =rolling_mean_7=, =rolling_std_14=, =rolling_iqr_7= |
+| Smoothing | =ema_7=, =holt_winters_level_14= |
+| Cumulative | =cum_sum=, =cum_mean=, =cum_max= |
+| Cyclical | =cyclic_hour=, =cyclic_month=, =cyclic_day= |
+| Population | =cross_entity_zscore=, =cross_entity_percentile= |
+| Change-point | =cusum=, =mean_shift_ratio_7= |
+
+Featurizer ships with *71 transformations* across 15+ categories.
+
+* Depth and Composition
+
+Features compose across depths:
+
+| Depth | What happens | Example |
+|-------+----------------------------+---------------------------------------------|
+| 1 | Direct aggregation | =SUM(orders.amount)= |
+| 2 | Aggregation of aggregation | =MEAN(SUM(items.quantity))= |
+| 3 | Triple composition | =STDDEV(MEAN(SUM(supplier.rating)))= |
+
+Each depth level multiplies the feature count.
+
+* The Feature Explosion
+
+Feature count grows combinatorially:
+
+| Depth | Variables | Aggregations | Intervals | Transforms | ~Features |
+|-------+-----------+--------------+-----------+------------+-----------|
+| 1 | 3 | 4 | 3 | 17 | ~612 |
+| 2 | 5 | 4 | 3 | 17 | ~1,020 |
+| 3 | 7 | 4 | 3 | 17 | ~1,428 |
+
+This is a /feature/ --- not a bug. ML model selection can prune; human enumeration cannot scale.
+
+* DFS: The Algorithm
+
+The original DFS algorithm from Kanter & Veeramachaneni (DSAA 2015):
+
+1. For each entity in the graph:
+2. Collect base features (declared variables)
+3. For each backward relationship: aggregate child features
+4. For each forward relationship: look up parent features
+5. Apply transformations to all features
+6. If =depth < max_depth=: recurse into related entities
+
+Featurizer implements this in pure SQL, producing CTEs at each step.
+
+* Three-Stage Pipeline
+
+#+begin_example
+┌──────────┐     ┌──────────────┐     ┌──────────┐
+│ Planner  │ ──→ │ SQL Renderer │ ──→ │ Executor │
+│          │     │              │     │          │
+│ DFS      │     │ CTEs +       │     │ Run SQL  │
+│ traversal│     │ lateral join │     │ → DataFrame│
+└──────────┘     └──────────────┘     └──────────┘
+     ↑                                      │
+  YAML config                          pandas DataFrame
+#+end_example
+
+All three stages are independently importable for custom workflows.
+
+* The Planner
+
+The planner performs DFS traversal of the entity graph:
+
+1. Start at the target entity
+2. Traverse backward relationships \rightarrow generate aggregation CTEs
+3. Traverse forward relationships \rightarrow generate lookup CTEs
+4. At each entity, apply transformations
+5. Produce two CTEs per entity: =<alias>_synth= and =<alias>_transform=
+
+The planner is /pure logic/ --- it produces CTE definitions, not SQL strings.
+
+* CTE Generation Pattern
+
+For each entity, two CTEs are generated:
+
+#+begin_src sql
+-- Stage 1: Synthesize aggregated + direct features
+<entity>_synth AS (
+  SELECT base.*, aggs.feature1, aggs.feature2
+  FROM <entity> base
+  LEFT JOIN <child>_aggs_for_<entity> aggs ON ...
+),
+
+-- Stage 2: Apply transformations
+<entity>_transform AS (
+  SELECT *, LAG(feature1) OVER (...) AS lag_1_feature1,
+            AVG(feature1) OVER (...) AS rolling_mean_7_feature1
+  FROM <entity>_synth
+)
+#+end_src
+
+* The SQL Renderer
+
+The renderer wraps CTEs in the temporal execution context:
+
+#+begin_src sql
+SELECT aod.as_of_date, t.*
+FROM as_of_dates AS aod
+CROSS JOIN LATERAL (
+  WITH
+    orders_synth AS (...),
+    orders_transform AS (...),
+    orders_aggs_for_customers AS (...),
+    customers_synth AS (...),
+    customers_transform AS (...)
+  SELECT * FROM customers_transform
+) AS t
+ORDER BY aod.as_of_date
+#+end_src
+
+The =CROSS JOIN LATERAL= ensures point-in-time correctness.
+
+* Temporal Joins (As-Of Semantics)
+
+Relationships can declare temporal blocks:
+
+#+begin_src yaml
+temporal:
+  mode: as_of
+  grace: P21D
+  child_timestamp: custom_field
+#+end_src
+
+Generated SQL uses =LEFT JOIN LATERAL= to pull the most recent parent record:
+
+#+begin_src sql
+LEFT JOIN LATERAL (
+  SELECT * FROM parent
+  WHERE parent.id = child.parent_id
+    AND parent.timestamp <= child.timestamp
+    AND parent.timestamp >= child.timestamp
+        - INTERVAL 'P21D'
+  ORDER BY parent.timestamp DESC
+  LIMIT 1
+) AS parent_asof ON TRUE
+#+end_src
+
+* Configuration-Driven Feature Engineering
+
+Everything is defined in YAML --- no code required for standard use:
+
+#+begin_src yaml
+target: customers          # Generate features for this entity
+max_depth: 2               # Traverse up to 2 levels deep
+intervals: [P7D, P30D]     # Time windows for aggregations
+
+entities:
+  - alias: customers
+    table: public.customers
+    id: customer_id
+    temporal_ix: created_at
+    variables:
+      country: { type: categorical }
+      age: { type: numeric }
+
+relationships:
+  - parent: { entity: customers, key: customer_id }
+    child: { entity: orders, key: customer_id }
+#+end_src
+
+* From YAML to SQL
+
+A simple config with 2 entities, 3 variables, and 2 intervals generates:
+
+- ~50--100 features per entity
+- 4--6 CTEs
+- ~200 lines of SQL
+- Fully point-in-time correct
+
+All without writing a single line of SQL.
+
+* From SQL to DataFrame
+
+#+begin_src python
+from featurizer import Featurizer
+
+# One-liner: config → features
+f = Featurizer("config.yaml")
+df = f.to_dataframe()
+
+# Or inspect the SQL first
+print(f.query)
+
+# Or just get features as Python objects
+for feature in f.features["customers"]:
+    print(f"{feature.name}: {feature.type}")
+#+end_src
+
+* Configuration Validation
+
+Featurizer validates configs before generating SQL:
+
+#+begin_example
+ValidationError: Entity 'custmers' not found.
+  Did you mean: 'customers'? (Levenshtein distance: 1)
+
+ValidationError: Circular relationship detected:
+  orders → items → products → orders
+
+Warning: max_depth=7 may generate very large queries.
+  Consider reducing to ≤ 5 for exploration.
+#+end_example
+
+Typo detection, cycle detection, and best-practice warnings built in.
+
+* Running Example: E-Commerce
+
+#+begin_example
+Customers                    Orders
+┌────────────────┐           ┌──────────────────┐
+│ customer_id    │ ←─────── │ order_id          │
+│ country        │     FK    │ customer_id       │
+│ age            │           │ amount            │
+│ created_at     │           │ status            │
+└────────────────┘           │ ordered_at        │
+                             └──────────────────┘
+#+end_example
+
+*Goal*: Generate features for customers based on their order history.
+
+* Step 1: Base Features
+
+Each entity starts with its declared variables:
+
+| Entity | Variable | Type |
+|----------+-----------+-------------|
+| customers | country | categorical |
+| customers | age | numeric |
+| orders | amount | numeric |
+| orders | status | categorical |
+
+These are the raw inputs to feature synthesis.
+
+* Step 2: Aggregations
+
+Traversing the backward relationship (Customers \leftarrow Orders):
+
+| Feature | SQL | Meaning |
+|----------------------------+------------------+----------------------|
+| =SUM(orders.amount)= | =SUM(amount)= | Total spend |
+| =COUNT(orders.status)= | =COUNT(status)= | Number of orders |
+| =MEAN(orders.amount)= | =AVG(amount)= | Average order value |
+| =STDDEV(orders.amount)= | =STDDEV(amount)= | Spending variability |
+
+* Step 3: Time Windows
+
+Adding intervals creates time-bounded versions:
+
+| Feature | Window | Meaning |
+|-----------------------------------------------+---------+-----------------|
+| =SUM(orders.amount\vert{}interval=P7D)= | 7 days | Recent spending |
+| =SUM(orders.amount\vert{}interval=P30D)= | 30 days | Monthly spending |
+| =COUNT(orders.status\vert{}interval=P7D)= | 7 days | Recent activity |
+
+Each interval doubles the aggregation features.
+
+* Step 4: Transformations
+
+Transformations enrich aggregated features:
+
+| Transform | Input | Output | Meaning |
+|------------------+-----------------+---------------------------+----------------|
+| =lag_1= | =SUM(amount)= | Previous period's total | Trend detection |
+| =rolling_mean_7= | =SUM(amount)= | 7-period moving average | Smoothing |
+| =pct_change_1= | =SUM(amount)= | % change from last | Growth rate |
+| =cum_sum= | =COUNT(status)= | Running total | Lifetime activity |
+
+* Step 5: Advanced Primitives
+
+The expanded primitive library adds deeper analytics:
+
+| Feature | Category | Insight |
+|-------------------------------+--------------+-------------------------------|
+| =ENTROPY(orders.status)= | Distribution | Order type diversity |
+| =GAP_MEAN(orders.ordered_at)= | Gap stats | Avg time between orders |
+| =BURSTINESS(orders.ordered_at)= | Temporal | Bursty vs regular ordering |
+| =GINI(orders.amount)= | Inequality | Spending concentration |
+| =LONGEST_STREAK(orders.status)= | Sequence | Consecutive same-status orders |
+
+* The Full Feature Matrix
+
+For one customer with 2 variables, 4 aggregations, 2 intervals, and 17 transformations:
+
+| Stage | Count |
+|----------------------------------------------+-------|
+| Base variables | 4 |
+| Aggregated (4 aggs \times 2 vars \times 3 windows) | 24 |
+| Transformed (24 \times 17 transforms) | 408 |
+| + Direct features, cross-entity | ~450 |
+
+All point-in-time correct, all pure SQL.
+
+* 43 Aggregations in 10 Categories
+
+| Category | Count | Key Examples |
+|------------------------+-------+---------------------------------------|
+| Basic | 8 | =sum=, =mean=, =count=, =stddev= |
+| Boolean | 2 | =all=, =any= |
+| Ordered-set | 8 | =median=, =mode=, =p10=--=p99= |
+| Statistical | 7 | =z_score=, =skewness=, =kurtosis= |
+| Distribution | 3 | =iqr=, =cv=, =range= |
+| Temporal | 2 | =event_rate=, =time_span= |
+| Gap statistics | 5 | =gap_mean=, =gap_stddev=, =gap_cv= |
+| Temporal patterns | 1 | =burstiness= |
+| Categorical dist. | 2 | =entropy=, =hhi= |
+| Inequality + Sequence | 5 | =gini=, =ngram_2_freq=, =longest_streak= |
+
+* Basic Aggregations with Intervals
+
+#+begin_src sql
+-- Without interval
+SUM(amount)
+
+-- With P7D interval (filter to last 7 days)
+SUM(amount) FILTER (
+  WHERE daterange(
+    (aod.as_of_date - interval 'P7D')::date,
+    aod.as_of_date::date, '[]'
+  ) @> order_date
+)
+#+end_src
+
+The =FILTER= clause provides temporal windowing without subqueries.
+
+* Ordered-Set and Percentiles
+
+#+begin_src sql
+-- Median
+PERCENTILE_CONT(0.5)
+  WITHIN GROUP (ORDER BY amount)
+
+-- Interquartile Range
+PERCENTILE_CONT(0.75)
+  WITHIN GROUP (ORDER BY amount)
+- PERCENTILE_CONT(0.25)
+  WITHIN GROUP (ORDER BY amount)
+
+-- Full profile: p10, p25, median, p75, p90, p95, p99
+#+end_src
+
+Seven percentile aggregations capture the full distribution shape.
+
+* The SubqueryAggregator Architecture
+
+Some aggregations require correlated subqueries:
+
+#+begin_src sql
+-- Gap statistics need LAG() which can't nest
+-- inside GROUP BY. SubqueryAggregator generates:
+(SELECT AVG(gap) FROM (
+  SELECT EXTRACT(EPOCH FROM
+    ts - LAG(ts) OVER (ORDER BY ts)
+  ) AS gap
+  FROM child_table
+  WHERE child_key = parent.parent_key
+) sub WHERE gap IS NOT NULL)
+#+end_src
+
+Used by: =gap_mean=, =gap_stddev=, =entropy=, =hhi=, =gini=, =ngram_2_freq=, =sequence_entropy=, =longest_streak=
+
+* Gap Statistics and Burstiness
+
+Inter-event gap analysis for temporal patterns:
+
+#+begin_example
+Events:   ●──────●──●●──────────●───●
+Gaps:        6d   1d 0d    8d     2d
+
+gap_mean = 3.4 days
+gap_cv = 0.95 (high variability)
+burstiness = (σ-μ)/(σ+μ) = 0.42 (moderately bursty)
+#+end_example
+
+- =burstiness = -1=: perfectly regular (clock-like)
+- =burstiness = 0=: random (Poisson)
+- =burstiness = 1=: highly bursty (clustered)
+
+* Entropy, HHI, and Gini
+
+Distribution and inequality measures:
+
+| Metric | What it measures | Range |
+|-----------+----------------------+-------------------------------|
+| *Entropy* | Category diversity | 0 (one type) \rightarrow ln(N) (uniform) |
+| *HHI* | Market concentration | 1/N (uniform) \rightarrow 1 (monopoly) |
+| *Gini* | Value inequality | 0 (equal) \rightarrow 1 (one has all) |
+
+Useful for: customer behavior diversity, transaction type concentration, spending inequality.
+
+* Sequence Features
+
+Analyze patterns in categorical event streams:
+
+| Feature | What it captures |
+|---------------------+------------------------------------------|
+| =ngram_2_freq= | Bigram diversity (transition variety) |
+| =ngram_3_freq= | Trigram diversity (longer patterns) |
+| =sequence_entropy= | Transition matrix entropy (predictability) |
+| =longest_streak= | Longest run of same value (persistence) |
+
+Applications: payment type sequences, status transitions, behavior chains.
+
+* 71 Transformers in 15+ Categories
+
+| Category | Count | Examples |
+|--------------+-------+-----------------------------------------------|
+| Identity/Math | 11 | =abs=, =ln=, =sqrt=, =cbrt=, =sign= |
+| Date parts | 13 | =day=, =month=, =hour=, =quarter= |
+| Binning | 5 | =hourly_bin=, =cyclic_hour=, =cyclic_month= |
+| Cumulative | 5 | =cum_sum=, =cum_mean=, =cum_max= |
+| Value access | 5 | =first=, =last=, =previous=, =diff= |
+| Lag | 3 | =lag_1=, =lag_3=, =lag_7= |
+| Rolling stats | 10 | =rolling_mean_7=, =rolling_std_14= |
+| Smoothing | 4 | =ema_7=, =ema_14=, =holt_winters_level_7= |
+| % Change | 2 | =pct_change_1=, =pct_change_3= |
+| Distribution | 3 | =cdf=, =percent_rank=, =ntile= |
+| Boolean | 2 | =is_null=, =in_array= |
+| Population | 2 | =cross_entity_zscore= |
+| Change-point | 3 | =cusum=, =mean_shift_ratio_7= |
+
+* The SubqueryAggregator Pattern
+
+#+begin_src python
+class SubqueryAggregator(Aggregator):
+    """Base class for aggregations requiring
+    correlated subqueries within GROUP BY."""
+
+    def __call__(self, relationship, feature, interval):
+        # Access child table alias and join key
+        child_alias = relationship.child.alias
+        child_key = relationship.child_key
+        # Generate correlated subquery SQL
+        return self._build_subquery(
+            feature, child_alias, child_key
+        )
+#+end_src
+
+The planner passes =relationship= to aggregator calls, enabling SubqueryAggregator to correlate.
+
+* Population Windows
+
+Cross-entity statistics normalize across /all/ entities:
+
+#+begin_src sql
+-- cross_entity_zscore: How unusual is this entity?
+(value - AVG(value) OVER ())
+  / NULLIF(STDDEV(value) OVER (), 0)
+
+-- cross_entity_percentile: Where does this entity rank?
+PERCENT_RANK() OVER (ORDER BY value)
+#+end_src
+
+Window =OVER ()= spans the entire result set, comparing each entity to the population.
+
+* Change-Point Detection
+
+Detect regime changes in feature behavior:
+
+#+begin_src sql
+-- mean_shift_ratio: Compare recent window to overall
+AVG(val) OVER (... ROWS 6 PRECEDING)
+  / NULLIF(AVG(val) OVER (), 0)
+
+-- CUSUM: Cumulative sum of deviations
+SUM(val - target_mean)
+  OVER (PARTITION BY id ORDER BY date)
+#+end_src
+
+- =mean_shift_ratio \approx 1.0=: stable
+- =mean_shift_ratio \gg 1.0=: recent increase
+- CUSUM drift: sustained shift that rolling averages miss
+
+* Extensibility: Custom Primitives in 10 Lines
+
+#+begin_src python
+from featurizer.primitives.aggregations import Aggregator
+from featurizer.primitives.utils import register_aggregation
+
+class WeightedSum(Aggregator):
+    def __init__(self):
+        super().__init__(name="weighted_sum")
+
+    def _build_aggregate_expression(self, feature, interval):
+        base = super()._build_aggregate_expression(
+            feature, interval
+        )
+        return base.replace(
+            feature.name, f"{feature.name} * weight"
+        )
+
+register_aggregation("weighted_sum", WeightedSum())
+#+end_src
+
+Register once, use everywhere via config.
+
+* Performance Considerations
+
+Featurizer generates SQL --- performance depends on PostgreSQL:
+
+- *Indexes*: Ensure =temporal_ix= columns have B-tree indexes
+- *Partitioning*: Large fact tables benefit from range partitioning on time
+- *Parallelism*: PostgreSQL parallel query handles aggregation CTEs well
+- *Materialization*: Use =CREATE TABLE AS= for large feature matrices
+
+Rule of thumb: if the query runs in PostgreSQL, Featurizer generates it correctly.
+
+* Real-World Applications
+
+Featurizer has been applied to:
+
+| Domain | Entities | Features | Outcome |
+|----------------+----------+----------+------------------------------|
+| Early warning | 5 | ~2,000 | Inspection prioritization |
+| Healthcare | 4 | ~1,500 | Patient risk stratification |
+| Criminal justice | 6 | ~3,000 | Recidivism risk assessment |
+| Education | 4 | ~1,200 | Student dropout prediction |
+
+In each case, feature engineering went from weeks to hours.
+
+* Validation and CLI Discovery
+
+#+begin_src bash
+# List all available primitives
+python -m featurizer list-primitives
+
+# Aggregations with SQL examples
+python -m featurizer list-primitives --type agg --show-sql
+
+# Transformations by category
+python -m featurizer list-primitives --type transform \
+    --category
+#+end_src
+
+The CLI makes it easy to discover and explore the full primitive library.
+
+* Testing: 219 Tests, 93%+ Coverage
+
+- 219 tests across primitives, planner, renderer, validator
+- Regression tests for all 43 aggregations and 71 transformations
+- Fixture-based configs in =tests/fixtures/=
+- SQL fragment assertions for deterministic output
+
+#+begin_src bash
+uv run pytest -q                    # Quick run
+uv run pytest --cov=featurizer      # With coverage
+uv run basedpyright                 # Type checking
+#+end_src
+
+* Roadmap
+
+| Priority | Item | Status |
+|----------+-------------------------------+---------|
+| High | Release prep (changelog, PyPI) | Planned |
+| High | API documentation | Planned |
+| Medium | CI/CD pipeline | Planned |
+| Medium | Feature store integration | Research |
+| Low | GPU-accelerated SQL | Future |
+
+* Featurizer in the ML Pipeline
+
+#+begin_example
+┌──────────┐    ┌────────────┐    ┌───────────────┐    ┌──────────┐
+│ Raw Data │ →  │ Featurizer │ →  │ Feature Matrix│ →  │ Model    │
+│ (PostgreSQL)  │ (YAML+SQL) │    │ (DataFrame)   │    │ Training │
+└──────────┘    └────────────┘    └───────────────┘    └──────────┘
+     ↑               ↑                                      │
+  Entity schema   Primitives                            Predictions
+  Relationships   Intervals
+  Temporal IX     Depth
+#+end_example
+
+Featurizer automates the most time-consuming step in the ML pipeline.
+
+* Thank You
+
+*Featurizer*: Automated Feature Engineering for Temporal Data in PostgreSQL
+
+- 43 aggregations, 71 transformations, 219 tests
+- Pure SQL generation --- no data movement
+- Point-in-time correct by construction
+- Configuration-driven, extensible, validated
+
+#+begin_example
+Adolfo De Unánue
+adolfo@uchicago.edu
+
+Center for Data Science and Public Policy
+University of Chicago
+#+end_example

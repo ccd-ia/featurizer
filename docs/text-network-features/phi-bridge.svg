@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 442" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect width="1180" height="442" fill="#fbfaf7"/>
+<text x="40" y="44" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="24" fill="#1c1c1a">Why both fit the same spine</text>
+<text x="40" y="68" font-size="12.5" fill="#56544e">proj_C widens from a scalar to a structured or unstructured column. Only φ changes — windowing, aggregation, causal-safety and cost tiers are identical.</text>
+<rect x="50" y="110" width="250" height="78" rx="10" fill="#eaf1f7" stroke="#2f5d8a" stroke-opacity="0.5"/>
+<rect x="50" y="110" width="6" height="78" rx="3" fill="#2f5d8a"/>
+<text x="128" y="140" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="15" fill="#1c1c1a" font-weight="bold">Scalar column</text>
+<text x="128" y="160" font-size="11" fill="#56544e">amount, status, ts</text>
+<rect x="74" y="147.0" width="6" height="6" fill="#2f5d8a"/>
+<rect x="84" y="140.0" width="6" height="15" fill="#2f5d8a"/>
+<rect x="94" y="133.0" width="6" height="24" fill="#2f5d8a"/>
+<path d="M306 149.0 L344 149.0" stroke="#56544e" stroke-width="2"/>
+<path d="M338 144.0 L347 149.0 L338 154.0" stroke="#56544e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="50" y="208" width="250" height="78" rx="10" fill="#f0eaf6" stroke="#6b4a9c" stroke-opacity="0.5"/>
+<rect x="50" y="208" width="6" height="78" rx="3" fill="#6b4a9c"/>
+<text x="128" y="238" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="15" fill="#1c1c1a" font-weight="bold">Structured column</text>
+<text x="128" y="258" font-size="11" fill="#56544e">node in a time-evolving graph</text>
+<line x1="74" y1="235.0" x2="82" y2="261.0" stroke="#6b4a9c" stroke-width="1.4"/>
+<line x1="102" y1="239.0" x2="104" y2="259.0" stroke="#6b4a9c" stroke-width="1.4"/>
+<circle cx="74" cy="235.0" r="4.5" fill="#6b4a9c"/>
+<circle cx="102" cy="239.0" r="4.5" fill="#6b4a9c"/>
+<circle cx="82" cy="261.0" r="4.5" fill="#6b4a9c"/>
+<circle cx="104" cy="259.0" r="4.5" fill="#6b4a9c"/>
+<path d="M306 247.0 L344 247.0" stroke="#56544e" stroke-width="2"/>
+<path d="M338 242.0 L347 247.0 L338 252.0" stroke="#56544e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="50" y="306" width="250" height="78" rx="10" fill="#f8eee2" stroke="#b5611f" stroke-opacity="0.5"/>
+<rect x="50" y="306" width="6" height="78" rx="3" fill="#b5611f"/>
+<text x="128" y="336" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="15" fill="#1c1c1a" font-weight="bold">Unstructured column</text>
+<text x="128" y="356" font-size="11" fill="#56544e">a document / free text</text>
+<rect x="73" y="332.0" width="26" height="3.4" rx="1.7" fill="#b5611f"/>
+<rect x="73" y="340.0" width="20" height="3.4" rx="1.7" fill="#b5611f"/>
+<rect x="73" y="348.0" width="24" height="3.4" rx="1.7" fill="#b5611f"/>
+<rect x="73" y="356.0" width="14" height="3.4" rx="1.7" fill="#b5611f"/>
+<path d="M306 345.0 L344 345.0" stroke="#56544e" stroke-width="2"/>
+<path d="M338 340.0 L347 345.0 L338 350.0" stroke="#56544e" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="400" y="100" width="300" height="226" rx="12" fill="#ffffff" stroke="#1c1c1a" stroke-opacity="0.4" stroke-width="1.4"/>
+<text x="550.0" y="128" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="22" fill="#1c1c1a">φ  (transform)</text>
+<rect x="418" y="152" width="6" height="34" rx="3" fill="#2f5d8a"/>
+<text x="434" y="168" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="13" fill="#1c1c1a">scalar:</text>
+<text x="434" y="185" font-size="11.5" fill="#56544e">identity, log, √, is_null, rank</text>
+<rect x="418" y="202" width="6" height="34" rx="3" fill="#6b4a9c"/>
+<text x="434" y="218" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="13" fill="#1c1c1a">graph:</text>
+<text x="434" y="235" font-size="11.5" fill="#56544e">extract node metric as-of t₀</text>
+<rect x="418" y="252" width="6" height="34" rx="3" fill="#b5611f"/>
+<text x="434" y="268" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="13" fill="#1c1c1a">text:</text>
+<text x="434" y="285" font-size="11.5" fill="#56544e">reduce / embed / extract</text>
+<path d="M706 213 L748 213" stroke="#56544e" stroke-width="2.4"/>
+<path d="M740 207 L750 213 L740 219" stroke="#56544e" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="760" y="150" width="370" height="126" rx="12" fill="#e7f2ef" stroke="#1f6f64" stroke-opacity="0.5"/>
+<text x="945.0" y="182" text-anchor="middle" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="15" fill="#1c1c1a" font-weight="bold">the unchanged spine tail</text>
+<text x="945.0" y="212" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#1c1c1a">AGG_g over W(t₀)</text>
+<text x="945.0" y="240" text-anchor="middle" font-size="11.5" fill="#56544e">same windows, same verbs,</text>
+<text x="945.0" y="256" text-anchor="middle" font-size="11.5" fill="#56544e">same causal &amp; cost discipline</text>
+<text x="40" y="388" font-size="12" fill="#56544e"><tspan font-weight="bold" fill="#1c1c1a">Caveat that travels with them:</tspan> the heavier φ is, the worse the leakage. A graph metric is non-local (one future edge moves it);</text>
+<text x="40" y="408" font-size="12" fill="#56544e">a fitted vocabulary or a post-t₀ embedding model imports the future. Snapshot the graph and refit text models strictly before t₀.</text>
+</svg>

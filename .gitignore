@@ -116,3 +116,15 @@ GIT_REMOTE
 .project
 handoff-trace.log
 README.org
+
+# macOS
+.DS_Store
+
+# Claude Code harness logs (local-only)
+logs/
+
+# Brainstorm / scratch notes (local-only)
+chatgpt-discussion.md
+
+# Generated example databases
+examples/*/data.db

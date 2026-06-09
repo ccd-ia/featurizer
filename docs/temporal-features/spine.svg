@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 300" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect width="1180" height="300" fill="#fbfaf7"/>
+<text x="40" y="44" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="24" fill="#1c1c1a">The generative spine</text>
+<text x="40" y="68" font-size="13" fill="#56544e">Every temporal feature is one instance of this pipeline. The knobs below are all you ever turn.</text>
+<rect x="40" y="86" width="1100" height="40" rx="6" fill="#ffffff" stroke="#d8d4c8"/>
+<text x="60" y="112" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="17" fill="#1c1c1a">feature(e, t&#8320;)  =  AGG_g [ &#966;( proj_C( { events of e : P holds, time &#8712; W(t&#8320;) } ) ) ]</text>
+<rect x="40.0" y="168" width="170.0" height="92" rx="8" fill="#e7f2ef" stroke="#cbe4dd"/>
+<rect x="40.0" y="168" width="170.0" height="6" rx="3" fill="#1f6f64"/>
+<text x="125.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">events of e</text>
+<text x="125.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">the entity's own</text>
+<text x="125.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">rows in the log</text>
+<path d="M215.0 209.0 L222.0 214.0 L215.0 219.0" stroke="#56544e" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="226.0" y="168" width="170.0" height="92" rx="8" fill="#e7f2ef" stroke="#cbe4dd"/>
+<rect x="226.0" y="168" width="170.0" height="6" rx="3" fill="#1f6f64"/>
+<text x="311.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">filter  P</text>
+<text x="311.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">predicate on event</text>
+<text x="311.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">columns (type, status)</text>
+<path d="M401.0 209.0 L408.0 214.0 L401.0 219.0" stroke="#56544e" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="412.0" y="168" width="170.0" height="92" rx="8" fill="#e7f2ef" stroke="#cbe4dd"/>
+<rect x="412.0" y="168" width="170.0" height="6" rx="3" fill="#1f6f64"/>
+<text x="497.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">window  W(t&#8320;)</text>
+<text x="497.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">lookback: days, rows,</text>
+<text x="497.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">since-event, calendar</text>
+<path d="M587.0 209.0 L594.0 214.0 L587.0 219.0" stroke="#56544e" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="598.0" y="168" width="170.0" height="92" rx="8" fill="#e7f2ef" stroke="#cbe4dd"/>
+<rect x="598.0" y="168" width="170.0" height="6" rx="3" fill="#1f6f64"/>
+<text x="683.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">project  C</text>
+<text x="683.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">1 / 2 / n columns</text>
+<text x="683.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">= the arity axis</text>
+<path d="M773.0 209.0 L780.0 214.0 L773.0 219.0" stroke="#56544e" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="784.0" y="168" width="170.0" height="92" rx="8" fill="#eaf1f7" stroke="#cfdded"/>
+<rect x="784.0" y="168" width="170.0" height="6" rx="3" fill="#2f5d8a"/>
+<text x="869.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">transform  &#966;</text>
+<text x="869.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">log, &#8730;, abs, is_null,</text>
+<text x="869.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">rank, date-part</text>
+<path d="M959.0 209.0 L966.0 214.0 L959.0 219.0" stroke="#56544e" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="970.0" y="168" width="170.0" height="92" rx="8" fill="#f0eaf6" stroke="#ddd0ec"/>
+<rect x="970.0" y="168" width="170.0" height="6" rx="3" fill="#6b4a9c"/>
+<text x="1055.0" y="202" text-anchor="middle" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#1c1c1a">aggregate  g</text>
+<text x="1055.0" y="226" text-anchor="middle" font-size="11.5" fill="#56544e">the temporal verb:</text>
+<text x="1055.0" y="242" text-anchor="middle" font-size="11.5" fill="#56544e">count &#8230; trend &#8230; entropy</text>
+<text x="40" y="290" font-size="12" fill="#56544e">Arity of C (and of P) is the &#8220;one / two / several variables&#8221; question. Choice of &#966; and g is the rest of the catalog.</text>
+</svg>

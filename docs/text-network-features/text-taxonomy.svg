@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 596" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<rect width="1180" height="596" fill="#fbfaf7"/>
+<text x="30" y="42" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="25" fill="#1c1c1a">Substrate E: text on events</text>
+<text x="30" y="66" font-size="12.5" fill="#56544e">Text is a column whose φ is heavy. It enters along three paths; each rejoins the temporal spine. Start with Path 1 — cheap, interpretable, causal-safe.</text>
+<rect x="30.0" y="88" width="361.3" height="46" rx="8" fill="#4a7c2f"/>
+<text x="43.0" y="108.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#fff" font-weight="bold">Path 1 · Reduce → aggregate</text>
+<text x="43.0" y="125.0" font-size="10.5" fill="#fff" opacity="0.85">scalars per event, then the whole spine applies</text>
+<rect x="30.0" y="144.0" width="361.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="144.0" width="5" height="43" rx="2.5" fill="#2f8f4e"/>
+<circle cx="361.3" cy="178.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="178.0" r="2.6" fill="#e6e3da"/>
+<circle cx="379.3" cy="178.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="159.5" font-size="11" fill="#1c1c1a">Surface: length, TTR, readability, caps/punct, OOV,</text>
+<text x="42.0" y="172.5" font-size="11" fill="#1c1c1a">language-ID</text>
+<rect x="30.0" y="194.0" width="361.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="194.0" width="5" height="43" rx="2.5" fill="#2f8f4e"/>
+<circle cx="361.3" cy="228.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="228.0" r="2.6" fill="#e6e3da"/>
+<circle cx="379.3" cy="228.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="209.5" font-size="11" fill="#1c1c1a">Dictionary: sentiment, LIWC, toxicity, urgency, formality,</text>
+<text x="42.0" y="222.5" font-size="11" fill="#1c1c1a">hedging</text>
+<rect x="30.0" y="244.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="244.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="361.3" cy="264.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="264.0" r="2.6" fill="#8a8780"/>
+<circle cx="379.3" cy="264.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="262.5" font-size="11" fill="#1c1c1a">Topic vector: LDA / NMF shares per document</text>
+<rect x="30.0" y="280.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="280.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="361.3" cy="300.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="300.0" r="2.6" fill="#8a8780"/>
+<circle cx="379.3" cy="300.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="298.5" font-size="11" fill="#1c1c1a">NER counts + entity linking to a KB</text>
+<rect x="30.0" y="316.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="316.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="361.3" cy="336.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="336.0" r="2.6" fill="#8a8780"/>
+<circle cx="379.3" cy="336.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="334.5" font-size="11" fill="#1c1c1a">Intent / category classifier label per event</text>
+<rect x="30.0" y="352.0" width="361.3" height="57" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="30.0" y="352.0" width="5" height="57" rx="2.5" fill="#2f8f4e"/>
+<circle cx="361.3" cy="400.0" r="2.6" fill="#8a8780"/>
+<circle cx="370.3" cy="400.0" r="2.6" fill="#8a8780"/>
+<circle cx="379.3" cy="400.0" r="2.6" fill="#e6e3da"/>
+<text x="42.0" y="367.5" font-size="11" fill="#1c1c1a">↓ then temporal (reuse the spine): sentiment slope,</text>
+<text x="42.0" y="380.5" font-size="11" fill="#1c1c1a">topic-share DRIFT (KL vs baseline), complaint count, recency</text>
+<text x="42.0" y="393.5" font-size="11" fill="#1c1c1a">of negative, toxicity volatility</text>
+<rect x="409.3" y="88" width="361.3" height="46" rx="8" fill="#6b4a9c"/>
+<text x="422.3" y="108.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#fff" font-weight="bold">Path 2 · Text induces the graph</text>
+<text x="422.3" y="125.0" font-size="10.5" fill="#fff" opacity="0.85">feeds every network family in substrate C</text>
+<rect x="409.3" y="144.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="409.3" y="144.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="740.7" cy="164.0" r="2.6" fill="#8a8780"/>
+<circle cx="749.7" cy="164.0" r="2.6" fill="#8a8780"/>
+<circle cx="758.7" cy="164.0" r="2.6" fill="#e6e3da"/>
+<text x="421.3" y="162.5" font-size="11" fill="#1c1c1a">Near-duplicate / shared-content edges (MinHash / LSH)</text>
+<rect x="409.3" y="180.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="409.3" y="180.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="740.7" cy="200.0" r="2.6" fill="#8a8780"/>
+<circle cx="749.7" cy="200.0" r="2.6" fill="#8a8780"/>
+<circle cx="758.7" cy="200.0" r="2.6" fill="#e6e3da"/>
+<text x="421.3" y="198.5" font-size="11" fill="#1c1c1a">Citation network (cases / docs citing each other)</text>
+<rect x="409.3" y="216.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="409.3" y="216.0" width="5" height="29" rx="2.5" fill="#2f8f4e"/>
+<circle cx="740.7" cy="236.0" r="2.6" fill="#8a8780"/>
+<circle cx="749.7" cy="236.0" r="2.6" fill="#8a8780"/>
+<circle cx="758.7" cy="236.0" r="2.6" fill="#e6e3da"/>
+<text x="421.3" y="234.5" font-size="11" fill="#1c1c1a">Co-mention entity graph</text>
+<rect x="409.3" y="252.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="409.3" y="252.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="740.7" cy="272.0" r="2.6" fill="#8a8780"/>
+<circle cx="749.7" cy="272.0" r="2.6" fill="#8a8780"/>
+<circle cx="758.7" cy="272.0" r="2.6" fill="#8a8780"/>
+<text x="421.3" y="270.5" font-size="11" fill="#1c1c1a">Semantic-similarity graph (embed + cosine threshold)</text>
+<rect x="409.3" y="288.0" width="361.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="409.3" y="288.0" width="5" height="43" rx="2.5" fill="#c98a1b"/>
+<circle cx="740.7" cy="322.0" r="2.6" fill="#8a8780"/>
+<circle cx="749.7" cy="322.0" r="2.6" fill="#8a8780"/>
+<circle cx="758.7" cy="322.0" r="2.6" fill="#8a8780"/>
+<text x="421.3" y="303.5" font-size="11" fill="#1c1c1a">→ then run substrate C on the induced graph (synchrony +</text>
+<text x="421.3" y="316.5" font-size="11" fill="#1c1c1a">similarity = the coordination signature)</text>
+<rect x="788.7" y="88" width="361.3" height="46" rx="8" fill="#b5611f"/>
+<text x="801.7" y="108.0" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="14" fill="#fff" font-weight="bold">Path 3 · Embedding / extraction</text>
+<text x="801.7" y="125.0" font-size="10.5" fill="#fff" opacity="0.85">dense representations &amp; structured parsing</text>
+<rect x="788.7" y="144.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="788.7" y="144.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="1120.0" cy="164.0" r="2.6" fill="#8a8780"/>
+<circle cx="1129.0" cy="164.0" r="2.6" fill="#8a8780"/>
+<circle cx="1138.0" cy="164.0" r="2.6" fill="#8a8780"/>
+<text x="800.7" y="162.5" font-size="11" fill="#1c1c1a">Per-event sentence embeddings</text>
+<rect x="788.7" y="180.0" width="361.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="788.7" y="180.0" width="5" height="43" rx="2.5" fill="#c98a1b"/>
+<circle cx="1120.0" cy="214.0" r="2.6" fill="#8a8780"/>
+<circle cx="1129.0" cy="214.0" r="2.6" fill="#8a8780"/>
+<circle cx="1138.0" cy="214.0" r="2.6" fill="#8a8780"/>
+<text x="800.7" y="195.5" font-size="11" fill="#1c1c1a">Embedding trajectory: drift, volatility, novelty vs the</text>
+<text x="800.7" y="208.5" font-size="11" fill="#1c1c1a">entity&#x27;s centroid</text>
+<rect x="788.7" y="230.0" width="361.3" height="29" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="788.7" y="230.0" width="5" height="29" rx="2.5" fill="#c98a1b"/>
+<circle cx="1120.0" cy="250.0" r="2.6" fill="#8a8780"/>
+<circle cx="1129.0" cy="250.0" r="2.6" fill="#8a8780"/>
+<circle cx="1138.0" cy="250.0" r="2.6" fill="#8a8780"/>
+<text x="800.7" y="248.5" font-size="11" fill="#1c1c1a">Sequence model over the document stream</text>
+<rect x="788.7" y="266.0" width="361.3" height="43" rx="5" fill="#ffffff" stroke="#d8d4c8" stroke-width="1"/>
+<rect x="788.7" y="266.0" width="5" height="43" rx="2.5" fill="#c98a1b"/>
+<circle cx="1120.0" cy="300.0" r="2.6" fill="#8a8780"/>
+<circle cx="1129.0" cy="300.0" r="2.6" fill="#8a8780"/>
+<circle cx="1138.0" cy="300.0" r="2.6" fill="#8a8780"/>
+<text x="800.7" y="281.5" font-size="11" fill="#1c1c1a">LLM structured extraction → typed columns (then back to Path</text>
+<text x="800.7" y="294.5" font-size="11" fill="#1c1c1a">1)</text>
+<rect x="30" y="422" width="1120" height="68" rx="8" fill="#fffaf0" stroke="#c0392b" stroke-width="1.4"/>
+<rect x="30" y="422" width="5" height="68" rx="2.5" fill="#c0392b"/>
+<text x="46" y="444" font-family="'Iowan Old Style', Charter, 'Palatino Linotype', Georgia, serif" font-size="13" fill="#1c1c1a" font-weight="bold">Text-specific leakage (the traps the scalar families don&#x27;t have)</text>
+<text x="46" y="462" font-size="11" fill="#56544e">Fit TF-IDF / vocabulary / topic models on the pre-t₀ corpus ONLY · a pretrained embedding model must predate t₀ (else anachronistic leakage) · censor post-outcome text that names the outcome ·</text>
+<text x="46" y="477" font-size="11" fill="#56544e">use Spanish / legal-register lexicons and multilingual embeddings, not English defaults.</text>
+<rect x="30" y="506" width="1120" height="74" rx="8" fill="#ffffff" stroke="#d8d4c8"/>
+<text x="48" y="525" font-size="11.5" fill="#1c1c1a" font-weight="bold">Reading a chip</text>
+<rect x="48" y="534" width="6" height="20" rx="3" fill="#2f8f4e"/>
+<text x="61" y="548" font-size="10.5" fill="#56544e">stripe = causal-safe</text>
+<rect x="48" y="560" width="6" height="20" rx="3" fill="#c98a1b"/>
+<text x="61" y="574" font-size="10.5" fill="#56544e">amber = leakage-prone (build/refit strictly pre-t₀)</text>
+<circle cx="368" cy="544" r="3" fill="#8a8780"/>
+<circle cx="379" cy="544" r="3" fill="#8a8780"/>
+<circle cx="390" cy="544" r="3" fill="#8a8780"/>
+<text x="406" y="548" font-size="10.5" fill="#56544e">dots = cost. ●●● = centralities / SBM / TDA / embeddings</text>
+<rect x="368" y="566" width="20" height="15" rx="3" fill="#fff" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="406" y="578" font-size="10.5" fill="#56544e">dashed = absent from standard catalogs</text>
+</svg>
