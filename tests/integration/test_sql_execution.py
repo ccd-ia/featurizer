@@ -122,3 +122,69 @@ def test_interval_filter_excludes_out_of_window_events(pg_conn):
     # All-time sum sees both; the P1M window sees only the recent order.
     assert float(row["SUM(orders.amount)"]) == 1099.0
     assert float(row["SUM(orders.amount|interval=P1M)"]) == 100.0
+
+
+@pytest.mark.xfail(
+    reason="as-of bug #4: the join key declared `type: index` is not projected "
+    "through the source's synth/transform CTEs, so the as-of WHERE references a "
+    "missing column. Remove this marker once the as-of path is fixed.",
+    strict=False,
+)
+def test_asof_direct_join_executes(pg_conn):
+    """Point-in-time (as-of) direct join — currently broken (bug #4)."""
+    create_temp_table(
+        pg_conn,
+        "patients",
+        [("patient_id", "int"), ("registered_at", "date"), ("age", "numeric")],
+        [(1, "2023-06-01", 40.0)],
+    )
+    create_temp_table(
+        pg_conn,
+        "care_plans",
+        [
+            ("plan_id", "int"),
+            ("patient_id", "int"),
+            ("effective_at", "date"),
+            ("risk_score", "numeric"),
+        ],
+        [(1, 1, "2023-05-20", 0.8)],  # within P14D grace of registered_at
+    )
+    create_temp_table(
+        pg_conn, "as_of_dates", [("as_of_date", "date")], [("2024-01-01",)]
+    )
+
+    config = {
+        "target": "patients",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": ["mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "patients",
+                "table": "patients",
+                "id": "patient_id",
+                "temporal_ix": "registered_at",
+                "variables": {"age": {"type": "numeric"}},
+            },
+            {
+                "alias": "care_plans",
+                "table": "care_plans",
+                "id": "plan_id",
+                "temporal_ix": "effective_at",
+                "variables": {
+                    "patient_id": {"type": "index"},
+                    "risk_score": {"type": "numeric"},
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "care_plans", "key": "patient_id"},
+                "child": {"entity": "patients", "key": "patient_id"},
+                "temporal": {"mode": "as_of", "grace": "P14D"},
+            }
+        ],
+    }
+    rows = run_featurizer(pg_conn, config)
+    assert len(rows) == 1

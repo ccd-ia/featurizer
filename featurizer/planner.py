@@ -50,6 +50,10 @@ class FeaturePlanner:
         self._joins: Dict[str, List[str]] = {}
         self._ctes: List[str] = []
         self._path: List[Entity] = []
+        # Names of the columns each <alias>_synth CTE projects. The transform
+        # CTE reads from synth, so any feature already materialized there must
+        # be referenced by name rather than re-rendering its definition.
+        self._synth_columns: Dict[str, Set[str]] = {}
 
     def plan(self) -> PlannerResult:
         """Drive the DFS traversal and return the synthesized artifacts."""
@@ -67,6 +71,7 @@ class FeaturePlanner:
         self._joins = {entity.alias: [] for entity in self.graph.entities.values()}
         self._ctes = []
         self._path = []
+        self._synth_columns = {}
 
         logger.debug("Starting feature build for target {}", self._target.alias)
         self._build_features(self._target)
@@ -93,15 +98,25 @@ class FeaturePlanner:
         self._debug("build_features", entity=target_entity.alias, depth=depth)
 
         depth += 1
-        if self.max_depth <= depth:
-            logger.info("Maximum depth reached at depth {}", depth)
-            return
-
         if target_entity not in self._path:
             self._path.append(target_entity)
 
-        self._get_direct_features(target_entity, depth)
-        self._get_backward_features(target_entity, depth)
+        # Depth bounds how deep we recurse into neighbours, but every entity we
+        # actually reach must still be materialized: a parent's aggregation CTE
+        # reads ``from <child>_transform``, and the final query selects
+        # ``from <target>_transform``. Returning before _build_transformations
+        # (the previous behaviour) left those CTEs undefined -> invalid SQL.
+        if self.max_depth > depth:
+            self._get_direct_features(target_entity, depth)
+            self._get_backward_features(target_entity, depth)
+        else:
+            logger.info(
+                "Maximum recursion depth reached at depth {}; materializing {} "
+                "without traversing further.",
+                depth,
+                target_entity.alias,
+            )
+
         self._build_transformations(target_entity)
 
     @staticmethod
@@ -315,8 +330,12 @@ class FeaturePlanner:
             self._build_direct_cte(target, source, relationship, features)
             return
 
+        # feature.name is already a quoted identifier for aggregate/transform
+        # features (e.g. "ABS(care_plans.risk_score)"); wrapping it in another
+        # pair of quotes yields an empty delimited identifier. It is also the
+        # column name projected by <source>_transform, so reference it as-is.
         projected = [
-            f'{source.alias}_transform.{feature.name} as "{feature.name}"'
+            f"{source.alias}_transform.{feature.name} as {feature.name}"
             for feature in features
             if feature.type not in {"index", "key"}
         ]
@@ -359,6 +378,10 @@ class FeaturePlanner:
             if feature.type not in ["index", "key"]
         ]
 
+        # Record what synth projects so the transform CTE can reference these
+        # columns by name instead of re-rendering their (base-table) definitions.
+        self._synth_columns[target.alias] = set(feature_names)
+
         cte_query = f"""
         -- sythetize aggregations and direct features for {target.alias}
         {cte_table} as (
@@ -377,11 +400,22 @@ class FeaturePlanner:
 
         indexes = [f"{ix.name}" for ix in target.indexes]
         keys = [f"{key.name}" for key in target.keys]
-        rendered_features = [
-            feature.query
-            for feature in features
-            if feature.type not in ["index", "key"]
-        ]
+        synth_columns = self._synth_columns.get(target.alias, set())
+        rendered_features = []
+        for feature in features:
+            if feature.type in ["index", "key"]:
+                continue
+            if feature.name in synth_columns:
+                # Already a column in <target>_synth (an aggregate carried up
+                # from a child, an as-of/direct pull, or a base variable). Its
+                # own definition references base-table columns absent from synth,
+                # so reference it by name. feature.name is already quoted when
+                # it needs to be.
+                rendered_features.append(f"{feature.name} as {feature.name}")
+            else:
+                # A genuine transformer output; its definition references synth
+                # columns by name and is valid against the synth CTE.
+                rendered_features.append(feature.query)
 
         cte_query = f"""
         -- transform {target.alias}

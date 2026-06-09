@@ -1,0 +1,47 @@
+# Small, executable config for the rendered-SQL snapshot test.
+#
+# A deliberately narrow primitive selection keeps the snapshot readable while
+# still exercising the key code paths end to end: parent->child aggregation,
+# interval filters, the identity passthrough (synth columns referenced by name),
+# a genuine transform (abs), and materialization of the reached child entity.
+# This config executes cleanly against PostgreSQL (validated in the integration
+# harness). The as-of direct-join path is covered separately by an xfail in
+# tests/integration/test_sql_execution.py until its open bug is fixed.
+target: patients
+max_depth: 2
+
+intervals:
+  - P1D
+
+aggregations:
+  - count
+  - sum
+  - mean
+  - median
+transformations:
+  - identity
+  - abs
+
+entities:
+  - alias: patients
+    id: patient_id
+    table: analytics.patients
+    temporal_ix: registered_at
+    variables:
+      age:
+        type: numeric
+  - alias: visits
+    id: visit_id
+    table: analytics.visits
+    temporal_ix: visited_at
+    variables:
+      duration_minutes:
+        type: numeric
+
+relationships:
+  - parent:
+      entity: patients
+      key: patient_id
+    child:
+      entity: visits
+      key: patient_id
