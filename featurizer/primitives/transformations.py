@@ -116,7 +116,7 @@ sqrt = Transformer(name="sqrt")
 cbrt = Transformer(name="cbrt")
 sign = Transformer(name="sign")
 num_chars = Transformer(
-    name="num_chars", transformer="char_lenght", input_types=["text"]
+    name="num_chars", transformer="char_length", input_types=["text"]
 )
 # random = Transformer(name='random')  # without arguments  Should setseed(number)
 ceil = Transformer(name="ceil")
@@ -1287,6 +1287,65 @@ for _window in (7, 14):
 for _t in (diff2, diff3, cumprod):
     DEFAULT_TRANSFORMERS[_t.name] = _t
     register_transformer(_t.name, _t)
+
+
+# ---------------------------------------------------------------------------
+# Text Path-1: per-document lexical features (pure SQL over a text column)
+# ---------------------------------------------------------------------------
+#
+# Each transformer reduces one text column to one numeric score per row
+# ("reduce" in the reduce->aggregate text path). Being numeric, the result is
+# then reduced over the entity's documents by the ordinary aggregators
+# (mean, max, ...). All expressions are plain PostgreSQL string/regex calls, so
+# they stay inside the SQL-feasible tier — no NLP library required.
+
+
+class TextTransformer(Transformer):
+    """A per-row lexical feature over a ``text`` column.
+
+    ``template`` is a SQL expression using ``{col}`` as the placeholder for the
+    input column. The output is numeric so it composes with numeric aggregators.
+    """
+
+    def __init__(self, name: str, template: str) -> None:
+        super().__init__(name=name, input_types=["text"], output_type="numeric")
+        self._template = template
+
+    def _build_transformer_call(self, feature):
+        return f" {self._template.replace('{col}', feature.name)} "
+
+
+# Non-empty whitespace-delimited tokens of the (NULL-safe) text column.
+_WORD_TOKENS = r"regexp_split_to_table(coalesce({col}, ''), '\s+') as t(w)"
+_NUM_WORDS = "(select count(*) from " + _WORD_TOKENS + " where t.w <> '')"
+
+_LEXICAL_TEMPLATES = {
+    # Counts
+    "num_words": _NUM_WORDS,
+    "num_sentences": r"length({col}) - length(regexp_replace(coalesce({col}, ''), '[.!?]', '', 'g'))",
+    "exclamation_count": r"length(coalesce({col}, '')) - length(replace(coalesce({col}, ''), '!', ''))",
+    "question_count": r"length(coalesce({col}, '')) - length(replace(coalesce({col}, ''), '?', ''))",
+    # Averages / ratios
+    "avg_word_length": r"length(regexp_replace(coalesce({col}, ''), '\s', '', 'g'))::numeric / nullif("
+    + _NUM_WORDS
+    + ", 0)",
+    "unique_word_ratio": "(select count(distinct lower(t.w)) from "
+    + _WORD_TOKENS
+    + " where t.w <> '')::numeric / nullif("
+    + _NUM_WORDS
+    + ", 0)",
+    "caps_ratio": r"length(regexp_replace(coalesce({col}, ''), '[^A-Z]', '', 'g'))::numeric / "
+    r"nullif(length(regexp_replace(coalesce({col}, ''), '[^A-Za-z]', '', 'g')), 0)",
+    "digit_ratio": r"length(regexp_replace(coalesce({col}, ''), '[^0-9]', '', 'g'))::numeric / "
+    r"nullif(length({col}), 0)",
+    "punct_ratio": r"length(regexp_replace(coalesce({col}, ''), '[A-Za-z0-9\s]', '', 'g'))::numeric / "
+    r"nullif(length({col}), 0)",
+}
+
+for _name, _template in _LEXICAL_TEMPLATES.items():
+    _text_transformer = TextTransformer(_name, _template)
+    DEFAULT_TRANSFORMERS[_name] = _text_transformer
+    register_transformer(_name, _text_transformer)
 
 
 # percentage above avg

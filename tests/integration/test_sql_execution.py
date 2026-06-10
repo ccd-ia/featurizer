@@ -188,3 +188,68 @@ def test_asof_direct_join_executes(pg_conn):
     risk_cols = [k for k in row if "risk_score" in k]
     assert risk_cols, f"no risk_score column pulled; got {list(row)}"
     assert all(float(row[k]) == 0.8 for k in risk_cols)
+
+
+def test_text_lexical_features_compute_correct_values(pg_conn):
+    """Text Path-1 lexical transformers produce correct numeric scores."""
+    create_temp_table(pg_conn, "authors", [("author_id", "int")], [(1,)])
+    create_temp_table(
+        pg_conn,
+        "posts",
+        [
+            ("post_id", "int"),
+            ("author_id", "int"),
+            ("created_at", "date"),
+            ("body", "text"),
+        ],
+        [(1, 1, "2023-01-01", "Hello world! This is GREAT")],
+    )
+    create_temp_table(
+        pg_conn, "as_of_dates", [("as_of_date", "date")], [("2024-01-01",)]
+    )
+
+    config = {
+        "target": "authors",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": ["mean", "max"],
+        "transformations": [
+            "num_chars",
+            "num_words",
+            "caps_ratio",
+            "exclamation_count",
+            "unique_word_ratio",
+        ],
+        "entities": [
+            {"alias": "authors", "table": "authors", "id": "author_id"},
+            {
+                "alias": "posts",
+                "table": "posts",
+                "id": "post_id",
+                "temporal_ix": "created_at",
+                "variables": {"body": {"type": "text"}},
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "authors", "key": "author_id"},
+                "child": {"entity": "posts", "key": "author_id"},
+            }
+        ],
+    }
+    rows = run_featurizer(pg_conn, config)
+    assert len(rows) == 1
+    row = rows[0]
+
+    def value(substring: str) -> float:
+        matches = [k for k in row if substring in k]
+        assert matches, f"no column matching {substring!r}; got {list(row)}"
+        return float(row[matches[0]])
+
+    # "Hello world! This is GREAT": 26 chars, 5 words, 1 '!', all words distinct,
+    # 7 uppercase of 21 letters.
+    assert value("MEAN(posts.NUM_CHARS") == 26.0
+    assert value("MEAN(posts.NUM_WORDS") == 5.0
+    assert value("MAX(posts.EXCLAMATION_COUNT") == 1.0
+    assert value("MEAN(posts.UNIQUE_WORD_RATIO") == 1.0
+    assert math.isclose(value("MEAN(posts.CAPS_RATIO"), 7.0 / 21.0, rel_tol=1e-6)
