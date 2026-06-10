@@ -243,6 +243,7 @@ class ConfigValidator:
         # Validate entities structure
         if isinstance(config.get("entities"), list):
             entity_aliases = set()
+            edge_node_refs: list[tuple[int, Any]] = []
             for i, entity in enumerate(config["entities"]):
                 if not isinstance(entity, dict):
                     self.errors.append(
@@ -310,6 +311,51 @@ class ConfigValidator:
                                     ),
                                 )
                             )
+
+                # Validate the optional edge-table block.
+                edge = entity.get("edge")
+                if edge is not None:
+                    if not isinstance(edge, dict):
+                        self.errors.append(
+                            ValidationError(
+                                message="Entity 'edge' must be a mapping "
+                                f"(got: {type(edge).__name__})",
+                                location=f"entities[{i}].edge",
+                            )
+                        )
+                    else:
+                        for required in ("node", "source", "target"):
+                            value = edge.get(required)
+                            if not isinstance(value, str) or not value:
+                                self.errors.append(
+                                    ValidationError(
+                                        message=f"Edge block missing required "
+                                        f"'{required}' (non-empty string)",
+                                        location=f"entities[{i}].edge.{required}",
+                                        suggestion="Example: edge: {node: users, "
+                                        "source: src_id, target: dst_id}",
+                                    )
+                                )
+                        node_ref = edge.get("node")
+                        if isinstance(node_ref, str):
+                            edge_node_refs.append((i, node_ref))
+
+            # Edge `node` must resolve to a declared entity (checked after the
+            # loop so forward references to later entities are allowed).
+            for i, node_ref in edge_node_refs:
+                if node_ref not in entity_aliases:
+                    suggestion = self._suggest_similar(node_ref, entity_aliases)
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Edge references unknown node entity: '{node_ref}'",
+                            location=f"entities[{i}].edge.node",
+                            suggestion=(
+                                f"Did you mean '{suggestion}'?"
+                                if suggestion
+                                else "node must match an entity alias"
+                            ),
+                        )
+                    )
 
     def _validate_primitives(self, config: Dict[str, Any]) -> None:
         """Validate the optional `aggregations` / `transformations` selection.

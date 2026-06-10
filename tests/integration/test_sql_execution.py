@@ -253,3 +253,63 @@ def test_text_lexical_features_compute_correct_values(pg_conn):
     assert value("MAX(posts.EXCLAMATION_COUNT") == 1.0
     assert value("MEAN(posts.UNIQUE_WORD_RATIO") == 1.0
     assert math.isclose(value("MEAN(posts.CAPS_RATIO"), 7.0 / 21.0, rel_tol=1e-6)
+
+
+def test_graph_degree_features_with_causal_bound(pg_conn):
+    """Degree features over an edge table, bounded as-of the cutoff."""
+    create_temp_table(pg_conn, "users", [("user_id", "int")], [(1,), (2,), (3,)])
+    create_temp_table(
+        pg_conn,
+        "follows",
+        [("follower_id", "int"), ("followee_id", "int"), ("created_at", "date")],
+        [
+            (1, 2, "2023-01-01"),
+            (1, 3, "2023-02-01"),
+            (2, 1, "2023-03-01"),
+            (3, 1, "2023-06-15"),  # after the early cutoff
+        ],
+    )
+    create_temp_table(
+        pg_conn,
+        "as_of_dates",
+        [("as_of_date", "date")],
+        [("2023-04-01",), ("2023-12-31",)],
+    )
+
+    config = {
+        "target": "users",
+        "max_depth": 1,
+        "intervals": [],
+        "aggregations": ["mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "users", "table": "users", "id": "user_id"},
+            {
+                "alias": "follows",
+                "table": "follows",
+                "edge": {
+                    "node": "users",
+                    "source": "follower_id",
+                    "target": "followee_id",
+                    "timestamp": "created_at",
+                },
+            },
+        ],
+    }
+    rows = run_featurizer(pg_conn, config)
+
+    def degree(as_of: str, user_id: int, metric: str):
+        row = next(
+            r
+            for r in rows
+            if str(r["as_of_date"]) == as_of and r.get("user_id") == user_id
+        )
+        col = next(c for c in row if c.startswith(metric + "("))
+        return row[col]
+
+    # Full graph at 2023-12-31: user 1 follows 2 and 3, is followed by 2 and 3.
+    assert degree("2023-12-31", 1, "OUT_DEGREE") == 2
+    assert degree("2023-12-31", 1, "IN_DEGREE") == 2
+    assert degree("2023-12-31", 1, "DEGREE") == 4
+    # Causal bound at 2023-04-01: the 2023-06-15 edge (3->1) is excluded.
+    assert degree("2023-04-01", 1, "IN_DEGREE") == 1

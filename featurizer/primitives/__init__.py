@@ -1,6 +1,7 @@
 # coding: utf-8
 
 from .abstractions import (
+    EdgeSpec,
     Entity,
     ERGraph,
     Feature,
@@ -22,6 +23,7 @@ from .utils import (
 )
 
 __all__ = [
+    "EdgeSpec",
     "ERGraph",
     "Entity",
     "Feature",

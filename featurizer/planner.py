@@ -117,6 +117,7 @@ class FeaturePlanner:
                 target_entity.alias,
             )
 
+        self._build_graph_features(target_entity)
         self._build_transformations(target_entity)
 
     @staticmethod
@@ -187,6 +188,84 @@ class FeaturePlanner:
     # ------------------------------------------------------------------ #
     # Aggregations / transformations / CTE assembly
     # ------------------------------------------------------------------ #
+
+    def _build_graph_features(self, node: Entity) -> None:
+        """Attach graph features (degree family) for every edge on this node."""
+        for edge in self.graph.get_edges_for_node(node):
+            self._build_graph_cte(node, edge)
+
+    def _build_graph_cte(self, node: Entity, edge) -> None:
+        """Emit a degree CTE for ``node`` over the edges in ``edge`` and join it.
+
+        Degree is computed by unioning each edge as an outgoing row for its
+        source node and an incoming row for its target node, then grouping by
+        node id. When the edge carries a ``timestamp`` the union is bounded by
+        ``<= aod.as_of_date`` so degree is measured as-of each cutoff (the same
+        causal guarantee the aggregation CTEs use); without one the graph is
+        treated as static and leakage is the caller's responsibility.
+        """
+        if node.id is None:
+            logger.warning(
+                "Node {} has no id column; skipping graph features for edge {}.",
+                node.alias,
+                edge.alias,
+            )
+            return
+
+        causal = f" where {edge.timestamp} <= aod.as_of_date " if edge.timestamp else ""
+        weight_expr = edge.weight if edge.weight else "null"
+        union = (
+            f"select {edge.source} as node_id, 'out' as direction, "
+            f"{weight_expr} as weight from {edge.table}{causal} "
+            "union all "
+            f"select {edge.target} as node_id, 'in' as direction, "
+            f"{weight_expr} as weight from {edge.table}{causal}"
+        )
+
+        def feature_name(metric: str) -> str:
+            return f'"{metric}({node.alias}.{edge.alias})"'
+
+        columns = [
+            (feature_name("OUT_DEGREE"), "count(*) filter (where direction = 'out')"),
+            (feature_name("IN_DEGREE"), "count(*) filter (where direction = 'in')"),
+            (feature_name("DEGREE"), "count(*)"),
+        ]
+        if edge.weight:
+            columns.extend(
+                [
+                    (
+                        feature_name("WEIGHTED_OUT_DEGREE"),
+                        "coalesce(sum(weight) filter (where direction = 'out'), 0)",
+                    ),
+                    (
+                        feature_name("WEIGHTED_IN_DEGREE"),
+                        "coalesce(sum(weight) filter (where direction = 'in'), 0)",
+                    ),
+                ]
+            )
+
+        select_cols = ",\n        ".join(f"{expr} as {name}" for name, expr in columns)
+        cte_name = f"{edge.alias}_graph_for_{node.alias}"
+        cte_query = f"""
+        -- graph (degree) features for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        select node_id,
+        {select_cols}
+        from ( {union} ) as incident_{edge.alias}
+        group by node_id
+        )
+        """
+        join = f" {cte_name} on {cte_name}.node_id = {node.table}.{node.id.name} "
+        self._joins[node.alias].append(join)
+        self._ctes.append(cte_query)
+
+        # Register degree features so they flow through synth/transform and are
+        # available for downstream transformation and parent aggregation. They
+        # are synth columns, so Fix A references them by name in the transform.
+        self._features[node.alias].update(
+            Feature(name=name, type="numeric", definition=name, entity=node)
+            for name, _ in columns
+        )
 
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship

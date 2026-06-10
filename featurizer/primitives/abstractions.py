@@ -47,6 +47,15 @@ class ERGraph:
         for r in self.relationships:
             self.entities[r.child.alias].add_key(Key(name=r.child_key, entity=r.child))
 
+        # Edge-table entities contribute graph features to their node entity.
+        self.edges: List[EdgeSpec] = [
+            e.edge for e in self.entities.values() if e.edge is not None
+        ]
+
+    def get_edges_for_node(self, entity: Entity) -> List["EdgeSpec"]:
+        """Edge specs whose node alias matches ``entity``."""
+        return [edge for edge in self.edges if edge.node == entity.alias]
+
     def get_backward_entities(self, entity: Entity) -> Set[Entity]:
         return {r.child for r in self.relationships if r.parent == entity}
 
@@ -65,10 +74,11 @@ class Entity:
         self,
         alias: str,
         table: str,
-        id: Optional[str],
+        id: Optional[str] = None,
         spatial_ix: Any = None,
         temporal_ix: Optional[str] = None,
         variables: Optional[Dict[str, Dict[str, Any]]] = None,
+        edge: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.alias: str = alias
         self.table: str = table
@@ -101,6 +111,22 @@ class Entity:
             + ([self.id] if self.id else [])
             + ([self.temporal_ix] if self.temporal_ix else [])
             + self._spatial_features()
+        )
+
+        # An edge-table entity: rows are graph edges between nodes. The planner
+        # attaches graph features (degree, ...) to the referenced node entity
+        # rather than treating this as a normal aggregation child.
+        self.edge: Optional[EdgeSpec] = (
+            EdgeSpec(
+                entity=self,
+                node=edge["node"],
+                source=edge["source"],
+                target=edge["target"],
+                weight=edge.get("weight"),
+                timestamp=edge.get("timestamp"),
+            )
+            if edge is not None
+            else None
         )
 
     def _build_spatial_ix(self, spatial_ix: Any):
@@ -313,6 +339,37 @@ class Key(Feature):
 
     def __init__(self, name: str, entity: Entity) -> None:
         super().__init__(name=name, definition=name, type="key", entity=entity)
+
+
+class EdgeSpec:
+    """Graph-edge metadata declared on an edge-table entity.
+
+    The edge table has a ``source`` and ``target`` node-id column, and optionally
+    a ``weight`` and a ``timestamp`` (used for the causal bound, so degree is
+    measured as-of each cutoff). ``node`` is the alias of the node entity these
+    edges connect; the planner attaches graph features to that node.
+    """
+
+    def __init__(
+        self,
+        entity: "Entity",
+        node: str,
+        source: str,
+        target: str,
+        weight: Optional[str] = None,
+        timestamp: Optional[str] = None,
+    ) -> None:
+        self.entity: "Entity" = entity
+        self.alias: str = entity.alias
+        self.table: str = entity.table
+        self.node: str = node  # node entity alias
+        self.source: str = source
+        self.target: str = target
+        self.weight: Optional[str] = weight
+        self.timestamp: Optional[str] = timestamp
+
+    def __repr__(self) -> str:
+        return f"EdgeSpec({self.alias}: {self.source}->{self.target} on {self.node})"
 
 
 class SpatialIx:
