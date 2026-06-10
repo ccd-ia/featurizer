@@ -124,14 +124,8 @@ def test_interval_filter_excludes_out_of_window_events(pg_conn):
     assert float(row["SUM(orders.amount|interval=P1M)"]) == 100.0
 
 
-@pytest.mark.xfail(
-    reason="as-of bug #4: the join key declared `type: index` is not projected "
-    "through the source's synth/transform CTEs, so the as-of WHERE references a "
-    "missing column. Remove this marker once the as-of path is fixed.",
-    strict=False,
-)
 def test_asof_direct_join_executes(pg_conn):
-    """Point-in-time (as-of) direct join — currently broken (bug #4)."""
+    """Point-in-time (as-of) direct join pulls the most recent in-grace value."""
     create_temp_table(
         pg_conn,
         "patients",
@@ -188,3 +182,9 @@ def test_asof_direct_join_executes(pg_conn):
     }
     rows = run_featurizer(pg_conn, config)
     assert len(rows) == 1
+    row = rows[0]
+    # The as-of join pulls the care plan effective within the P14D grace window
+    # (2023-05-20 is 12 days before registration on 2023-06-01).
+    risk_cols = [k for k in row if "risk_score" in k]
+    assert risk_cols, f"no risk_score column pulled; got {list(row)}"
+    assert all(float(row[k]) == 0.8 for k in risk_cols)

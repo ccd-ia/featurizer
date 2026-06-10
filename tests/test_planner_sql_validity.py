@@ -102,3 +102,62 @@ def test_transform_cte_references_aggregates_by_name_not_definition():
     # (which has no `amount` column). This is the exact invalid SQL of bug #1.
     assert "avg( amount )" not in transform
     assert "sum( amount )" not in transform
+
+
+def _asof_config() -> dict:
+    return {
+        "target": "patients",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": ["mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "patients",
+                "table": "patients",
+                "id": "patient_id",
+                "temporal_ix": "registered_at",
+                "variables": {"age": {"type": "numeric"}},
+            },
+            {
+                "alias": "care_plans",
+                "table": "care_plans",
+                "id": "plan_id",
+                "temporal_ix": "effective_at",
+                "variables": {
+                    "patient_id": {"type": "index"},
+                    "risk_score": {"type": "numeric"},
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "care_plans", "key": "patient_id"},
+                "child": {"entity": "patients", "key": "patient_id"},
+                "temporal": {"mode": "as_of", "grace": "P14D"},
+            }
+        ],
+    }
+
+
+def test_asof_join_key_is_projected_through_source_transform():
+    """Bug #4: the as-of join key (a `type: index` variable) must be projected."""
+    sql = _render(_asof_config())
+    transform = _segment(sql, "care_plans_transform as (", "from care_plans_synth")
+    assert "patient_id" in transform
+
+
+def test_asof_grace_clause_is_dialect_safe():
+    """Bug #5: grace bound is `source >= target - interval`, valid for date cols."""
+    flat = " ".join(_render(_asof_config()).split())
+    assert "- interval 'P14D'" in flat
+    assert "care_plans_transform.effective_at >= patients.registered_at" in flat
+    # The old `date - date <= interval` form (invalid for date columns) is gone.
+    assert "registered_at - care_plans_transform.effective_at" not in flat
+
+
+def test_identifier_columns_are_not_duplicated():
+    """Bug #6: a PK that doubles as an FK is projected once, not twice."""
+    sql = _render(_asof_config())
+    synth = _segment(sql, "patients_synth as (", "from patients")
+    assert synth.count("patients.patient_id") == 1

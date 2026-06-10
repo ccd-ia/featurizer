@@ -3,10 +3,9 @@
 # A deliberately narrow primitive selection keeps the snapshot readable while
 # still exercising the key code paths end to end: parent->child aggregation,
 # interval filters, the identity passthrough (synth columns referenced by name),
-# a genuine transform (abs), and materialization of the reached child entity.
-# This config executes cleanly against PostgreSQL (validated in the integration
-# harness). The as-of direct-join path is covered separately by an xfail in
-# tests/integration/test_sql_execution.py until its open bug is fixed.
+# a genuine transform (abs), materialization of the reached child entity, and
+# the as-of direct join (point-in-time pull with a grace window). This config
+# executes cleanly against PostgreSQL (validated in the integration harness).
 target: patients
 max_depth: 2
 
@@ -37,6 +36,15 @@ entities:
     variables:
       duration_minutes:
         type: numeric
+  - alias: care_plans
+    id: plan_id
+    table: analytics.care_plans
+    temporal_ix: effective_at
+    variables:
+      patient_id:
+        type: index
+      risk_score:
+        type: numeric
 
 relationships:
   - parent:
@@ -45,3 +53,12 @@ relationships:
     child:
       entity: visits
       key: patient_id
+  - parent:
+      entity: care_plans
+      key: patient_id
+    child:
+      entity: patients
+      key: patient_id
+    temporal:
+      mode: as_of
+      grace: P14D

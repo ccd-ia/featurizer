@@ -123,6 +123,49 @@ class FeaturePlanner:
     def _sort_features(features: Iterable[Feature]) -> List[Feature]:
         return sorted(features, key=lambda feature: feature.name)
 
+    @staticmethod
+    def _carried_index_columns(target: Entity) -> List[str]:
+        """Index-typed *variables* that must be projected but are not features.
+
+        A foreign key declared ``type: index`` (e.g. ``care_plans.patient_id``)
+        is neither the entity's own id/temporal/spatial index nor a registered
+        relationship key, so it falls out of the normal projection. It is still
+        needed as a column — notably for the as-of join's ``WHERE`` clause — so
+        carry it through synth/transform by name.
+        """
+        covered = {ix.name for ix in target.indexes} | {key.name for key in target.keys}
+        return sorted(
+            {
+                feature.name
+                for feature in target.features
+                if feature.type == "index" and feature.name not in covered
+            }
+        )
+
+    @classmethod
+    def _identifier_columns(cls, target: Entity) -> List[str]:
+        """Distinct identifier column names to project from the base table.
+
+        Combines id/temporal/spatial indexes, relationship keys, and carried
+        index variables. The same name can appear as both the entity id and a
+        relationship key when a primary key doubles as a foreign key (an entity
+        keyed by ``patient_id`` that is also the child of a ``patient_id``
+        relationship). Projecting it twice makes the reference ambiguous, so
+        dedupe by name while preserving order.
+        """
+        names = (
+            [ix.name for ix in target.indexes]
+            + [key.name for key in target.keys]
+            + cls._carried_index_columns(target)
+        )
+        seen: Set[str] = set()
+        ordered: List[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
     def _get_direct_features(self, target: Entity, depth: int) -> None:
         forward_relationships = self.graph.get_forward_relationships(target)
         for relationship in forward_relationships:
@@ -349,8 +392,15 @@ class FeaturePlanner:
             f"{source.alias}_transform.{source_temporal} <= {target.table}.{target_temporal}",
         ]
         if relationship.temporal_grace:
+            # Lower-bound the lookback to the grace window. Written as
+            # ``source >= target - interval`` (equivalent to
+            # ``target - source <= grace``) so it is valid for both date and
+            # timestamp temporals: ``date - date`` yields an integer, which
+            # cannot be compared against an interval, but ``date - interval``
+            # yields a timestamp that compares cleanly.
             where_clauses.append(
-                f"{target.table}.{target_temporal} - {source.alias}_transform.{source_temporal} <= interval '{relationship.temporal_grace}'"
+                f"{source.alias}_transform.{source_temporal} >= "
+                f"{target.table}.{target_temporal} - interval '{relationship.temporal_grace}'"
             )
 
         cte_name = f"{source.alias}_asof_for_{target.alias}"
@@ -370,8 +420,9 @@ class FeaturePlanner:
     def _build_synth_cte(self, target: Entity) -> None:
         cte_table = f"{target.alias}_synth"
 
-        indexes = [f"{target.table}.{ix.name}" for ix in target.indexes]
-        keys = [f"{target.table}.{key.name}" for key in target.keys]
+        id_columns = [
+            f"{target.table}.{name}" for name in self._identifier_columns(target)
+        ]
         feature_names = [
             feature.name
             for feature in self._sort_features(self._features[target.alias])
@@ -386,7 +437,7 @@ class FeaturePlanner:
         -- sythetize aggregations and direct features for {target.alias}
         {cte_table} as (
         select
-        {", ".join(indexes + keys + feature_names)}
+        {", ".join(id_columns + feature_names)}
         from {target.table}
         {" left join " if self._joins[target.alias] else ""}
         {" left join ".join(self._joins[target.alias])}
@@ -398,8 +449,7 @@ class FeaturePlanner:
     def _build_transform_cte(self, target: Entity, features: Iterable[Feature]) -> None:
         cte_table = f"{target.alias}_transform"
 
-        indexes = [f"{ix.name}" for ix in target.indexes]
-        keys = [f"{key.name}" for key in target.keys]
+        id_columns = self._identifier_columns(target)
         synth_columns = self._synth_columns.get(target.alias, set())
         rendered_features = []
         for feature in features:
@@ -421,7 +471,7 @@ class FeaturePlanner:
         -- transform {target.alias}
         {cte_table} as (
         select
-        {", ".join(indexes + keys + rendered_features)}
+        {", ".join(id_columns + rendered_features)}
         from {target.alias}_synth
         )
         """
