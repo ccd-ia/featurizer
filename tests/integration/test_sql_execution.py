@@ -255,6 +255,89 @@ def test_text_lexical_features_compute_correct_values(pg_conn):
     assert math.isclose(value("MEAN(posts.CAPS_RATIO"), 7.0 / 21.0, rel_tol=1e-6)
 
 
+def test_m1c_sequence_features_compute_correct_values(pg_conn):
+    """M1c sequence aggregators produce hand-computed values, and the event
+    after the as-of date is excluded (causal cut).
+
+    Status sequence (single customer): A, B, A, B, A on known dates, plus a
+    'C' event AFTER the as-of date. Pre-cutoff the chain is perfectly
+    alternating, so the conditional entropy is 0 and the max transition
+    probability is 1.0 — any leakage of the 'C' event would break both.
+    """
+    create_temp_table(pg_conn, "customers", [("customer_id", "int")], [(1,)])
+    create_temp_table(
+        pg_conn,
+        "orders",
+        [
+            ("order_id", "int"),
+            ("customer_id", "int"),
+            ("ordered_at", "date"),
+            ("status", "text"),
+        ],
+        [
+            (1, 1, "2023-01-01", "A"),
+            (2, 1, "2023-01-11", "B"),
+            (3, 1, "2023-01-21", "A"),
+            (4, 1, "2023-02-10", "B"),
+            (5, 1, "2023-03-02", "A"),
+            (6, 1, "2024-06-01", "C"),  # after the as-of date: must be excluded
+        ],
+    )
+    create_temp_table(
+        pg_conn, "as_of_dates", [("as_of_date", "date")], [("2024-01-01",)]
+    )
+
+    config = {
+        "target": "customers",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": [
+            "recurrence_interval",
+            "markov_conditional_entropy",
+            "max_transition_prob",
+            "first_passage_time",
+        ],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "customers", "table": "customers", "id": "customer_id"},
+            {
+                "alias": "orders",
+                "table": "orders",
+                "id": "order_id",
+                "temporal_ix": "ordered_at",
+                "variables": {
+                    "status": {
+                        "type": "categorical",
+                        "predicates": {"target": "B"},
+                    }
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "customers", "key": "customer_id"},
+                "child": {"entity": "orders", "key": "customer_id"},
+            }
+        ],
+    }
+    rows = run_featurizer(pg_conn, config)
+    assert len(rows) == 1
+    row = rows[0]
+
+    def value(substring: str) -> float:
+        matches = [k for k in row if substring in k]
+        assert matches, f"no column matching {substring!r}; got {list(row)}"
+        return float(row[matches[0]])
+
+    # Perfectly alternating A/B chain before the cutoff.
+    assert value("MARKOV_CONDITIONAL_ENTROPY(orders.status)") == 0.0
+    assert value("MAX_TRANSITION_PROB(orders.status)") == 1.0
+    # Same-state gaps: A: 20 and 40 days; B: 30 days -> mean 30.
+    assert value("RECURRENCE_INTERVAL(orders.status)") == 30.0
+    # First B is 10 days after the first event.
+    assert value("FIRST_PASSAGE_TIME(orders.status)") == 10.0
+
+
 def test_graph_degree_features_with_causal_bound(pg_conn):
     """Degree features over an edge table, bounded as-of the cutoff."""
     create_temp_table(pg_conn, "users", [("user_id", "int")], [(1,), (2,), (3,)])

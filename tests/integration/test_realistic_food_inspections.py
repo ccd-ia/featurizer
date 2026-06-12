@@ -268,6 +268,93 @@ def test_gap_statistics_match_lag_sql(food_db):
             assert math.isclose(float(got_sd), float(want_sd), rel_tol=1e-9)
 
 
+def test_m1c_markov_features_match_python_recomputation(food_db):
+    """The M1c sequence features over inspection results equal an independent
+    *Python* recomputation of the transition matrix — a genuinely different
+    implementation than the generated SQL."""
+    rows, cohort = _run_cohort(food_db)
+    with food_db.cursor() as cur:
+        cur.execute(
+            f"""
+            select i.license_no from {SCHEMA}.inspections i
+            join {cohort} c using (license_no)
+            where i.inspection_date <= %s
+            group by i.license_no
+            having count(*) >= 4 and count(*) = count(distinct i.inspection_date)
+            order by count(*) desc, i.license_no limit 3
+            """,
+            (MID,),
+        )
+        sampled = [r[0] for r in cur.fetchall()]
+    assert sampled, "need cohort facilities with >=4 distinct-date inspections"
+
+    for license_no in sampled:
+        with food_db.cursor() as cur:
+            cur.execute(
+                f"select results, inspection_date from {SCHEMA}.inspections "
+                "where license_no = %s and inspection_date <= %s "
+                "order by inspection_date",
+                (license_no, MID),
+            )
+            sequence = cur.fetchall()
+        states = [r[0] for r in sequence]
+        dates = [r[1] for r in sequence]
+
+        # Transition matrix in Python.
+        transitions = list(zip(states, states[1:]))
+        assert transitions
+        from collections import Counter
+
+        joint = Counter(transitions)
+        row_totals = Counter(prev for prev, _ in transitions)
+        total = len(transitions)
+        want_entropy = -sum(
+            (freq / total) * math.log(freq / row_totals[prev])
+            for (prev, _), freq in joint.items()
+        )
+        want_max_prob = max(
+            freq / row_totals[prev] for (prev, _), freq in joint.items()
+        )
+
+        got_entropy = _value(
+            rows, MID, license_no, "MARKOV_CONDITIONAL_ENTROPY(inspections.results)"
+        )
+        got_max_prob = _value(
+            rows, MID, license_no, "MAX_TRANSITION_PROB(inspections.results)"
+        )
+        assert math.isclose(
+            float(got_entropy), want_entropy, rel_tol=1e-9, abs_tol=1e-12
+        )
+        assert math.isclose(float(got_max_prob), want_max_prob, rel_tol=1e-9)
+
+        # Recurrence interval: mean gap between same-state occurrences.
+        same_state_gaps = []
+        last_seen: dict = {}
+        for state, when in zip(states, dates):
+            if state in last_seen:
+                same_state_gaps.append((when - last_seen[state]).days)
+            last_seen[state] = when
+        got_recurrence = _value(
+            rows, MID, license_no, "RECURRENCE_INTERVAL(inspections.results)"
+        )
+        if same_state_gaps:
+            want_recurrence = sum(same_state_gaps) / len(same_state_gaps)
+            assert math.isclose(float(got_recurrence), want_recurrence, rel_tol=1e-9)
+        else:
+            assert got_recurrence is None
+
+        # First passage to the configured target state ('Fail').
+        got_fpt = _value(
+            rows, MID, license_no, "FIRST_PASSAGE_TIME(inspections.results)"
+        )
+        fail_dates = [when for state, when in zip(states, dates) if state == "Fail"]
+        if fail_dates:
+            want_fpt = (min(fail_dates) - dates[0]).days
+            assert int(got_fpt) == want_fpt
+        else:
+            assert got_fpt is None
+
+
 def test_asof_license_join_pulls_latest_in_grace(food_db):
     """The as-of joined application_type is the latest license record with
     license_start_date <= first_seen within the P2Y grace window."""

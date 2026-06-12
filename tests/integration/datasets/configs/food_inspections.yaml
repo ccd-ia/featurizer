@@ -28,6 +28,10 @@ aggregations:
   - sequence_entropy
   - longest_streak
   - recency
+  - recurrence_interval
+  - markov_conditional_entropy
+  - max_transition_prob
+  - first_passage_time
 
 transformations:
   - identity
@@ -46,7 +50,7 @@ entities:
     id: inspection_id
     temporal_ix: inspection_date
     variables:
-      results: {type: categorical}
+      results: {type: categorical, predicates: {target: Fail}}
       inspection_type: {type: categorical}
       violation_count: {type: numeric}
 

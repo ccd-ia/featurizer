@@ -27,6 +27,8 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 (e.g., "sum of orders in the last 7 days").
 """
 
+import hashlib
+
 from .abstractions import Feature, SpatialIx
 from .utils import register_aggregation
 
@@ -95,8 +97,15 @@ class Aggregator:
     def _build_name(name, feature, interval):
         name = f"{str.upper(name)}({feature.entity.alias}.{feature.name}"
         interval = f"|interval={interval})" if interval else ")"
-        name = name + interval
-        return f'''"{name.replace('"', "")}"'''
+        name = (name + interval).replace('"', "")
+        # PostgreSQL truncates identifiers to 63 bytes (NAMEDATALEN - 1).
+        # Two long names sharing a 63-byte prefix (e.g. the P6M and P1Y
+        # interval variants of the same feature) would silently collide into
+        # one ambiguous column, so cap long names with a stable hash suffix.
+        if len(name.encode()) > 63:
+            digest = hashlib.md5(name.encode()).hexdigest()[:8]
+            name = f"{name[:54]}~{digest}"
+        return f'"{name}"'
 
     def _build_aggregate_expression(self, feature, interval):
         expression = feature.name
@@ -1135,6 +1144,134 @@ class TimeInCurrentState(_SequenceReduction):
 time_in_current_state = TimeInCurrentState()
 
 
+class RecurrenceInterval(_SequenceReduction):
+    """Mean days between consecutive occurrences of the *same* state.
+
+    Unlike ``gap_mean`` (gaps between any two consecutive events), the LAG is
+    partitioned by the categorical value, so it measures how often each state
+    recurs. Timestamps are cast to date so the output is numeric days for both
+    date and timestamp temporal indexes.
+    """
+
+    def __init__(self):
+        super().__init__(name="recurrence_interval")
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        child_key = relationship.child_key
+        child_table = f"{child.alias}_transform"
+        causal = self._causal_filter(feature, interval)
+        ts = feature.entity.temporal_ix.name
+        col = feature.name
+        return (
+            f"(SELECT AVG(gap) FROM ("
+            f"SELECT sub.{ts}::date - LAG(sub.{ts}::date) "
+            f"OVER (PARTITION BY sub.{col} ORDER BY sub.{ts}) AS gap "
+            f"FROM {child_table} sub "
+            f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
+            f") g WHERE gap IS NOT NULL)"
+        )
+
+
+recurrence_interval = RecurrenceInterval()
+
+
+class _TransitionMatrixReduction(_SequenceReduction):
+    """Base for reductions over the first-order transition matrix.
+
+    Builds the grouped (prev, curr) frequency matrix with joint and
+    row-conditional totals; subclasses reduce it to a scalar.
+    """
+
+    def _matrix(self, feature, child, relationship, interval):
+        transitions = self._transitions(feature, child, relationship, interval)
+        return (
+            f"SELECT t.prev, t.curr, COUNT(*) AS freq, "
+            f"SUM(COUNT(*)) OVER () AS total, "
+            f"SUM(COUNT(*)) OVER (PARTITION BY t.prev) AS row_total "
+            f"FROM ({transitions}) t WHERE t.prev IS NOT NULL "
+            f"GROUP BY t.prev, t.curr"
+        )
+
+
+class MarkovConditionalEntropy(_TransitionMatrixReduction):
+    """First-order Markov entropy rate H(X_t | X_{t-1}), in nats.
+
+    ``-SUM p(i,j) * ln p(j|i)`` over the observed transition matrix: 0 for a
+    perfectly predictable chain, ``ln(k)`` for a uniform one over k states.
+    The existing ``sequence_entropy`` is the *joint* (prev, curr) entropy;
+    this is the conditional entropy the Markov taxonomy actually calls for.
+    """
+
+    def __init__(self):
+        super().__init__(name="markov_conditional_entropy")
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        matrix = self._matrix(feature, child, relationship, interval)
+        return (
+            f"(SELECT -SUM((freq::float / total) * LN(freq::float / row_total)) "
+            f"FROM ({matrix}) m)"
+        )
+
+
+markov_conditional_entropy = MarkovConditionalEntropy()
+
+
+class MaxTransitionProbability(_TransitionMatrixReduction):
+    """Predictability score: the largest conditional transition probability.
+
+    ``MAX p(j|i)`` over the observed matrix — 1.0 when at least one state
+    always transitions to the same successor.
+    """
+
+    def __init__(self):
+        super().__init__(name="max_transition_prob")
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        matrix = self._matrix(feature, child, relationship, interval)
+        return f"(SELECT MAX(freq::float / row_total) FROM ({matrix}) m)"
+
+
+max_transition_prob = MaxTransitionProbability()
+
+
+class FirstPassageTime(SubqueryAggregator):
+    """Days from the entity's first event to the first occurrence of a target
+    state; NULL if the target state has not occurred by the as-of date.
+
+    Requires a ``target`` predicate value and a temporal_ix, e.g.
+    ``results: {type: categorical, predicates: {target: Fail}}``.
+    """
+
+    def __init__(self):
+        super().__init__(name="first_passage_time", input_types=["categorical"])
+
+    def __call__(self, parent, child, feature, interval=None, *, relationship=None):
+        if feature.entity is None or feature.entity.temporal_ix is None:
+            return None
+        if "target" not in feature.predicates:
+            return None
+        return super().__call__(
+            parent, child, feature, interval=interval, relationship=relationship
+        )
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        child_key = relationship.child_key
+        child_table = f"{child.alias}_transform"
+        causal = self._causal_filter(feature, interval)
+        ts = feature.entity.temporal_ix.name
+        col = feature.name
+        target = feature.predicates["target"]
+        return (
+            f"(SELECT (MIN(sub.{ts}) FILTER (WHERE sub.{col} = '{target}'))::date "
+            f"- MIN(sub.{ts})::date "
+            f"FROM {child_table} sub "
+            f"WHERE sub.{child_key} = {child_table}.{child_key}{causal})"
+        )
+
+
+first_passage_time = FirstPassageTime()
+
+
 class _NumericStreamReduction(SubqueryAggregator):
     """Base for numeric reductions needing temporal ordering (ACF, VR, cosinor)."""
 
@@ -1592,6 +1729,9 @@ _REDUCTION_AGGREGATIONS = {
     "transition_matrix_summary": transition_matrix_summary,
     "rework_count": rework_count,
     "time_in_current_state": time_in_current_state,
+    "recurrence_interval": recurrence_interval,
+    "markov_conditional_entropy": markov_conditional_entropy,
+    "max_transition_prob": max_transition_prob,
     "acf_1": acf_1,
     "variance_ratio": variance_ratio,
     "cosinor_amplitude_weekly": cosinor_amplitude,
@@ -1621,6 +1761,7 @@ for _name, _agg in _DRIFT_AGGREGATIONS.items():
 _PREDICATE_AGGREGATIONS = {
     "right_censoring_indicator": right_censoring_indicator,
     "cross_type_latency": cross_type_latency,
+    "first_passage_time": first_passage_time,
 }
 
 DEFAULT_AGGREGATIONS.update(_PREDICATE_AGGREGATIONS)

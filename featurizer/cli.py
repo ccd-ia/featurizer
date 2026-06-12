@@ -412,6 +412,27 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "aod.as_of_date - max(ts WHERE value changed)",
         "temporal": True,
     },
+    "recurrence_interval": {
+        "description": "Mean days between consecutive occurrences of the same state",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "AVG(ts - LAG(ts) OVER (PARTITION BY value ORDER BY ts))",
+        "temporal": True,
+    },
+    "markov_conditional_entropy": {
+        "description": "First-order Markov entropy rate H(X_t | X_{t-1}) in nats",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "-SUM(p(i,j) * LN(p(j|i))) over the transition matrix",
+        "temporal": True,
+    },
+    "max_transition_prob": {
+        "description": "Predictability: largest conditional transition probability",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "MAX(freq / row_total) over the transition matrix",
+        "temporal": True,
+    },
     # Numeric-stream reductions
     "acf_1": {
         "description": "Lag-1 autocorrelation: corr(x_t, x_{t-1})",
@@ -462,6 +483,13 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "input_types": ["categorical"],
         "output_type": "numeric",
         "sql_example": "AVG(MIN(b.ts) - a.ts) for a=A-rows, b=next B-rows",
+        "temporal": True,
+    },
+    "first_passage_time": {
+        "description": "Days from the first event to the first 'target' state (else NULL)",
+        "input_types": ["categorical"],
+        "output_type": "numeric",
+        "sql_example": "MIN(ts) FILTER (WHERE col = 'target') - MIN(ts)",
         "temporal": True,
     },
     # Spatial (needs spatial_ix {lat, lon} on the entity)
