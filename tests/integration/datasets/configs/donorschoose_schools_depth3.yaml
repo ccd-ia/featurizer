@@ -1,0 +1,47 @@
+# DonorsChoose — depth-3 nesting config: schools -> projects -> donations.
+#
+# The first config to exercise max_depth=3 recursion on realistic volume.
+# Aggregations kept cheap (no SubqueryAggregator families) so the focus is
+# the planner's deep traversal, not correlated-subquery performance.
+
+target: schools
+max_depth: 3
+intervals: []
+
+aggregations:
+  - count
+  - sum
+  - mean
+  - nunique
+
+transformations:
+  - identity
+
+entities:
+  - alias: schools
+    table: donorschoose.schools
+    id: schoolid
+    temporal_ix: first_seen
+    variables:
+      n_projects: {type: numeric}
+
+  - alias: projects
+    table: donorschoose.projects
+    id: projectid
+    temporal_ix: date_posted
+    variables:
+      total_price_including_optional_support: {type: numeric}
+
+  - alias: donations
+    table: donorschoose.donations
+    id: donationid
+    temporal_ix: donation_timestamp
+    variables:
+      donation_to_project: {type: numeric}
+
+relationships:
+  - parent: {entity: schools, key: schoolid}
+    child: {entity: projects, key: schoolid}
+
+  - parent: {entity: projects, key: projectid}
+    child: {entity: donations, key: projectid}

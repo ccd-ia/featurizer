@@ -1,0 +1,65 @@
+# DonorsChoose — project-level realistic integration config.
+#
+# Exercises, on real data: numeric aggregations at scale, nunique over donor
+# ids, a static child (resources, no temporal_ix -> all-time aggregations
+# only), gap/event-rate over a *timestamp* temporal_ix (the food dataset
+# only covers date columns), and graph degree over co-donation edges.
+
+target: projects
+max_depth: 2
+intervals: [P1M, P3M]
+
+aggregations:
+  - count
+  - sum
+  - mean
+  - min
+  - max
+  - stddev
+  - p90
+  - nunique
+  - gap_mean
+  - event_rate
+
+transformations:
+  - identity
+
+entities:
+  - alias: projects
+    table: donorschoose.projects
+    id: projectid
+    temporal_ix: date_posted
+    variables:
+      total_price_including_optional_support: {type: numeric}
+      poverty_level: {type: categorical}
+
+  - alias: donations
+    table: donorschoose.donations
+    id: donationid
+    temporal_ix: donation_timestamp
+    variables:
+      donation_to_project: {type: numeric}
+      donor_acctid: {type: index}
+      payment_method: {type: categorical}
+
+  - alias: resources
+    table: donorschoose.resources
+    id: resourceid
+    variables:
+      item_unit_price: {type: numeric}
+      item_quantity: {type: numeric}
+
+  - alias: project_edges
+    table: donorschoose.project_edges
+    edge:
+      node: projects
+      source: source_project
+      target: target_project
+      timestamp: knowable_at
+
+relationships:
+  - parent: {entity: projects, key: projectid}
+    child: {entity: donations, key: projectid}
+
+  - parent: {entity: projects, key: projectid}
+    child: {entity: resources, key: projectid}
