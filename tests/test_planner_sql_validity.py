@@ -13,6 +13,7 @@ They cover:
   ``<child>_transform``. Every reached entity must emit its transform CTE.
 """
 
+import re
 import tempfile
 
 import yaml
@@ -161,3 +162,20 @@ def test_identifier_columns_are_not_duplicated():
     sql = _render(_asof_config())
     synth = _segment(sql, "patients_synth as (", "from patients")
     assert synth.count("patients.patient_id") == 1
+
+
+def test_interval_windows_cast_event_column_to_date():
+    """Bug #7: ``daterange @> <event_col>`` is invalid when the temporal_ix is
+    a timestamp (``operator does not exist: daterange @> timestamp``); every
+    interval window must cast the event column to date. Found by the realistic
+    DonorsChoose dataset, whose ``donation_timestamp`` is a timestamp."""
+    config = _parent_child_config(max_depth=2)
+    config["intervals"] = ["P1M"]
+    config["aggregations"] = ["sum", "count", "recency", "gap_mean", "kl_drift"]
+    config["entities"][1]["variables"]["status"] = {"type": "categorical"}
+    sql = _render(config)
+
+    contained = re.findall(r"@>\s*([\w.\"]+(?:::\w+)?)", sql)
+    assert contained, "no interval windows were generated"
+    uncast = [token for token in contained if not token.endswith("::date")]
+    assert not uncast, f"interval windows without ::date cast: {uncast!r}"
