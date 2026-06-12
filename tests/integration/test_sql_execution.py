@@ -338,6 +338,112 @@ def test_m1c_sequence_features_compute_correct_values(pg_conn):
     assert value("FIRST_PASSAGE_TIME(orders.status)") == 10.0
 
 
+def test_graph_recursive_families_compute_correct_values(pg_conn):
+    """M1b-2 graph families on a 5-node graph with hand-computed values.
+
+    Directed edges: 1->2, 2->1, 1->3, 2->3, 3->4, and a late 4->5.
+    Undirected: {1,2}, {1,3}, {2,3}, {3,4}, {4,5} — a triangle 1-2-3 with a
+    tail 3-4-5. All metrics below are worked out by hand in the assertions.
+    """
+    create_temp_table(
+        pg_conn, "users", [("user_id", "int")], [(1,), (2,), (3,), (4,), (5,)]
+    )
+    create_temp_table(
+        pg_conn,
+        "follows",
+        [("follower_id", "int"), ("followee_id", "int"), ("created_at", "date")],
+        [
+            (1, 2, "2023-01-01"),
+            (2, 1, "2023-01-05"),  # reciprocates 1->2
+            (1, 3, "2023-01-10"),
+            (2, 3, "2023-01-15"),
+            (3, 4, "2023-02-01"),
+            (4, 5, "2023-06-15"),  # after the early cutoff
+        ],
+    )
+    create_temp_table(
+        pg_conn,
+        "as_of_dates",
+        [("as_of_date", "date")],
+        [("2023-04-01",), ("2023-12-31",)],
+    )
+
+    config = {
+        "target": "users",
+        "max_depth": 1,
+        "intervals": [],
+        "aggregations": ["mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "users", "table": "users", "id": "user_id"},
+            {
+                "alias": "follows",
+                "table": "follows",
+                "edge": {
+                    "node": "users",
+                    "source": "follower_id",
+                    "target": "followee_id",
+                    "timestamp": "created_at",
+                    "features": [
+                        "degree",
+                        "reciprocity",
+                        "k_hop_2",
+                        "clustering",
+                        "common_neighbours",
+                        "jaccard",
+                        "adamic_adar",
+                    ],
+                },
+            },
+        ],
+    }
+    rows = run_featurizer(pg_conn, config)
+
+    def cell(as_of: str, user_id: int, metric: str):
+        row = next(
+            r
+            for r in rows
+            if str(r["as_of_date"]) == as_of and r.get("user_id") == user_id
+        )
+        col = next(c for c in row if c.startswith(metric + "("))
+        return row[col]
+
+    late = "2023-12-31"
+
+    # Reciprocity: node 1 has out-edges to 2 (reciprocated) and 3 (not) = 0.5;
+    # node 3's only out-edge (3->4) is unreciprocated = 0.
+    assert float(cell(late, 1, "RECIPROCITY")) == 0.5
+    assert float(cell(late, 3, "RECIPROCITY")) == 0.0
+
+    # 2-hop neighbourhood: from 1 only node 4 is at distance exactly 2; from 3
+    # only node 5; from 5 only node 3.
+    assert int(cell(late, 1, "K_HOP_2_COUNT")) == 1
+    assert int(cell(late, 3, "K_HOP_2_COUNT")) == 1
+    assert int(cell(late, 5, "K_HOP_2_COUNT")) == 1
+
+    # Clustering: node 1's neighbours {2,3} are connected -> 1.0; node 3's
+    # neighbours {1,2,4} have 1 of 3 possible edges -> 1/3; degree-1 node 5
+    # is undefined -> NULL.
+    assert float(cell(late, 1, "CLUSTERING_COEFF")) == 1.0
+    assert math.isclose(float(cell(late, 3, "CLUSTERING_COEFF")), 1.0 / 3.0)
+    assert cell(late, 5, "CLUSTERING_COEFF") is None
+
+    # Link prediction for ego 1 over neighbours {2, 3}:
+    # common neighbours: |N(1)&N(2)| = |{3}| = 1, |N(1)&N(3)| = |{2}| = 1.
+    assert float(cell(late, 1, "COMMON_NEIGHBOURS_MEAN")) == 1.0
+    # Jaccard: 1/|{1,2,3}| = 1/3 and 1/|{1,2,3,4}| = 1/4 -> mean 7/24.
+    assert math.isclose(float(cell(late, 1, "JACCARD_MEAN")), 7.0 / 24.0)
+    # Adamic-Adar: w=3 (deg 3) for pair (1,2); w=2 (deg 2) for pair (1,3).
+    expected_aa = (1.0 / math.log(3) + 1.0 / math.log(2)) / 2.0
+    assert math.isclose(float(cell(late, 1, "ADAMIC_ADAR_MEAN")), expected_aa)
+
+    # Causal cut at 2023-04-01: edge 4-5 does not exist yet, so node 3 has no
+    # 2-hop neighbours (NULL row) and node 5 is fully disconnected.
+    assert cell("2023-04-01", 3, "K_HOP_2_COUNT") is None
+    assert cell("2023-04-01", 5, "K_HOP_2_COUNT") is None
+    assert int(cell(late, 3, "K_HOP_2_COUNT")) == 1
+
+
 def test_graph_degree_features_with_causal_bound(pg_conn):
     """Degree features over an edge table, bounded as-of the cutoff."""
     create_temp_table(pg_conn, "users", [("user_id", "int")], [(1,), (2,), (3,)])

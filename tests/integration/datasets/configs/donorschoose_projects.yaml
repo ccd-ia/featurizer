@@ -49,6 +49,10 @@ entities:
       item_unit_price: {type: numeric}
       item_quantity: {type: numeric}
 
+  # Co-donation edges have genuine distance-2 structure (chains through
+  # shared donors), unlike the food chains' disjoint cliques — so k_hop_2 is
+  # exercised here. Linkpred families stay on the food dataset where they
+  # have closed-form expectations.
   - alias: project_edges
     table: donorschoose.project_edges
     edge:
@@ -56,6 +60,7 @@ entities:
       source: source_project
       target: target_project
       timestamp: knowable_at
+      features: [degree, k_hop_2, clustering]
 
 relationships:
   - parent: {entity: projects, key: projectid}

@@ -97,6 +97,10 @@ def test_grid_shape_and_no_dead_families(food_db):
         "IN_DEGREE(",
         "OUT_DEGREE(",
         "DEGREE(",
+        "CLUSTERING_COEFF(",
+        "COMMON_NEIGHBOURS_MEAN(",
+        "JACCARD_MEAN(",
+        "ADAMIC_ADAR_MEAN(",
         "application_type",  # the as-of pull from licenses
     ]
     for family in families:
@@ -436,6 +440,51 @@ def test_graph_chain_degree_is_causal(food_db):
         early_count = expect_sql(food_db, degree_sql, (license_no, license_no, early))
         late_count = expect_sql(food_db, degree_sql, (license_no, license_no, late))
         assert early_count <= late_count
+
+
+def test_graph_clique_families_have_closed_form_values(food_db):
+    """Chain edges form disjoint cliques, so every link-prediction family has
+    a closed-form expectation from the chain size n visible at the as-of date:
+    clustering = 1.0, common-neighbours mean = n-2, Jaccard mean = (n-2)/n,
+    Adamic-Adar mean = (n-2)/ln(n-1)."""
+    rows, cohort = _run_cohort(food_db)
+    with food_db.cursor() as cur:
+        # Cohort facilities whose visible chain (edges with knowable_at <= MID)
+        # has at least 3 members, with the visible size n.
+        cur.execute(
+            f"""
+            select c.license_no, count(*) + 1 as n_visible
+            from {cohort} c
+            join {SCHEMA}.chain_edges e
+              on c.license_no in (e.source_license, e.target_license)
+             and e.knowable_at <= %s
+            group by c.license_no
+            having count(*) >= 2
+            order by c.license_no limit 4
+            """,
+            (MID,),
+        )
+        sampled = cur.fetchall()
+    assert sampled, "no cohort facility is in a visible chain of size >= 3"
+
+    for license_no, n in sampled:
+        clustering = _value(
+            rows, MID, license_no, "CLUSTERING_COEFF(facilities.chain_edges)"
+        )
+        common = _value(
+            rows, MID, license_no, "COMMON_NEIGHBOURS_MEAN(facilities.chain_edges)"
+        )
+        jaccard = _value(rows, MID, license_no, "JACCARD_MEAN(facilities.chain_edges)")
+        adamic = _value(
+            rows, MID, license_no, "ADAMIC_ADAR_MEAN(facilities.chain_edges)"
+        )
+
+        assert math.isclose(
+            float(clustering), 1.0, rel_tol=1e-9
+        ), f"facility {license_no} (clique n={n}): clustering={clustering}"
+        assert math.isclose(float(common), n - 2, rel_tol=1e-9)
+        assert math.isclose(float(jaccard), (n - 2) / n, rel_tol=1e-9)
+        assert math.isclose(float(adamic), (n - 2) / math.log(n - 1), rel_tol=1e-9)
 
 
 def test_full_table_cheap_aggregations_smoke(food_db):

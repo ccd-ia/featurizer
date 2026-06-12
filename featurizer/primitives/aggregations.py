@@ -27,9 +27,7 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 (e.g., "sum of orders in the last 7 days").
 """
 
-import hashlib
-
-from .abstractions import Feature, SpatialIx
+from .abstractions import Feature, SpatialIx, pg_identifier
 from .utils import register_aggregation
 
 
@@ -97,15 +95,9 @@ class Aggregator:
     def _build_name(name, feature, interval):
         name = f"{str.upper(name)}({feature.entity.alias}.{feature.name}"
         interval = f"|interval={interval})" if interval else ")"
-        name = (name + interval).replace('"', "")
-        # PostgreSQL truncates identifiers to 63 bytes (NAMEDATALEN - 1).
-        # Two long names sharing a 63-byte prefix (e.g. the P6M and P1Y
-        # interval variants of the same feature) would silently collide into
-        # one ambiguous column, so cap long names with a stable hash suffix.
-        if len(name.encode()) > 63:
-            digest = hashlib.md5(name.encode()).hexdigest()[:8]
-            name = f"{name[:54]}~{digest}"
-        return f'"{name}"'
+        # pg_identifier caps long names with a stable hash suffix so interval
+        # variants cannot collide after PostgreSQL's 63-byte truncation.
+        return pg_identifier(name + interval)
 
     def _build_aggregate_expression(self, feature, interval):
         expression = feature.name

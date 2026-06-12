@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
+from .primitives import GRAPH_FEATURE_FAMILIES
+
 
 @dataclass
 class ValidationError:
@@ -339,6 +341,38 @@ class ConfigValidator:
                         node_ref = edge.get("node")
                         if isinstance(node_ref, str):
                             edge_node_refs.append((i, node_ref))
+                        features = edge.get("features")
+                        if features is not None:
+                            if not isinstance(features, list) or not features:
+                                self.errors.append(
+                                    ValidationError(
+                                        message="Edge 'features' must be a non-empty "
+                                        f"list (got: {type(features).__name__})",
+                                        location=f"entities[{i}].edge.features",
+                                        suggestion="Example: features: [degree, "
+                                        "jaccard, clustering]",
+                                    )
+                                )
+                            else:
+                                for family in features:
+                                    if family in GRAPH_FEATURE_FAMILIES:
+                                        continue
+                                    suggestion = self._suggest_similar(
+                                        str(family), set(GRAPH_FEATURE_FAMILIES)
+                                    )
+                                    self.errors.append(
+                                        ValidationError(
+                                            message="Unknown graph feature family: "
+                                            f"'{family}'",
+                                            location=f"entities[{i}].edge.features",
+                                            suggestion=(
+                                                f"Did you mean '{suggestion}'?"
+                                                if suggestion
+                                                else "Valid families: "
+                                                + ", ".join(GRAPH_FEATURE_FAMILIES)
+                                            ),
+                                        )
+                                    )
 
             # Edge `node` must resolve to a declared entity (checked after the
             # loop so forward references to later entities are allowed).

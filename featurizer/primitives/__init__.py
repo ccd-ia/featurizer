@@ -1,6 +1,7 @@
 # coding: utf-8
 
 from .abstractions import (
+    GRAPH_FEATURE_FAMILIES,
     EdgeSpec,
     Entity,
     ERGraph,
@@ -10,6 +11,7 @@ from .abstractions import (
     Relationship,
     SpatialIx,
     Variable,
+    pg_identifier,
 )
 from .aggregations import Aggregator
 from .transformations import Transformer
@@ -23,8 +25,10 @@ from .utils import (
 )
 
 __all__ = [
+    "GRAPH_FEATURE_FAMILIES",
     "EdgeSpec",
     "ERGraph",
+    "pg_identifier",
     "Entity",
     "Feature",
     "Id",

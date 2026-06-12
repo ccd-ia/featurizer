@@ -92,6 +92,8 @@ def test_grid_shape_and_no_dead_families(donorschoose_db):
         "IN_DEGREE(",
         "OUT_DEGREE(",
         "DEGREE(",
+        "K_HOP_2_COUNT(",
+        "CLUSTERING_COEFF(",
     ]
     for family in families:
         columns = feature_columns(rows, family)
@@ -294,6 +296,51 @@ def test_depth3_schools_nesting_matches_two_level_sql(donorschoose_db):
         assert math.isclose(
             float(got), float(want), rel_tol=1e-9
         ), f"school {schoolid}: featurizer={got} sql={want}"
+
+
+def test_k_hop_2_matches_sql_recomputation(donorschoose_db):
+    """K_HOP_2_COUNT over co-donation edges equals an independent two-hop SQL
+    recomputation (distinct nodes at exactly distance 2, causally bounded)."""
+    rows, cohort = _run_projects(donorschoose_db)
+    with donorschoose_db.cursor() as cur:
+        cur.execute(
+            f"""
+            select distinct c.projectid from {cohort} c
+            join {SCHEMA}.project_edges e
+              on c.projectid in (e.source_project, e.target_project)
+             and e.knowable_at <= %s
+            order by c.projectid limit 5
+            """,
+            (MID,),
+        )
+        sampled = [r[0] for r in cur.fetchall()]
+    assert sampled
+
+    k2_sql = f"""
+        with und as (
+            select source_project as a, target_project as b
+            from {SCHEMA}.project_edges where knowable_at <= %(as_of)s
+            union
+            select target_project, source_project
+            from {SCHEMA}.project_edges where knowable_at <= %(as_of)s
+        )
+        select count(distinct two.b) from und one
+        join und two on two.a = one.b
+        where one.a = %(ego)s
+          and two.b <> %(ego)s
+          and two.b not in (select b from und where a = %(ego)s)
+    """
+    for projectid in sampled:
+        got = _value(rows, MID, projectid, "K_HOP_2_COUNT(projects.project_edges)")
+        with donorschoose_db.cursor() as cur:
+            cur.execute(k2_sql, {"as_of": MID, "ego": projectid})
+            want = cur.fetchone()[0]
+        if want == 0:
+            assert got is None or int(got) == 0
+        else:
+            assert (
+                got is not None and int(got) == want
+            ), f"project {projectid}: featurizer={got} sql={want}"
 
 
 def test_graph_co_donation_degree_is_causal(donorschoose_db):

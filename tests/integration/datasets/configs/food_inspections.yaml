@@ -62,6 +62,10 @@ entities:
       license_no: {type: index}
       application_type: {type: categorical}
 
+  # chain_edges connect facilities sharing a dba_name -> disjoint cliques, so
+  # the link-prediction families have closed-form expected values per chain
+  # size (asserted in the realistic tests). k_hop_2 is omitted: disjoint
+  # cliques have no distance-2 nodes, so it would be all-NULL here.
   - alias: chain_edges
     table: food_inspections.chain_edges
     edge:
@@ -69,6 +73,7 @@ entities:
       source: source_license
       target: target_license
       timestamp: knowable_at
+      features: [degree, clustering, common_neighbours, jaccard, adamic_adar]
 
 relationships:
   - parent: {entity: facilities, key: license_no}

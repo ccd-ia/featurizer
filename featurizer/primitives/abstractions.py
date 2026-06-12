@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 
@@ -15,6 +16,32 @@ FeatureType = Enum(
     "FeatureType",
     "index spatial_ix temporal_ix date timestamp numeric categorical text boolean vector key",
 )
+
+#: Graph feature families an edge-table entity may request via
+#: ``edge: {features: [...]}``. ``degree`` is the backward-compatible default.
+GRAPH_FEATURE_FAMILIES = (
+    "degree",
+    "reciprocity",
+    "k_hop_2",
+    "clustering",
+    "common_neighbours",
+    "jaccard",
+    "adamic_adar",
+)
+
+
+def pg_identifier(raw: str) -> str:
+    """Quote a generated feature name as a PostgreSQL identifier.
+
+    PostgreSQL truncates identifiers to 63 bytes (NAMEDATALEN - 1); two long
+    names sharing a 63-byte prefix would silently collide into one ambiguous
+    column, so long names are capped with a stable hash suffix (bug #8).
+    """
+    raw = raw.replace('"', "")
+    if len(raw.encode()) > 63:
+        digest = hashlib.md5(raw.encode()).hexdigest()[:8]
+        raw = f"{raw[:54]}~{digest}"
+    return f'"{raw}"'
 
 
 class ERGraph:
@@ -124,6 +151,7 @@ class Entity:
                 target=edge["target"],
                 weight=edge.get("weight"),
                 timestamp=edge.get("timestamp"),
+                features=edge.get("features"),
             )
             if edge is not None
             else None
@@ -358,6 +386,7 @@ class EdgeSpec:
         target: str,
         weight: Optional[str] = None,
         timestamp: Optional[str] = None,
+        features: Optional[List[str]] = None,
     ) -> None:
         self.entity: "Entity" = entity
         self.alias: str = entity.alias
@@ -367,6 +396,9 @@ class EdgeSpec:
         self.target: str = target
         self.weight: Optional[str] = weight
         self.timestamp: Optional[str] = timestamp
+        # Requested graph feature families; ``degree`` keeps the historical
+        # behaviour when the config does not ask for anything else.
+        self.features: List[str] = list(features) if features else ["degree"]
 
     def __repr__(self) -> str:
         return f"EdgeSpec({self.alias}: {self.source}->{self.target} on {self.node})"

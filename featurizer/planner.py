@@ -12,7 +12,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
 from icecream import ic
 from loguru import logger
 
-from .primitives import Entity, ERGraph, Feature, Relationship
+from .primitives import Entity, ERGraph, Feature, Relationship, pg_identifier
 
 
 @dataclass(frozen=True)
@@ -190,19 +190,24 @@ class FeaturePlanner:
     # ------------------------------------------------------------------ #
 
     def _build_graph_features(self, node: Entity) -> None:
-        """Attach graph features (degree family) for every edge on this node."""
+        """Attach the requested graph feature families for every edge on this node."""
         for edge in self.graph.get_edges_for_node(node):
             self._build_graph_cte(node, edge)
 
     def _build_graph_cte(self, node: Entity, edge) -> None:
-        """Emit a degree CTE for ``node`` over the edges in ``edge`` and join it.
+        """Emit one CTE per requested graph family for ``node`` over ``edge``.
 
-        Degree is computed by unioning each edge as an outgoing row for its
-        source node and an incoming row for its target node, then grouping by
-        node id. When the edge carries a ``timestamp`` the union is bounded by
-        ``<= aod.as_of_date`` so degree is measured as-of each cutoff (the same
-        causal guarantee the aggregation CTEs use); without one the graph is
-        treated as static and leakage is the caller's responsibility.
+        Families are requested via ``edge: {features: [...]}`` (default
+        ``[degree]``). When the edge carries a ``timestamp`` every family is
+        bounded by ``<= aod.as_of_date`` so the graph is measured as-of each
+        cutoff (the same causal guarantee the aggregation CTEs use); without
+        one the graph is treated as static and leakage is the caller's
+        responsibility.
+
+        The recursive families (k_hop_2, clustering, common_neighbours,
+        jaccard, adamic_adar) share an undirected, deduplicated neighbour CTE;
+        reciprocity reads the raw directed edge table; degree keeps its
+        original union-by-direction shape.
         """
         if node.id is None:
             logger.warning(
@@ -212,7 +217,68 @@ class FeaturePlanner:
             )
             return
 
-        causal = f" where {edge.timestamp} <= aod.as_of_date " if edge.timestamp else ""
+        node_id_col = node.id.name
+        families = list(edge.features)
+        registered: list[str] = []
+
+        def attach(cte_name: str, cte_query: str, names: list[str]) -> None:
+            join = f" {cte_name} on {cte_name}.node_id = {node.table}.{node_id_col} "
+            self._joins[node.alias].append(join)
+            self._ctes.append(cte_query)
+            registered.extend(names)
+
+        if "degree" in families:
+            self._graph_degree_cte(node, edge, attach)
+        if "reciprocity" in families:
+            self._graph_reciprocity_cte(node, edge, attach)
+
+        neighbour_families = [
+            f
+            for f in (
+                "k_hop_2",
+                "clustering",
+                "common_neighbours",
+                "jaccard",
+                "adamic_adar",
+            )
+            if f in families
+        ]
+        if neighbour_families:
+            nbrs = self._graph_neighbours_cte(node, edge)
+            if "k_hop_2" in neighbour_families:
+                self._graph_k_hop_cte(node, edge, nbrs, attach)
+            if "clustering" in neighbour_families:
+                self._graph_clustering_cte(node, edge, nbrs, attach)
+            linkpred = [
+                f
+                for f in ("common_neighbours", "jaccard", "adamic_adar")
+                if f in neighbour_families
+            ]
+            if linkpred:
+                self._graph_linkpred_cte(node, edge, nbrs, linkpred, attach)
+
+        # Register graph features so they flow through synth/transform and are
+        # available for downstream transformation and parent aggregation. They
+        # are synth columns, so Fix A references them by name in the transform.
+        self._features[node.alias].update(
+            Feature(name=name, type="numeric", definition=name, entity=node)
+            for name in registered
+        )
+
+    @staticmethod
+    def _graph_feature_name(metric: str, node: Entity, edge) -> str:
+        return pg_identifier(f"{metric}({node.alias}.{edge.alias})")
+
+    @staticmethod
+    def _graph_causal(edge, *, prefix: str, alias: str = "") -> str:
+        """Causal bound on the edge timestamp; empty for static graphs."""
+        if not edge.timestamp:
+            return ""
+        col = f"{alias}.{edge.timestamp}" if alias else edge.timestamp
+        return f" {prefix} {col} <= aod.as_of_date"
+
+    def _graph_degree_cte(self, node: Entity, edge, attach) -> None:
+        causal = self._graph_causal(edge, prefix="where")
         weight_expr = edge.weight if edge.weight else "null"
         union = (
             f"select {edge.source} as node_id, 'out' as direction, "
@@ -222,23 +288,26 @@ class FeaturePlanner:
             f"{weight_expr} as weight from {edge.table}{causal}"
         )
 
-        def feature_name(metric: str) -> str:
-            return f'"{metric}({node.alias}.{edge.alias})"'
-
         columns = [
-            (feature_name("OUT_DEGREE"), "count(*) filter (where direction = 'out')"),
-            (feature_name("IN_DEGREE"), "count(*) filter (where direction = 'in')"),
-            (feature_name("DEGREE"), "count(*)"),
+            (
+                self._graph_feature_name("OUT_DEGREE", node, edge),
+                "count(*) filter (where direction = 'out')",
+            ),
+            (
+                self._graph_feature_name("IN_DEGREE", node, edge),
+                "count(*) filter (where direction = 'in')",
+            ),
+            (self._graph_feature_name("DEGREE", node, edge), "count(*)"),
         ]
         if edge.weight:
             columns.extend(
                 [
                     (
-                        feature_name("WEIGHTED_OUT_DEGREE"),
+                        self._graph_feature_name("WEIGHTED_OUT_DEGREE", node, edge),
                         "coalesce(sum(weight) filter (where direction = 'out'), 0)",
                     ),
                     (
-                        feature_name("WEIGHTED_IN_DEGREE"),
+                        self._graph_feature_name("WEIGHTED_IN_DEGREE", node, edge),
                         "coalesce(sum(weight) filter (where direction = 'in'), 0)",
                     ),
                 ]
@@ -255,17 +324,164 @@ class FeaturePlanner:
         group by node_id
         )
         """
-        join = f" {cte_name} on {cte_name}.node_id = {node.table}.{node.id.name} "
-        self._joins[node.alias].append(join)
-        self._ctes.append(cte_query)
+        attach(cte_name, cte_query, [name for name, _ in columns])
 
-        # Register degree features so they flow through synth/transform and are
-        # available for downstream transformation and parent aggregation. They
-        # are synth columns, so Fix A references them by name in the transform.
-        self._features[node.alias].update(
-            Feature(name=name, type="numeric", definition=name, entity=node)
-            for name, _ in columns
+    def _graph_reciprocity_cte(self, node: Entity, edge, attach) -> None:
+        """Fraction of a node's outgoing edges that are reciprocated.
+
+        Reads the *directed* edge table: an edge s->t is reciprocated when
+        t->s also exists (within the causal bound). On an edge table that
+        stores unordered pairs once (deduplicated undirected graphs) this is
+        0 by construction.
+        """
+        name = self._graph_feature_name("RECIPROCITY", node, edge)
+        causal_outer = self._graph_causal(edge, prefix="where", alias="e")
+        causal_inner = self._graph_causal(edge, prefix="and", alias="r")
+        cte_name = f"{edge.alias}_recip_for_{node.alias}"
+        cte_query = f"""
+        -- graph (reciprocity) for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        select e.{edge.source} as node_id,
+        (count(*) filter (where exists (
+            select 1 from {edge.table} r
+            where r.{edge.source} = e.{edge.target}
+              and r.{edge.target} = e.{edge.source}{causal_inner}
+        )))::float / count(*) as {name}
+        from {edge.table} e{causal_outer}
+        group by e.{edge.source}
         )
+        """
+        attach(cte_name, cte_query, [name])
+
+    def _graph_neighbours_cte(self, node: Entity, edge) -> str:
+        """Emit (once) the shared undirected, deduplicated neighbour CTE."""
+        cte_name = f"{edge.alias}_nbrs_for_{node.alias}"
+        causal = self._graph_causal(edge, prefix="where")
+        cte_query = f"""
+        -- shared undirected neighbour list for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        select distinct node_id, nbr from (
+            select {edge.source} as node_id, {edge.target} as nbr
+            from {edge.table}{causal}
+            union all
+            select {edge.target} as node_id, {edge.source} as nbr
+            from {edge.table}{causal}
+        ) u where node_id is not null and nbr is not null
+        )
+        """
+        self._ctes.append(cte_query)
+        return cte_name
+
+    def _graph_k_hop_cte(self, node: Entity, edge, nbrs: str, attach) -> None:
+        """Count of distinct nodes at exactly 2 hops (not ego, not a neighbour)."""
+        name = self._graph_feature_name("K_HOP_2_COUNT", node, edge)
+        cte_name = f"{edge.alias}_k2_for_{node.alias}"
+        cte_query = f"""
+        -- graph (2-hop neighbourhood size) for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        select n1.node_id,
+        count(distinct n2.nbr) as {name}
+        from {nbrs} n1
+        join {nbrs} n2 on n2.node_id = n1.nbr
+        where n2.nbr <> n1.node_id
+          and not exists (
+            select 1 from {nbrs} d
+            where d.node_id = n1.node_id and d.nbr = n2.nbr
+          )
+        group by n1.node_id
+        )
+        """
+        attach(cte_name, cte_query, [name])
+
+    def _graph_clustering_cte(self, node: Entity, edge, nbrs: str, attach) -> None:
+        """Local clustering coefficient: connected neighbour pairs / possible pairs."""
+        name = self._graph_feature_name("CLUSTERING_COEFF", node, edge)
+        cte_name = f"{edge.alias}_clust_for_{node.alias}"
+        cte_query = f"""
+        -- graph (local clustering coefficient) for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        select deg.node_id,
+        case when deg.degree < 2 then null
+             else coalesce(tri.closed, 0)::float
+                  / (deg.degree * (deg.degree - 1) / 2.0)
+        end as {name}
+        from (
+            select node_id, count(*) as degree from {nbrs} group by node_id
+        ) deg
+        left join (
+            select n1.node_id, count(*) as closed
+            from {nbrs} n1
+            join {nbrs} n2 on n2.node_id = n1.node_id and n2.nbr > n1.nbr
+            join {nbrs} e on e.node_id = n1.nbr and e.nbr = n2.nbr
+            group by n1.node_id
+        ) tri on tri.node_id = deg.node_id
+        )
+        """
+        attach(cte_name, cte_query, [name])
+
+    def _graph_linkpred_cte(
+        self, node: Entity, edge, nbrs: str, families: list[str], attach
+    ) -> None:
+        """Ego-level link-prediction scores, averaged over the ego's neighbours.
+
+        For each neighbour v of ego e: common neighbours |N(e) ∩ N(v)|,
+        Jaccard |N(e) ∩ N(v)| / |N(e) ∪ N(v)|, and Adamic-Adar
+        Σ_w 1/ln(deg(w)) over the common neighbours w. Pairs with no common
+        neighbours contribute 0 to the means.
+        """
+        columns = []
+        if "common_neighbours" in families:
+            columns.append(
+                (
+                    self._graph_feature_name("COMMON_NEIGHBOURS_MEAN", node, edge),
+                    "avg(coalesce(cn.cnt, 0))",
+                )
+            )
+        if "jaccard" in families:
+            columns.append(
+                (
+                    self._graph_feature_name("JACCARD_MEAN", node, edge),
+                    "avg(coalesce(cn.cnt, 0)::float / "
+                    "nullif(de.degree + dv.degree - coalesce(cn.cnt, 0), 0))",
+                )
+            )
+        if "adamic_adar" in families:
+            columns.append(
+                (
+                    self._graph_feature_name("ADAMIC_ADAR_MEAN", node, edge),
+                    "avg(coalesce(cn.aa, 0))",
+                )
+            )
+        select_cols = ",\n        ".join(f"{expr} as {name}" for name, expr in columns)
+
+        cte_name = f"{edge.alias}_linkpred_for_{node.alias}"
+        cte_query = f"""
+        -- graph (link-prediction means) for {node.alias} over edge {edge.alias}
+        {cte_name} as (
+        with degrees as (
+            select node_id, count(*) as degree from {nbrs} group by node_id
+        ),
+        pair_cn as (
+            select n1.node_id as ego, n1.nbr as v,
+                   count(n2.nbr) as cnt,
+                   sum(1.0 / nullif(ln(dw.degree), 0)) as aa
+            from {nbrs} n1
+            join {nbrs} n2 on n2.node_id = n1.node_id
+            join {nbrs} nv on nv.node_id = n1.nbr and nv.nbr = n2.nbr
+            join degrees dw on dw.node_id = n2.nbr
+            where n2.nbr <> n1.nbr
+            group by n1.node_id, n1.nbr
+        )
+        select p.node_id,
+        {select_cols}
+        from {nbrs} p
+        join degrees de on de.node_id = p.node_id
+        join degrees dv on dv.node_id = p.nbr
+        left join pair_cn cn on cn.ego = p.node_id and cn.v = p.nbr
+        group by p.node_id
+        )
+        """
+        attach(cte_name, cte_query, [name for name, _ in columns])
 
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship
