@@ -1,0 +1,75 @@
+# Chicago Food Inspections — realistic integration config.
+#
+# Exercises, on real data: interval aggregations, categorical aggregators
+# (mode/entropy/hhi), sequence aggregators over the inspection stream
+# (gap_*, sequence_entropy, longest_streak), an as-of join against the
+# licenses stream, and graph degree over the derived chain_edges table.
+#
+# Tests retarget the `facilities` entity at a TEMP cohort table (see
+# tests/integration/_realistic.py) so features are computed only for a
+# deterministic sample of facilities.
+
+target: facilities
+max_depth: 2
+intervals: [P6M, P1Y]
+
+aggregations:
+  - count
+  - sum
+  - mean
+  - max
+  - nunique
+  - mode
+  - entropy
+  - hhi
+  - gap_mean
+  - gap_stddev
+  - gap_cv
+  - sequence_entropy
+  - longest_streak
+  - recency
+
+transformations:
+  - identity
+
+entities:
+  - alias: facilities
+    table: food_inspections.facilities
+    id: license_no
+    temporal_ix: first_seen
+    variables:
+      facility_type: {type: categorical}
+      risk: {type: categorical}
+
+  - alias: inspections
+    table: food_inspections.inspections
+    id: inspection_id
+    temporal_ix: inspection_date
+    variables:
+      results: {type: categorical}
+      inspection_type: {type: categorical}
+      violation_count: {type: numeric}
+
+  - alias: licenses
+    table: food_inspections.licenses
+    id: license_record_id
+    temporal_ix: license_start_date
+    variables:
+      license_no: {type: index}
+      application_type: {type: categorical}
+
+  - alias: chain_edges
+    table: food_inspections.chain_edges
+    edge:
+      node: facilities
+      source: source_license
+      target: target_license
+      timestamp: knowable_at
+
+relationships:
+  - parent: {entity: facilities, key: license_no}
+    child: {entity: inspections, key: license_no}
+
+  - parent: {entity: licenses, key: license_no}
+    child: {entity: facilities, key: license_no}
+    temporal: {mode: as_of, grace: P2Y}

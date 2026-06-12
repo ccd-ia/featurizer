@@ -128,3 +128,6 @@ chatgpt-discussion.md
 
 # Generated example databases
 examples/*/data.db
+
+# Integration-test dataset download cache (see tests/integration/datasets/)
+tests/data/

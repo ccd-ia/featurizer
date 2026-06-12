@@ -68,3 +68,41 @@ def pg_conn():
     finally:
         conn.rollback()
         conn.close()
+
+
+def _dataset_conn(pg_conn, schema: str, version: int):
+    """Return ``pg_conn`` if ``schema`` is seeded at ``version``, else skip.
+
+    The realistic tier runs against permanent per-dataset schemas created by
+    ``just seed``; tests still only create TEMP objects (cohort, as_of_dates)
+    on the rolled-back connection, so the seeded schemas stay read-only.
+    """
+    from .datasets._meta import seed_status
+
+    status = seed_status(pg_conn, schema)
+    if status is None:
+        pytest.skip(f"{schema} is not seeded: run `just db-up && just seed`")
+    if status.seed_version != version:
+        pytest.skip(
+            f"{schema} is seeded at v{status.seed_version} but tests expect "
+            f"v{version}: re-run `just seed`"
+        )
+    return pg_conn
+
+
+@pytest.fixture
+def food_db(pg_conn):
+    """Connection with the Chicago Food Inspections schema seeded."""
+    from .datasets import food_inspections
+
+    return _dataset_conn(
+        pg_conn, food_inspections.SCHEMA, food_inspections.SEED_VERSION
+    )
+
+
+@pytest.fixture
+def donorschoose_db(pg_conn):
+    """Connection with the DonorsChoose schema seeded."""
+    from .datasets import donorschoose
+
+    return _dataset_conn(pg_conn, donorschoose.SCHEMA, donorschoose.SEED_VERSION)
