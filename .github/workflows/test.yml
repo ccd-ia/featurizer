@@ -1,0 +1,52 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  fast:
+    name: fast tests + types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      - name: pytest (fast tier, no database)
+        run: uv run pytest -q -m "not integration"
+      - name: basedpyright
+        run: uv run basedpyright
+
+  integration:
+    name: integration (ephemeral PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featurizer_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/featurizer_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync
+      # The realistic-dataset tier ("integration and slow") needs `just seed`,
+      # which downloads external datasets; it runs locally, not in CI. CI covers
+      # the TEMP-table integration tests that execute generated SQL on a real
+      # PostgreSQL without seeding.
+      - name: pytest (integration, no seeding required)
+        run: uv run pytest -q -m "integration and not slow"

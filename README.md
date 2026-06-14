@@ -44,7 +44,7 @@ process by:
     as-of joins prevent data leakage in time-series ML.
 -   **Generating pure SQL**: No data movement required&#x2014;features are
     computed where your data lives.
--   **Providing extensible primitives**: 43 aggregations and 71
+-   **Providing extensible primitives**: 69 aggregations and 83
     transformations out of the box, with a simple API for custom ones.
 
 
@@ -228,9 +228,11 @@ interactive exploration.
     `rolling_iqr_7`, `ema_7`, `holt_winters_level_7`,
     `holt_winters_trend_7`, `pct_change_1`) and can be extended by
     requesting specific names via `get_aggregations` / `get_transformers`.
-    In total there are 43 aggregations and 71 transformers (114
+    In total there are 69 aggregations and 83 transformers (152
     registered primitives). Use `python -m featurizer list-primitives` to
-    discover all registered primitives.
+    discover all registered primitives. Peer-group, spatial second-table,
+    and φ-bridge features are produced by dedicated planner passes rather
+    than the primitive registry.
 
 -   Example registration:
     
