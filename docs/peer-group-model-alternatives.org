@@ -1,0 +1,112 @@
+#+TITLE: Peer-group model — design alternatives (A/B/C)
+#+AUTHOR: Adolfo De Unánue
+#+DATE: 2026-06-14
+#+KEYWORDS: featurizer, deep feature synthesis, peer-group, as-of, causal safety, leakage
+#+LANGUAGE: en
+#+THEME: navy-gold
+#+OPTIONS: toc:1 tags:nil ^:nil ':t H:4 prop:nil todo:nil email:t num:3
+#+OPTIONS: eval:never-export
+#+PROPERTY: header-args :eval never-export :exports results
+
+* Decision
+
+*Chosen: Option A — peer-group by categorical column.* Peers are rows of the target
+entity that share a given categorical value (e.g. ~facility_type~, ~schoolid~,
+~poverty_level~), with leave-one-out and an ~<= as_of_date~ causal bound. Options B and
+C were considered and deferred; this memo preserves the analysis in case we revisit.
+
+* The shared concept
+
+A peer-group feature answers: /how does this entity compare to others like it, as of
+date d?/ All three options emit the same feature family — only the *definition of the
+peer set* differs:
+
+- ~peer_event_rate~ — event volume of the peer set (e.g. inspections/year)
+- ~peer_mean(X)~ — peers' average of a measure X (e.g. mean ~risk~)
+- ~ego_minus_peer_mean(X)~ — the ego's value minus its peers' mean (outlier signal)
+- ~peer_zscore(X)~ / ~peer_pctile(X)~ — the ego's standing within its peers
+
+* Option A — by categorical column (CHOSEN)
+
+A peer is any other entity sharing a categorical value already present on the target.
+
+#+begin_src yaml
+entities:
+  - alias: facilities
+    table: food_inspections.facilities
+    peer_groups:
+      - by: facility_type
+#+end_src
+
+Generated SQL is a ~GROUP BY <column>~ over the target, bounded and joined back to the
+ego; leave-one-out is cheap arithmetic (keep group ~sum~/~count~/~sumsq~, subtract the
+ego's contribution). Membership is *static* (a categorical column doesn't change), so
+the only leakage surface is the event stream — handled by the existing
+~where ... <= aod.as_of_date~ idiom. Lowest-risk of the three.
+
+- *Pros*: zero extra data; seeded substrate already supports it; hand-verifiable against
+  an independent ~GROUP BY~ in the realistic tier; reuses the existing causal idiom.
+- *Cons*: peers must share one column exactly (no "similar but not identical"); multi-
+  dimensional peers handled by allowing a *list* of ~peer_groups~.
+
+* Option B — explicit peer table (deferred)
+
+A peer is whatever a supplied relation of id-pairs says it is. Reuses the edge-table
+machinery (~EdgeSpec~, ~_build_graph_cte~, ~_graph_neighbours_cte~); peers = graph
+neighbours. Membership can be time-gated via a ~knowable_at~ timestamp
+(~_graph_causal~), giving point-in-time-correct membership.
+
+- *Pros*: most expressive of the practical two — asymmetric, curated, many-to-many,
+  time-varying; reuses tested traversal.
+- *Cons*: the peer table must be produced and maintained outside featurizer; no such
+  table in the seeded data (would need a synthetic fixture).
+
+* Option C — similarity-graph peers (deferred behind M2)
+
+A peer is a k-nearest neighbour in a computed feature/embedding space. Cannot stand
+alone: similarity must be precomputed — exactly the φ-bridge's job (M2,
+~bridge/embeddings.py~ → pgvector). Choosing C couples M1d to M2 and inverts milestone
+order.
+
+- *Pros*: most powerful — captures similar behaviour, not just identical labels.
+- *Cons*: heaviest; depends on M2 + pgvector; both embedding and neighbour selection
+  must be computed pre-t₀ per as-of date (highest leakage risk); hard to hand-verify.
+
+* Comparison
+
+#+latex: \rowcolors[]{1}{}{theme-table-row}
+#+attr_latex: :placement [H]
+#+attr_latex: :environment tabular :font \small :center t :booktabs t :rmlines t :align L{0.26\textwidth}|C{0.22\textwidth}|C{0.22\textwidth}|C{0.22\textwidth}
+#+caption: Peer-group model trade-offs
+#+name: tbl:peer-options
+| Dimension                | A: by column        | B: peer table          | C: similarity graph     |
+|--------------------------+---------------------+------------------------+-------------------------|
+| Extra data needed        | none                | a peer-pair table      | embeddings + k-NN (M2)  |
+| Membership over time     | static (safe)       | time-gated knowable_at | recomputed per as-of    |
+| Leakage surface          | event stream only   | + membership (handled) | + embedding + selection |
+| Reuses existing code     | new small pass      | edge traversal         | needs M2 first          |
+| Realistic verifiability  | easy (GROUP BY)     | medium (needs fixture) | hard                    |
+| Seeded substrate ready   | yes                 | no                     | no                      |
+| Couples to M2            | no                  | no                     | yes                     |
+
+* Rationale
+
+A is unblocked, verifiable, and the seeded data already supports it. The config is
+designed so B is a clean superset later (both feed the same feature emitter); C is the
+future power-tool that naturally follows M2.
+
+* Sub-decisions (locked for the implementation)
+
+1. *List from day one*: ~peer_groups: [{by: col}, ...]~ so multi-dimensional peers need
+   no later migration.
+2. *Emit z-score and percentile* in addition to rate/mean/delta — highest-signal outlier
+   features, nearly free given group sum/sumsq/count.
+3. *Leave-one-out by default* (the ego is excluded from its own peer aggregate).
+4. *Scope*: peer aggregate over the peers' child event stream (cross-stream) AND peers'
+   own numeric attributes (the latter falls out as ~peer_mean(X)~ on a Variable).
+
+* Revisit triggers
+
+Reconsider B when peers can't be expressed as one shared column or membership is curated/
+time-varying. Reconsider C once M2 (φ-bridge) ships and "same label" peers prove too
+coarse.
