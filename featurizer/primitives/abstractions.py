@@ -49,6 +49,7 @@ class ERGraph:
         self,
         entities: List[Dict[str, Any]],
         relationships: Optional[List[Dict[str, Any]]],
+        spatial_relationships: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.entities: Dict[str, Entity] = {e["alias"]: Entity(**e) for e in entities}
 
@@ -77,6 +78,19 @@ class ERGraph:
         # Edge-table entities contribute graph features to their node entity.
         self.edges: List[EdgeSpec] = [
             e.edge for e in self.entities.values() if e.edge is not None
+        ]
+
+        # Spatial second-table relationships (co-location / nearest / KDE).
+        self.spatial_relationships: List[SpatialRelationshipSpec] = [
+            SpatialRelationshipSpec(
+                name=s["name"],
+                left=s["left"],
+                right=s["right"],
+                within_m=s["within_m"],
+                bandwidth_m=s.get("bandwidth_m"),
+                features=s.get("features"),
+            )
+            for s in (spatial_relationships or [])
         ]
 
     def get_edges_for_node(self, entity: Entity) -> List["EdgeSpec"]:
@@ -479,3 +493,49 @@ class SpatialIx:
         if self.geom:
             return f"SpatialIx(geom={self.geom})"
         return f"SpatialIx(lat={self.lat}, lon={self.lon})"
+
+
+#: Spatial second-table feature families. ``colocation_count`` counts ``right``
+#: rows within ``within_m`` of each ``left`` ego; ``distance_to_nearest`` is the
+#: minimum great-circle distance; ``kde_intensity`` sums a Gaussian kernel
+#: (bandwidth ``bandwidth_m``) over the in-radius neighbours.
+SPATIAL_FEATURE_FAMILIES = (
+    "colocation_count",
+    "distance_to_nearest",
+    "kde_intensity",
+)
+
+
+class SpatialRelationshipSpec:
+    """A spatial second-table relationship declared at config top level.
+
+    For each ``left`` entity row (the ego), features are computed over the
+    ``right`` entity's rows that fall within ``within_m`` metres of the ego's
+    location. Both entities must declare a plain ``{lat, lon}`` ``spatial_ix``.
+    When ``right`` has a ``temporal_ix`` the neighbour scan is bounded
+    ``<= aod.as_of_date`` so co-location is measured as-of each cutoff. When
+    ``left`` and ``right`` are the same entity the ego is excluded from its own
+    neighbourhood.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        left: str,
+        right: str,
+        within_m: float,
+        bandwidth_m: Optional[float] = None,
+        features: Optional[List[str]] = None,
+    ) -> None:
+        self.name: str = name
+        self.left: str = left
+        self.right: str = right
+        self.within_m: float = within_m
+        # KDE bandwidth defaults to the search radius.
+        self.bandwidth_m: float = bandwidth_m if bandwidth_m is not None else within_m
+        self.features: List[str] = (
+            list(features) if features else list(SPATIAL_FEATURE_FAMILIES)
+        )
+
+    def __repr__(self) -> str:
+        return f"SpatialRelationshipSpec({self.name}: {self.left} near {self.right})"

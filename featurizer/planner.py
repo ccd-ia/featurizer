@@ -12,7 +12,8 @@ from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
 from icecream import ic
 from loguru import logger
 
-from .primitives import Entity, ERGraph, Feature, Relationship, pg_identifier
+from .primitives import Entity, ERGraph, Feature, Relationship, SpatialIx, pg_identifier
+from .primitives.aggregations import _haversine_m
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,7 @@ class FeaturePlanner:
 
         self._build_graph_features(target_entity)
         self._build_peer_group_features(target_entity)
+        self._build_spatial_features(target_entity)
         self._build_transformations(target_entity)
 
     @staticmethod
@@ -688,6 +690,121 @@ class FeaturePlanner:
         self._ctes.append(cte_query)
         self._features[entity.alias].update(
             Feature(name=name, type="numeric", definition=name, entity=entity)
+            for name, _ in select_cols
+        )
+
+    # ------------------------------------------------------------------ #
+    # Spatial second-table features (M1d Phase 10)
+    # ------------------------------------------------------------------ #
+
+    def _build_spatial_features(self, entity: Entity) -> None:
+        """Attach spatial second-table features for relationships whose ``left``
+        is ``entity`` (co-location count, distance-to-nearest, KDE intensity)."""
+        specs = getattr(self.graph, "spatial_relationships", None)
+        if not specs:
+            return
+        for spec in specs:
+            if spec.left == entity.alias:
+                self._build_spatial_relationship_cte(entity, spec)
+
+    @staticmethod
+    def _spatial_latlon(entity: Entity) -> tuple[str, str] | None:
+        """The plain (lat, lon) column names, or None when not plain lat/lon."""
+        sx = getattr(entity, "spatial_ix", None)
+        if isinstance(sx, SpatialIx) and sx.lat and sx.lon:
+            return sx.lat, sx.lon
+        return None
+
+    @staticmethod
+    def _spatial_feature_name(metric: str, spec) -> str:
+        return pg_identifier(f"{metric}({spec.name})")
+
+    def _build_spatial_relationship_cte(self, left: Entity, spec) -> None:
+        right = self.graph.entities.get(spec.right)
+        if right is None:
+            logger.warning(
+                "Spatial relationship {} references unknown right entity {}; skipping.",
+                spec.name,
+                spec.right,
+            )
+            return
+        if left.id is None or right.id is None:
+            logger.warning(
+                "Spatial relationship {} needs an id on both entities; skipping.",
+                spec.name,
+            )
+            return
+        left_coords = self._spatial_latlon(left)
+        right_coords = self._spatial_latlon(right)
+        if left_coords is None or right_coords is None:
+            logger.warning(
+                "Spatial relationship {} needs a lat/lon spatial_ix on both "
+                "entities (geom/PostGIS not yet supported); skipping.",
+                spec.name,
+            )
+            return
+
+        llat, llon = left_coords
+        rlat, rlon = right_coords
+        dist = _haversine_m(f"e.{llat}", f"e.{llon}", f"r.{rlat}", f"r.{rlon}")
+        bandwidth = spec.bandwidth_m
+        # Neighbour scan bounded as-of when the right table is time-varying.
+        right_causal = (
+            f" and r.{right.temporal_ix.name} <= aod.as_of_date"
+            if right.temporal_ix
+            else ""
+        )
+        # Exclude the ego from its own neighbourhood when scanning the same table.
+        self_exclude = (
+            f" and r.{right.id.name} <> e.{left.id.name}"
+            if spec.left == spec.right
+            else ""
+        )
+
+        families = spec.features
+        select_cols: List[tuple[str, str]] = []
+        if "colocation_count" in families:
+            select_cols.append(
+                (
+                    self._spatial_feature_name("COLOCATION_COUNT", spec),
+                    f"count(r.{right.id.name})",
+                )
+            )
+        if "distance_to_nearest" in families:
+            select_cols.append(
+                (
+                    self._spatial_feature_name("DISTANCE_TO_NEAREST", spec),
+                    f"min({dist})",
+                )
+            )
+        if "kde_intensity" in families:
+            select_cols.append(
+                (
+                    self._spatial_feature_name("KDE_INTENSITY", spec),
+                    f"sum(exp(- power({dist}, 2) / (2 * {bandwidth} * {bandwidth})))",
+                )
+            )
+        if not select_cols:
+            return
+
+        rendered = ",\n        ".join(f"{expr} as {name}" for name, expr in select_cols)
+        cte_name = f"spatial_{spec.name}_for_{left.alias}"
+        cte_query = f"""
+        -- spatial relationship {spec.name}: {left.alias} near {right.alias} (<= {spec.within_m} m)
+        {cte_name} as (
+        select e.{left.id.name} as node_id,
+        {rendered}
+        from {left.table} e
+        left join {right.table} r
+          on {dist} <= {spec.within_m}{right_causal}{self_exclude}
+        group by e.{left.id.name}
+        )
+        """
+        join = f" {cte_name} on {cte_name}.node_id = {left.table}.{left.id.name} "
+        self._joins[left.alias].append(join)
+        self._ctes.append(cte_query)
+        self._features[left.alias].update(
+            Feature(name=name, type="numeric", definition=name, entity=left)
             for name, _ in select_cols
         )
 

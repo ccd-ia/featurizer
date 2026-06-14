@@ -86,7 +86,11 @@ class Featurizer:
         self.max_depth: int = config["max_depth"]
         self.intervals: List[str] = config["intervals"]
 
-        self.graph: ERGraph = ERGraph(config["entities"], config["relationships"])
+        self.graph: ERGraph = ERGraph(
+            config["entities"],
+            config["relationships"],
+            config.get("spatial_relationships"),
+        )
         self.target: Entity = self._get_entity(config["target"])
 
         # Primitive selection: config may override the active set; otherwise the

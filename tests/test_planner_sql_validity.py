@@ -272,3 +272,79 @@ def test_peer_group_without_measures_still_emits_size_and_rate():
     assert "PEER_GROUP_SIZE(facilities by facility_type)" in sql
     assert "PEER_EVENT_RATE(facilities.inspections by facility_type)" in sql
     assert "PEER_MEAN(" not in sql
+
+
+def _spatial_config(within_m: int = 1000, same: bool = True) -> dict:
+    """A facilities config with one spatial_relationship (self or second-table)."""
+    facilities = {
+        "alias": "facilities",
+        "table": "facilities",
+        "id": "license_no",
+        "temporal_ix": "first_seen",
+        "spatial_ix": {"lat": "latitude", "lon": "longitude"},
+        "variables": {"facility_type": {"type": "categorical"}},
+    }
+    entities = [facilities]
+    if not same:
+        entities.append(
+            {
+                "alias": "stores",
+                "table": "stores",
+                "id": "store_id",
+                "spatial_ix": {"lat": "lat", "lon": "lon"},
+            }
+        )
+    return {
+        "target": "facilities",
+        "max_depth": 1,
+        "intervals": [],
+        "aggregations": ["count"],
+        "transformations": ["identity"],
+        "spatial_relationships": [
+            {
+                "name": "nearby",
+                "left": "facilities",
+                "right": "facilities" if same else "stores",
+                "within_m": within_m,
+                "bandwidth_m": 500,
+            }
+        ],
+        "entities": entities,
+    }
+
+
+def test_spatial_cte_is_defined_and_joined_by_id():
+    sql = _render(_spatial_config())
+    assert "spatial_nearby_for_facilities as (" in sql
+    assert "spatial_nearby_for_facilities.node_id = facilities.license_no" in sql
+
+
+def test_spatial_is_radius_bounded_and_causal():
+    flat = " ".join(_render(_spatial_config(within_m=1500)).split())
+    assert "6371000" in flat  # haversine great-circle term
+    assert "<= 1500" in flat  # radius filter
+    assert "r.first_seen <= aod.as_of_date" in flat  # as-of bound on the right table
+
+
+def test_spatial_self_join_excludes_ego():
+    flat = " ".join(_render(_spatial_config(same=True)).split())
+    assert "r.license_no <> e.license_no" in flat
+
+
+def test_spatial_second_table_has_no_self_exclusion_or_static_causal():
+    """A distinct right entity without a temporal_ix: no self-exclusion, no bound."""
+    flat = " ".join(_render(_spatial_config(same=False)).split())
+    assert "r.store_id <> e.license_no" not in flat
+    assert "aod.as_of_date" not in _segment(
+        flat, "spatial_nearby_for_facilities as (", "group by"
+    )
+
+
+def test_spatial_emits_expected_families():
+    sql = _render(_spatial_config())
+    for family in (
+        "COLOCATION_COUNT(nearby)",
+        "DISTANCE_TO_NEAREST(nearby)",
+        "KDE_INTENSITY(nearby)",
+    ):
+        assert family in sql, f"missing spatial feature {family!r}"

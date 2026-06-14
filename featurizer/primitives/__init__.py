@@ -2,6 +2,7 @@
 
 from .abstractions import (
     GRAPH_FEATURE_FAMILIES,
+    SPATIAL_FEATURE_FAMILIES,
     EdgeSpec,
     Entity,
     ERGraph,
@@ -11,6 +12,7 @@ from .abstractions import (
     PeerGroupSpec,
     Relationship,
     SpatialIx,
+    SpatialRelationshipSpec,
     Variable,
     pg_identifier,
 )
@@ -27,6 +29,7 @@ from .utils import (
 
 __all__ = [
     "GRAPH_FEATURE_FAMILIES",
+    "SPATIAL_FEATURE_FAMILIES",
     "EdgeSpec",
     "ERGraph",
     "pg_identifier",
@@ -37,6 +40,7 @@ __all__ = [
     "PeerGroupSpec",
     "Relationship",
     "SpatialIx",
+    "SpatialRelationshipSpec",
     "Variable",
     "Aggregator",
     "Transformer",

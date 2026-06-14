@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
-from .primitives import GRAPH_FEATURE_FAMILIES
+from .primitives import GRAPH_FEATURE_FAMILIES, SPATIAL_FEATURE_FAMILIES
 
 
 @dataclass
@@ -216,6 +216,17 @@ class ConfigValidator:
                 ValidationError(
                     message=f"'relationships' must be a list (got: {type(relationships).__name__})",
                     location="relationships",
+                )
+            )
+
+        # Validate spatial_relationships (if present)
+        spatial = config.get("spatial_relationships")
+        if spatial is not None and not isinstance(spatial, list):
+            self.errors.append(
+                ValidationError(
+                    message="'spatial_relationships' must be a list "
+                    f"(got: {type(spatial).__name__})",
+                    location="spatial_relationships",
                 )
             )
 
@@ -679,6 +690,80 @@ class ConfigValidator:
                                 message=f"Peer-group measure '{m}' is not numeric; "
                                 "mean / z-score / percentile assume a numeric column",
                                 location=f"{loc}.measures",
+                            )
+                        )
+
+        # Validate spatial relationships reference entities with a lat/lon spatial_ix.
+        spatial = config.get("spatial_relationships")
+        if isinstance(spatial, list):
+            for si, srel in enumerate(spatial):
+                if not isinstance(srel, dict):
+                    self.errors.append(
+                        ValidationError(
+                            message="Spatial relationship must be a mapping "
+                            f"(got: {type(srel).__name__})",
+                            location=f"spatial_relationships[{si}]",
+                        )
+                    )
+                    continue
+                for required in ("name", "left", "right", "within_m"):
+                    if srel.get(required) in (None, ""):
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Spatial relationship missing required "
+                                f"'{required}'",
+                                location=f"spatial_relationships[{si}].{required}",
+                                suggestion="Example: {name: near, left: a, right: b, "
+                                "within_m: 1000}",
+                            )
+                        )
+                for side in ("left", "right"):
+                    ref = srel.get(side)
+                    if not isinstance(ref, str):
+                        continue
+                    if ref not in entity_aliases:
+                        suggestion = self._suggest_similar(ref, entity_aliases)
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Spatial relationship '{side}' references "
+                                f"unknown entity '{ref}'",
+                                location=f"spatial_relationships[{si}].{side}",
+                                suggestion=(
+                                    f"Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else f"Available: {', '.join(sorted(entity_aliases))}"
+                                ),
+                            )
+                        )
+                        continue
+                    spatial_ix = entity_map[ref].get("spatial_ix")
+                    if not (
+                        isinstance(spatial_ix, dict)
+                        and spatial_ix.get("lat")
+                        and spatial_ix.get("lon")
+                    ):
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Spatial relationship '{side}' entity '{ref}' "
+                                "needs a {lat, lon} spatial_ix",
+                                location=f"spatial_relationships[{si}].{side}",
+                                suggestion="Declare spatial_ix: {lat: <col>, lon: <col>}",
+                            )
+                        )
+                for family in srel.get("features") or []:
+                    if family not in SPATIAL_FEATURE_FAMILIES:
+                        suggestion = self._suggest_similar(
+                            str(family), set(SPATIAL_FEATURE_FAMILIES)
+                        )
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Unknown spatial feature family: '{family}'",
+                                location=f"spatial_relationships[{si}].features",
+                                suggestion=(
+                                    f"Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else "Valid: " + ", ".join(SPATIAL_FEATURE_FAMILIES)
+                                ),
                             )
                         )
 
