@@ -391,6 +391,72 @@ class ConfigValidator:
                         )
                     )
 
+            # Validate the optional peer-group block(s) on each entity.
+            for i, entity in enumerate(config["entities"]):
+                if isinstance(entity, dict):
+                    self._validate_peer_groups_block(entity, i)
+
+    def _validate_peer_groups_block(self, entity: Dict[str, Any], i: int) -> None:
+        """Structural validation for the optional ``peer_group(s)`` block(s).
+
+        ``peer_group`` (a mapping) is sugar for a one-element ``peer_groups``
+        list. Each spec needs a non-empty string ``by`` and an optional list of
+        ``measures`` column names. Semantic checks (columns exist / are the
+        right type) happen in ``_validate_semantics``.
+        """
+        specs: List[tuple[str, Any]] = []
+        if "peer_group" in entity:
+            specs.append((f"entities[{i}].peer_group", entity["peer_group"]))
+        groups = entity.get("peer_groups")
+        if groups is not None:
+            if not isinstance(groups, list) or not groups:
+                self.errors.append(
+                    ValidationError(
+                        message="'peer_groups' must be a non-empty list "
+                        f"(got: {type(groups).__name__})",
+                        location=f"entities[{i}].peer_groups",
+                        suggestion="Example: peer_groups: [{by: facility_type}]",
+                    )
+                )
+            else:
+                specs.extend(
+                    (f"entities[{i}].peer_groups[{j}]", spec)
+                    for j, spec in enumerate(groups)
+                )
+        for location, spec in specs:
+            if not isinstance(spec, dict):
+                self.errors.append(
+                    ValidationError(
+                        message="Peer-group spec must be a mapping "
+                        f"(got: {type(spec).__name__})",
+                        location=location,
+                        suggestion="Example: {by: facility_type, measures: [risk]}",
+                    )
+                )
+                continue
+            by = spec.get("by")
+            if not isinstance(by, str) or not by:
+                self.errors.append(
+                    ValidationError(
+                        message="Peer-group spec missing required 'by' "
+                        "(non-empty string)",
+                        location=f"{location}.by",
+                        suggestion="'by' names a categorical column to group peers on",
+                    )
+                )
+            measures = spec.get("measures")
+            if measures is not None and (
+                not isinstance(measures, list)
+                or any(not isinstance(m, str) for m in measures)
+            ):
+                self.errors.append(
+                    ValidationError(
+                        message="Peer-group 'measures' must be a list of column names",
+                        location=f"{location}.measures",
+                        suggestion="Example: measures: [risk_score, amount]",
+                    )
+                )
+
     def _validate_primitives(self, config: Dict[str, Any]) -> None:
         """Validate the optional `aggregations` / `transformations` selection.
 
@@ -545,6 +611,76 @@ class ConfigValidator:
                                     location=f"relationships[{i}].temporal",
                                 )
                             )
+
+        # Validate peer-group columns reference declared columns on the entity.
+        for ei, e in enumerate(entities):
+            if not isinstance(e, dict):
+                continue
+            specs = []
+            if isinstance(e.get("peer_group"), dict):
+                specs.append(e["peer_group"])
+            if isinstance(e.get("peer_groups"), list):
+                specs.extend(s for s in e["peer_groups"] if isinstance(s, dict))
+            if not specs:
+                continue
+            variables = e.get("variables")
+            variables = variables if isinstance(variables, dict) else {}
+            var_names = set(variables)
+            index_cols = {
+                c for c in (e.get("id"), e.get("temporal_ix")) if isinstance(c, str)
+            }
+            known = var_names | index_cols
+            numeric_vars = {
+                name
+                for name, d in variables.items()
+                if isinstance(d, dict) and d.get("type") == "numeric"
+            }
+            loc = f"entities[{ei}].peer_group"
+            for spec in specs:
+                by = spec.get("by")
+                if isinstance(by, str) and by and by not in known:
+                    suggestion = self._suggest_similar(by, known)
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Peer-group 'by' column '{by}' is not a declared "
+                            f"variable on entity '{e.get('alias')}'",
+                            location=f"{loc}.by",
+                            suggestion=(
+                                f"Did you mean '{suggestion}'?"
+                                if suggestion
+                                else f"Declared columns: {', '.join(sorted(known))}"
+                            ),
+                        )
+                    )
+                elif isinstance(by, str) and by in var_names:
+                    vtype = variables[by].get("type")
+                    if vtype not in ("categorical", "boolean", "text"):
+                        self.warnings.append(
+                            ValidationWarning(
+                                message=f"Peer-group 'by' column '{by}' has type "
+                                f"'{vtype}'; peers group best on a categorical column",
+                                location=f"{loc}.by",
+                            )
+                        )
+                for m in spec.get("measures") or []:
+                    if not isinstance(m, str):
+                        continue
+                    if m not in known:
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Peer-group measure '{m}' is not a declared "
+                                f"variable on entity '{e.get('alias')}'",
+                                location=f"{loc}.measures",
+                            )
+                        )
+                    elif m not in numeric_vars:
+                        self.warnings.append(
+                            ValidationWarning(
+                                message=f"Peer-group measure '{m}' is not numeric; "
+                                "mean / z-score / percentile assume a numeric column",
+                                location=f"{loc}.measures",
+                            )
+                        )
 
         # Detect circular relationships
         if isinstance(relationships, list) and len(relationships) > 1:

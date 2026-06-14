@@ -106,6 +106,8 @@ class Entity:
         temporal_ix: Optional[str] = None,
         variables: Optional[Dict[str, Dict[str, Any]]] = None,
         edge: Optional[Dict[str, Any]] = None,
+        peer_groups: Optional[List[Dict[str, Any]]] = None,
+        peer_group: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.alias: str = alias
         self.table: str = table
@@ -156,6 +158,19 @@ class Entity:
             if edge is not None
             else None
         )
+
+        # Peer-group specs: compare each row to its peers (rows of this same
+        # entity sharing a categorical column). ``peer_group`` (singular dict)
+        # is sugar for a one-element ``peer_groups`` list.
+        peer_specs: List[Dict[str, Any]] = []
+        if peer_group is not None:
+            peer_specs.append(peer_group)
+        if peer_groups is not None:
+            peer_specs.extend(peer_groups)
+        self.peer_groups: List[PeerGroupSpec] = [
+            PeerGroupSpec(entity=self, by=spec["by"], measures=spec.get("measures"))
+            for spec in peer_specs
+        ]
 
     def _build_spatial_ix(self, spatial_ix: Any):
         """Parse spatial_ix: a column name (Id) or a {lat,lon}/{geom} SpatialIx."""
@@ -402,6 +417,36 @@ class EdgeSpec:
 
     def __repr__(self) -> str:
         return f"EdgeSpec({self.alias}: {self.source}->{self.target} on {self.node})"
+
+
+class PeerGroupSpec:
+    """Peer-group metadata declared on an entity via ``peer_groups``.
+
+    Peers of a row are the other rows of the *same* entity that share the value
+    of the categorical column ``by`` (e.g. facilities of the same
+    ``facility_type``). The planner emits leave-one-out, as-of-bounded features
+    comparing each ego to its peer set: group size, the mean per-peer event
+    count over a child stream, and — per numeric ``measures`` column — the peer
+    mean / z-score / percentile and the ego-minus-peer-mean delta. ``measures``
+    defaults (at plan time) to the entity's numeric variables.
+    """
+
+    def __init__(
+        self,
+        entity: "Entity",
+        by: str,
+        measures: Optional[List[str]] = None,
+    ) -> None:
+        self.entity: "Entity" = entity
+        self.by: str = by
+        # ``None`` means "default to the entity's numeric variables" (resolved
+        # by the planner); an explicit (possibly empty) list is honoured as-is.
+        self.measures: Optional[List[str]] = (
+            list(measures) if measures is not None else None
+        )
+
+    def __repr__(self) -> str:
+        return f"PeerGroupSpec({self.entity.alias} by {self.by})"
 
 
 class SpatialIx:

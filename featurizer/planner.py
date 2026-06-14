@@ -118,6 +118,7 @@ class FeaturePlanner:
             )
 
         self._build_graph_features(target_entity)
+        self._build_peer_group_features(target_entity)
         self._build_transformations(target_entity)
 
     @staticmethod
@@ -482,6 +483,213 @@ class FeaturePlanner:
         )
         """
         attach(cte_name, cte_query, [name for name, _ in columns])
+
+    # ------------------------------------------------------------------ #
+    # Peer-group features (M1d Phase 8)
+    # ------------------------------------------------------------------ #
+
+    def _build_peer_group_features(self, entity: Entity) -> None:
+        """Attach peer-group features for every ``peer_groups`` spec on ``entity``.
+
+        Peers of a row are the other rows of the *same* entity sharing the
+        categorical ``by`` column. Every feature is leave-one-out (the ego is
+        removed from its own peer aggregate) and bounded ``<= aod.as_of_date``
+        on both peer membership (the entity's own ``temporal_ix``, when present)
+        and the peers' child event stream — the highest-leakage surface in the
+        program, so the causal cut is explicit at every read.
+        """
+        specs = getattr(entity, "peer_groups", None)
+        if not specs:
+            return
+        if entity.id is None:
+            logger.warning(
+                "Entity {} has no id column; skipping peer-group features.",
+                entity.alias,
+            )
+            return
+
+        # One shared per-peer event-count CTE per backward child stream, emitted
+        # once and reused across every peer_groups spec on this entity.
+        child_count_ctes = self._peer_child_count_ctes(entity)
+        for spec in specs:
+            self._build_peer_group_cte(entity, spec, child_count_ctes)
+
+    @staticmethod
+    def _peer_feature_name(
+        metric: str,
+        entity: Entity,
+        by: str,
+        measure: str | None = None,
+        *,
+        child: str | None = None,
+    ) -> str:
+        if child is not None:
+            inner = f"{entity.alias}.{child} by {by}"
+        elif measure is not None:
+            inner = f"{entity.alias}.{measure} by {by}"
+        else:
+            inner = f"{entity.alias} by {by}"
+        return pg_identifier(f"{metric}({inner})")
+
+    @staticmethod
+    def _numeric_variable_names(entity: Entity) -> List[str]:
+        """Default ``measures``: the entity's numeric variables (sorted)."""
+        return sorted(
+            feature.name for feature in entity.features if feature.type == "numeric"
+        )
+
+    def _peer_child_count_ctes(self, entity: Entity) -> List[tuple[Relationship, str]]:
+        """Emit (once) a per-peer event-count CTE for each backward child stream.
+
+        Each CTE maps a peer's id to its count of child rows knowable as-of the
+        cutoff; the main peer CTE then averages these over the peer set.
+        """
+        results: List[tuple[Relationship, str]] = []
+        relationships = sorted(
+            self.graph.get_backward_relationships(entity),
+            key=lambda rel: rel.child.alias,
+        )
+        for rel in relationships:
+            child = rel.child
+            child_temporal = child.temporal_ix.name if child.temporal_ix else None
+            causal = (
+                f"where c.{child_temporal} <= aod.as_of_date" if child_temporal else ""
+            )
+            cte_name = f"peer_evt_{child.alias}_for_{entity.alias}"
+            cte_query = f"""
+        -- per-peer event counts ({child.alias}) for {entity.alias} peer groups
+        {cte_name} as (
+        select c.{rel.child_key} as pid, count(*) as cnt
+        from {child.table} c
+        {causal}
+        group by c.{rel.child_key}
+        )
+        """
+            self._ctes.append(cte_query)
+            results.append((rel, cte_name))
+        return results
+
+    def _build_peer_group_cte(
+        self,
+        entity: Entity,
+        spec,
+        child_count_ctes: List[tuple[Relationship, str]],
+    ) -> None:
+        assert entity.id is not None  # guarded by _build_peer_group_features
+        by = spec.by
+        id_col = entity.id.name
+        table = entity.table
+        temporal = entity.temporal_ix.name if entity.temporal_ix else None
+
+        # 1 when the ego itself is a peer (a member knowable as-of the cutoff),
+        # so leave-one-out subtracts the ego only when it belongs to the set.
+        in_grp = (
+            f"(case when e.{temporal} <= aod.as_of_date then 1 else 0 end)"
+            if temporal
+            else "1"
+        )
+        membership = f"where e2.{temporal} <= aod.as_of_date" if temporal else ""
+        n_excl = f"(g.n - {in_grp})"
+
+        grp_cols: List[str] = [f"e2.{by} as grp", "count(*) as n"]
+        grp_joins: List[str] = []
+        ego_joins: List[str] = []
+        select_cols: List[tuple[str, str]] = []
+
+        # Peer-set size (leave-one-out), always emitted.
+        select_cols.append(
+            (self._peer_feature_name("PEER_GROUP_SIZE", entity, by), n_excl)
+        )
+
+        # Per-measure attribute statistics (mean / delta / z-score / percentile).
+        measures = spec.measures
+        if measures is None:
+            measures = self._numeric_variable_names(entity)
+        for measure in measures:
+            grp_cols.append(f"sum(e2.{measure}) as sum_{measure}")
+            grp_cols.append(f"sum(e2.{measure} * e2.{measure}) as ss_{measure}")
+            sum_excl = f"(g.sum_{measure} - {in_grp} * e.{measure})"
+            ss_excl = f"(g.ss_{measure} - {in_grp} * e.{measure} * e.{measure})"
+            mean_excl = f"({sum_excl} / nullif({n_excl}, 0))"
+            var_excl = (
+                f"(({ss_excl} - {sum_excl} * {sum_excl} / nullif({n_excl}, 0)) "
+                f"/ nullif({n_excl} - 1, 0))"
+            )
+            std_excl = f"sqrt(greatest({var_excl}, 0))"
+            peer_causal = f" and p.{temporal} <= aod.as_of_date" if temporal else ""
+            pctile = (
+                f"((select count(*) from {table} p where p.{by} = e.{by} "
+                f"and p.{id_col} <> e.{id_col} and p.{measure} < e.{measure}"
+                f"{peer_causal})::float / nullif({n_excl}, 0))"
+            )
+            select_cols.extend(
+                [
+                    (
+                        self._peer_feature_name("PEER_MEAN", entity, by, measure),
+                        mean_excl,
+                    ),
+                    (
+                        self._peer_feature_name(
+                            "EGO_MINUS_PEER_MEAN", entity, by, measure
+                        ),
+                        f"(e.{measure} - {mean_excl})",
+                    ),
+                    (
+                        self._peer_feature_name("PEER_ZSCORE", entity, by, measure),
+                        f"((e.{measure} - {mean_excl}) / nullif({std_excl}, 0))",
+                    ),
+                    (
+                        self._peer_feature_name("PEER_PCTILE", entity, by, measure),
+                        pctile,
+                    ),
+                ]
+            )
+
+        # Cross-stream peer event rate: mean per-peer child-event count.
+        for rel, cte_name in child_count_ctes:
+            child = rel.child.alias
+            grp_cols.append(f"sum(coalesce(pc_{child}.cnt, 0)) as sum_evt_{child}")
+            grp_joins.append(
+                f"left join {cte_name} pc_{child} on pc_{child}.pid = e2.{id_col}"
+            )
+            ego_joins.append(
+                f"left join {cte_name} ec_{child} on ec_{child}.pid = e.{id_col}"
+            )
+            rate = (
+                f"((g.sum_evt_{child} - {in_grp} * coalesce(ec_{child}.cnt, 0))::float "
+                f"/ nullif({n_excl}, 0))"
+            )
+            select_cols.append(
+                (
+                    self._peer_feature_name("PEER_EVENT_RATE", entity, by, child=child),
+                    rate,
+                )
+            )
+
+        grp_subquery = (
+            f"select {', '.join(grp_cols)} "
+            f"from {table} e2 {' '.join(grp_joins)} {membership} "
+            f"group by e2.{by}"
+        )
+        rendered = ",\n        ".join(f"{expr} as {name}" for name, expr in select_cols)
+        cte_name = f"peer_{by}_for_{entity.alias}"
+        cte_query = f"""
+        -- peer-group features for {entity.alias} grouped by {by}
+        {cte_name} as (
+        select e.{id_col} as node_id,
+        {rendered}
+        from {table} e
+        join ( {grp_subquery} ) g on g.grp = e.{by}
+        {' '.join(ego_joins)}
+        )
+        """
+        join = f" {cte_name} on {cte_name}.node_id = {table}.{id_col} "
+        self._joins[entity.alias].append(join)
+        self._ctes.append(cte_query)
+        self._features[entity.alias].update(
+            Feature(name=name, type="numeric", definition=name, entity=entity)
+            for name, _ in select_cols
+        )
 
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship

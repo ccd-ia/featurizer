@@ -179,3 +179,96 @@ def test_interval_windows_cast_event_column_to_date():
     assert contained, "no interval windows were generated"
     uncast = [token for token in contained if not token.endswith("::date")]
     assert not uncast, f"interval windows without ::date cast: {uncast!r}"
+
+
+def _peer_config(measures: bool = True) -> dict:
+    """A facilities->inspections config with a peer_group on facilities."""
+    config = _parent_child_config(max_depth=2)
+    config["target"] = "facilities"
+    config["aggregations"] = ["count"]
+    facilities, inspections = config["entities"]
+    facilities.update(
+        {
+            "alias": "facilities",
+            "table": "facilities",
+            "id": "license_no",
+            "temporal_ix": "first_seen",
+            "variables": {"facility_type": {"type": "categorical"}},
+        }
+    )
+    if measures:
+        facilities["variables"]["risk_score"] = {"type": "numeric"}
+    peer_spec = {"by": "facility_type"}
+    if measures:
+        peer_spec["measures"] = ["risk_score"]
+    facilities["peer_groups"] = [peer_spec]
+    inspections.update(
+        {
+            "alias": "inspections",
+            "table": "inspections",
+            "id": "inspection_id",
+            "temporal_ix": "inspection_date",
+            "variables": {"results": {"type": "categorical"}},
+        }
+    )
+    config["relationships"] = [
+        {
+            "parent": {"entity": "facilities", "key": "license_no"},
+            "child": {"entity": "inspections", "key": "license_no"},
+        }
+    ]
+    return config
+
+
+def test_peer_group_cte_is_defined_and_joined_by_column():
+    """The peer CTE exists and joins to the entity on the ``by`` column."""
+    sql = _render(_peer_config())
+    assert "peer_facility_type_for_facilities as (" in sql
+    assert "group by e2.facility_type" in sql
+    assert "g on g.grp = e.facility_type" in sql
+    # Joined back to the entity by its id (synth-level join).
+    assert "peer_facility_type_for_facilities.node_id = facilities.license_no" in sql
+
+
+def test_peer_group_is_causally_bounded():
+    """Peer membership and the peer child stream are both cut at the as-of date."""
+    flat = " ".join(_render(_peer_config()).split())
+    # Membership of the peer set is bounded.
+    assert "where e2.first_seen <= aod.as_of_date" in flat
+    # The shared per-peer event-count CTE is bounded on the child temporal_ix.
+    assert "peer_evt_inspections_for_facilities as (" in flat
+    assert "where c.inspection_date <= aod.as_of_date" in flat
+
+
+def test_peer_group_is_leave_one_out():
+    """Every peer aggregate divides by the leave-one-out count (n - in_grp)."""
+    flat = " ".join(_render(_peer_config()).split())
+    # Leave-one-out denominator guarded against the singleton group (n-1 == 0).
+    assert "nullif((g.n - (case when e.first_seen <= aod.as_of_date" in flat
+    # The pctile correlated subquery excludes the ego itself.
+    assert "p.license_no <> e.license_no" in flat
+    # No token-collision between the measure compare and the causal bound.
+    assert "e.risk_scoreand" not in flat
+    assert "e.risk_score and p.first_seen <= aod.as_of_date" in flat
+
+
+def test_peer_group_emits_expected_families():
+    """All six peer feature families are projected with stable names."""
+    sql = _render(_peer_config())
+    for family in (
+        "PEER_GROUP_SIZE(facilities by facility_type)",
+        "PEER_MEAN(facilities.risk_score by facility_type)",
+        "EGO_MINUS_PEER_MEAN(facilities.risk_score by facility_type)",
+        "PEER_ZSCORE(facilities.risk_score by facility_type)",
+        "PEER_PCTILE(facilities.risk_score by facility_type)",
+        "PEER_EVENT_RATE(facilities.inspections by facility_type)",
+    ):
+        assert family in sql, f"missing peer feature {family!r}"
+
+
+def test_peer_group_without_measures_still_emits_size_and_rate():
+    """With no numeric measures, only group-size and event-rate are emitted."""
+    sql = _render(_peer_config(measures=False))
+    assert "PEER_GROUP_SIZE(facilities by facility_type)" in sql
+    assert "PEER_EVENT_RATE(facilities.inspections by facility_type)" in sql
+    assert "PEER_MEAN(" not in sql
