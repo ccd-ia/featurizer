@@ -24,6 +24,14 @@ viz = [
   "scikit-learn>=1.0",
   "umap-learn>=0.5",
 ]
+# The phi-bridge precompute companion (featurizer/bridge/). Heavy, optional
+# per-modality deps; the SQL spine never imports these.
+bridge = [
+  "scikit-learn>=1.0",
+  "networkx>=3",
+  "sentence-transformers>=2.2",
+  "pgvector>=0.2",
+]
 
 [tool.uv]
 dev-dependencies = [
