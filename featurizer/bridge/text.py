@@ -35,9 +35,17 @@ class TfidfTopicShareBridge(BridgeComputer):
         self, rows: List[Dict[str, Any]], *, fit_rows: List[Dict[str, Any]]
     ) -> Dict[Any, Any]:
         try:
-            from sklearn.decomposition import TruncatedSVD
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.pipeline import make_pipeline
+            # Optional [bridge] deps — guarded; the type checker should not
+            # require them to be installed in the SQL-spine environment.
+            from sklearn.decomposition import (  # pyright: ignore[reportMissingImports]
+                TruncatedSVD,
+            )
+            from sklearn.feature_extraction.text import (  # pyright: ignore[reportMissingImports]
+                TfidfVectorizer,
+            )
+            from sklearn.pipeline import (  # pyright: ignore[reportMissingImports]
+                make_pipeline,
+            )
         except ImportError as exc:  # pragma: no cover - exercised only without extra
             raise ImportError(
                 "TfidfTopicShareBridge needs scikit-learn: "
