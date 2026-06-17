@@ -167,10 +167,125 @@ class Featurizer:
             )
         df = self._executor.to_dataframe(self.query, self.target.id.name)
         if impute:
-            from .imputation import impute_features
+            from .imputation import guard_full_matrix_fit, impute_features
 
+            # Engine path: this fits over the whole returned matrix, so gate the
+            # leaky measure strategies (ADR-0001). The pure impute_features helper
+            # stays ungated for callers that pre-split their own data.
+            guard_full_matrix_fit(
+                impute_kwargs.get("measure_strategy", "none"),
+                allow_full_matrix_fit=bool(
+                    impute_kwargs.pop("allow_full_matrix_fit", False)
+                ),
+                caller="to_dataframe",
+            )
             df = impute_features(df, **impute_kwargs)
         return df
+
+    def to_arrow(
+        self,
+        *,
+        connection: Any = None,
+        numeric_as_float: bool = True,
+        impute: bool = False,
+        **impute_kwargs: Any,
+    ) -> "Any":
+        """Execute the query and return a :class:`pyarrow.Table`, no pandas hop.
+
+        Streams the result out of PostgreSQL with binary ``COPY`` and decodes it
+        column-by-column into Arrow, so SQL NULLs are preserved as Arrow nulls
+        (never coerced to ``NaN``) and the full result set never materializes as
+        a pandas frame. ``as_of_date`` and the target id are ordinary leading
+        columns (no index), unlike :meth:`to_dataframe`.
+
+        Args:
+            connection: An open psycopg connection to run ``COPY`` on. Required
+                when the rendered query references session ``TEMP`` tables (the
+                integration harness). When ``None``, a connection is built from
+                ``DATABASE_URL`` / ``PG*`` and closed afterwards.
+            numeric_as_float: Cast PostgreSQL ``numeric`` aggregate columns to
+                ``float64`` (ML-ready, ``to_dataframe``-comparable). Set ``False``
+                to keep exact ``decimal128``. NULLs are preserved either way.
+            impute: When True, apply the Arrow-native imputation pass
+                (:func:`featurizer.imputation.impute_arrow`): count-like features
+                → 0, measures left null unless ``measure_strategy`` is given, with
+                stable ``<feature>__missing`` indicator columns. ``as_of_date``
+                and the target id are passed as ``key_columns`` and left untouched.
+            **impute_kwargs: Forwarded to ``impute_arrow``. ``measure_strategy`` in
+                ``{"mean","median"}`` additionally requires
+                ``allow_full_matrix_fit=True`` (ADR-0001 leakage gate).
+
+        Returns:
+            A pyarrow.Table.
+
+        Raises:
+            ImportError: If pyarrow (the ``[parquet]`` extra) is not installed.
+            ValueError: If the target entity does not define a primary id, or a
+                leaky measure strategy is requested without the opt-in.
+        """
+        if self.target.id is None:
+            raise ValueError(
+                f"Target entity '{self.target.alias}' does not define a primary id."
+            )
+        from .arrow import ArrowExporter
+
+        table = ArrowExporter().to_arrow(
+            self.query,
+            connection=connection,
+            numeric_as_float=numeric_as_float,
+        )
+        if impute:
+            from .imputation import guard_full_matrix_fit, impute_arrow
+
+            guard_full_matrix_fit(
+                impute_kwargs.get("measure_strategy", "none"),
+                allow_full_matrix_fit=bool(
+                    impute_kwargs.pop("allow_full_matrix_fit", False)
+                ),
+                caller="to_arrow",
+            )
+            table = impute_arrow(
+                table,
+                key_columns=("as_of_date", self.target.id.name),
+                **impute_kwargs,
+            )
+        return table
+
+    def to_parquet(
+        self,
+        path: str,
+        *,
+        connection: Any = None,
+        numeric_as_float: bool = True,
+        impute: bool = False,
+        **impute_kwargs: Any,
+    ) -> None:
+        """Execute the query and write the result to a Parquet file.
+
+        Thin wrapper over :meth:`to_arrow` plus ``pyarrow.parquet.write_table``;
+        all arguments (including the imputation contract and its ADR-0001 leakage
+        gate) behave exactly as in :meth:`to_arrow`. NULLs are written as Parquet
+        nulls.
+
+        Args:
+            path: Destination ``.parquet`` file path.
+            connection: See :meth:`to_arrow`.
+            numeric_as_float: See :meth:`to_arrow`.
+            impute: See :meth:`to_arrow`.
+            **impute_kwargs: See :meth:`to_arrow`.
+
+        Raises:
+            ImportError: If pyarrow (the ``[parquet]`` extra) is not installed.
+        """
+        table = self.to_arrow(
+            connection=connection,
+            numeric_as_float=numeric_as_float,
+            impute=impute,
+            **impute_kwargs,
+        )
+        import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]
+
+        pq.write_table(table, path)
 
     # ------------------------------------------------------------------ #
     # Internal helpers
