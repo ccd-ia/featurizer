@@ -6,8 +6,9 @@ The planner traverses the entity graph, synthesizes features, and collects the
 CTE definitions/joins that the SQL renderer expects.
 """
 
-from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
+import re
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 from icecream import ic
 from loguru import logger
@@ -31,12 +32,77 @@ from .primitives.transformations import TRANSFORM_EGO_ALIAS
 AttachFn = Callable[[str, str, "list[str]"], None]
 
 
+def _bare_word_in(word: str, text: str) -> bool:
+    """True if ``word`` appears in ``text`` on identifier word boundaries.
+
+    Used to detect a bare (unquoted) base-variable reference inside a rendered
+    SQL projection without matching it as a substring of a longer identifier
+    (``amount`` must not match ``amount_paid``).
+    """
+    return (
+        re.search(rf"(?<![A-Za-z0-9_]){re.escape(word)}(?![A-Za-z0-9_])", text)
+        is not None
+    )
+
+
+@dataclass
+class ColumnSpec:
+    """One projected column of a shardable CTE.
+
+    ``name`` is the output column name (already quoted when it needs to be);
+    ``projection`` is the full ``<expr> as <name>`` SQL fragment as it would
+    appear in the CTE's select list. ``depends_on`` names the *upstream* CTE
+    columns this projection reads (synth columns for a transform column, the
+    child-transform columns for an aggregate column), used to prune the CTEs
+    that feed a column group (issue #7).
+    """
+
+    name: str
+    projection: str
+    depends_on: frozenset[str] = frozenset()
+
+
+@dataclass
+class ShardableCTE:
+    """Structured metadata for a CTE whose width can exceed PostgreSQL's
+    1664-entry target-list limit, so the sharding renderer can rebuild it
+    projecting only the columns a given column-group needs.
+
+    ``kind`` is one of ``"transform"``, ``"synth"``, ``"aggs"``. ``prefix`` is
+    everything from ``-- comment`` through the opening ``<name> as (\\n select``
+    (i.e. the CTE header), ``suffix`` is everything after the select list
+    (``from ... where ... group by ...``). ``key_columns`` are always-projected
+    identifier/join-key columns that must survive pruning. ``columns`` are the
+    prunable feature columns in deterministic order.
+    """
+
+    name: str
+    kind: str
+    prefix: str
+    suffix: str
+    key_columns: List[str]
+    columns: List[ColumnSpec]
+    rendered: str = ""
+
+
 @dataclass(frozen=True)
 class PlannerResult:
     target: Entity
     features: Dict[str, Set[Feature]]
     joins: Dict[str, List[str]]
     ctes: List[str]
+    # Sharding metadata (issue #7). ``cte_specs`` maps CTE name -> structured
+    # column metadata for the CTEs that can exceed the 1664-column limit; CTEs
+    # absent from this map are emitted whole (their width is bounded), kept in
+    # ``verbatim_ctes`` keyed by name. ``cte_order`` records original emission
+    # order so the renderer re-interleaves rebuilt and verbatim CTEs
+    # deterministically. ``synth_column_source`` maps the target's synth column
+    # name -> (upstream CTE name, join SQL) that produced it, so a group can
+    # drop the joins + upstream CTEs none of its surviving synth columns need.
+    cte_specs: Dict[str, "ShardableCTE"] = field(default_factory=dict)
+    cte_order: List[str] = field(default_factory=list)
+    verbatim_ctes: Dict[str, str] = field(default_factory=dict)
+    synth_column_source: Dict[str, Tuple[str, str]] = field(default_factory=dict)
 
 
 class FeaturePlanner:
@@ -71,6 +137,17 @@ class FeaturePlanner:
         # be referenced by name rather than re-rendering its definition.
         self._synth_columns: Dict[str, Set[str]] = {}
 
+        # Sharding metadata (issue #7), populated alongside the rendered CTE
+        # strings. See ``ShardableCTE`` / ``PlannerResult``.
+        self._cte_specs: Dict[str, ShardableCTE] = {}
+        self._cte_order: List[str] = []
+        self._verbatim_ctes: Dict[str, str] = {}
+        # Per target alias: synth column name -> (upstream CTE name, join SQL)
+        # that produced it. A group keeps the join + upstream CTE only when it
+        # keeps a synth column they feed. Base-table variables are absent (they
+        # come straight from the target table, no join, no upstream CTE).
+        self._synth_column_source: Dict[str, Dict[str, Tuple[str, str]]] = {}
+
     def plan(self) -> PlannerResult:
         """Drive the DFS traversal and return the synthesized artifacts."""
         try:
@@ -88,6 +165,10 @@ class FeaturePlanner:
         self._ctes = []
         self._path = []
         self._synth_columns = {}
+        self._cte_specs = {}
+        self._cte_order = []
+        self._verbatim_ctes = {}
+        self._synth_column_source = {}
 
         logger.debug("Starting feature build for target {}", self._target.alias)
         self._build_features(self._target)
@@ -99,6 +180,12 @@ class FeaturePlanner:
             },
             joins={alias: list(joins) for alias, joins in self._joins.items()},
             ctes=list(self._ctes),
+            cte_specs=dict(self._cte_specs),
+            cte_order=list(self._cte_order),
+            verbatim_ctes=dict(self._verbatim_ctes),
+            synth_column_source=dict(
+                self._synth_column_source.get(self._target.alias, {})
+            ),
         )
 
     # ------------------------------------------------------------------ #
@@ -242,8 +329,13 @@ class FeaturePlanner:
         def attach(cte_name: str, cte_query: str, names: list[str]) -> None:
             join = f" {cte_name} on {cte_name}.node_id = {node.table}.{node_id_col} "
             self._joins[node.alias].append(join)
-            self._ctes.append(cte_query)
+            self._emit_verbatim(cte_name, cte_query)
             registered.extend(names)
+            # These graph columns become synth columns of ``node``; record their
+            # source so a column group can drop this join + CTE when unused.
+            node_sources = self._synth_column_source.setdefault(node.alias, {})
+            for name in names:
+                node_sources[name] = (cte_name, join)
 
         if "degree" in families:
             self._graph_degree_cte(node, edge, attach)
@@ -389,7 +481,9 @@ class FeaturePlanner:
         ) u where node_id is not null and nbr is not null
         )
         """
-        self._ctes.append(cte_query)
+        # Internal helper CTE: other graph CTEs reference it by name in their
+        # FROM, so the sharding renderer pulls it in via reachability.
+        self._emit_verbatim(cte_name, cte_query)
         return cte_name
 
     def _graph_k_hop_cte(
@@ -593,7 +687,9 @@ class FeaturePlanner:
         group by c.{rel.child_key}
         )
         """
-            self._ctes.append(cte_query)
+            # Internal helper CTE consumed by the peer CTE's subquery FROM;
+            # pulled in via reachability when that peer CTE survives.
+            self._emit_verbatim(cte_name, cte_query)
             results.append((rel, cte_name))
         return results
 
@@ -713,11 +809,15 @@ class FeaturePlanner:
         """
         join = f" {cte_name} on {cte_name}.node_id = {table}.{id_col} "
         self._joins[entity.alias].append(join)
-        self._ctes.append(cte_query)
+        self._emit_verbatim(cte_name, cte_query)
         self._features[entity.alias].update(
             Feature(name=name, type="numeric", definition=name, entity=entity)
             for name, _ in select_cols
         )
+        # Peer columns become synth columns of ``entity``; record their source.
+        entity_sources = self._synth_column_source.setdefault(entity.alias, {})
+        for name, _ in select_cols:
+            entity_sources[name] = (cte_name, join)
 
     # ------------------------------------------------------------------ #
     # Spatial second-table features (M1d Phase 10)
@@ -830,11 +930,15 @@ class FeaturePlanner:
         """
         join = f" {cte_name} on {cte_name}.node_id = {left.table}.{left.id.name} "
         self._joins[left.alias].append(join)
-        self._ctes.append(cte_query)
+        self._emit_verbatim(cte_name, cte_query)
         self._features[left.alias].update(
             Feature(name=name, type="numeric", definition=name, entity=left)
             for name, _ in select_cols
         )
+        # Spatial columns become synth columns of ``left``; record their source.
+        left_sources = self._synth_column_source.setdefault(left.alias, {})
+        for name, _ in select_cols:
+            left_sources[name] = (cte_name, join)
 
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship
@@ -932,8 +1036,29 @@ class FeaturePlanner:
         self._build_transform_cte(target, sorted_flattened)
 
     # ------------------------------------------------------------------ #
-    # CTE builders (unchanged from the original implementation)
+    # CTE builders + emission helpers (sharding metadata is issue #7)
     # ------------------------------------------------------------------ #
+
+    def _emit_verbatim(self, name: str, cte_query: str) -> None:
+        """Record a CTE that is emitted whole (its width is bounded).
+
+        Keeps the rendered string for the single-query renderer *and* registers
+        it by name so the sharding renderer can splice it back in order. A
+        verbatim CTE is included in a group only when a kept join references it.
+        """
+        self._ctes.append(cte_query)
+        self._cte_order.append(name)
+        self._verbatim_ctes[name] = cte_query
+
+    def _emit_shardable(self, spec: "ShardableCTE", cte_query: str) -> None:
+        """Record a column-prunable CTE (transform / synth / aggs).
+
+        Stores both the rendered full-width string (single-query path) and the
+        structured ``ShardableCTE`` (sharding path), keyed by CTE name.
+        """
+        self._ctes.append(cte_query)
+        self._cte_order.append(spec.name)
+        self._cte_specs[spec.name] = spec
 
     def _build_aggregations_cte(
         self,
@@ -948,9 +1073,8 @@ class FeaturePlanner:
             f"{relationship.parent.table}.{relationship.parent_key} "
         )
 
-        rendered_features = [
-            feature.query for feature in features if feature.type not in ["key"]
-        ]
+        agg_features = [feature for feature in features if feature.type not in ["key"]]
+        rendered_features = [feature.query for feature in agg_features]
         where_clause = (
             f"where aod.as_of_date >= {source.temporal_ix.name}"
             if source.temporal_ix
@@ -969,7 +1093,38 @@ class FeaturePlanner:
         )
         """
         self._joins[target.alias].append(join_statement)
-        self._ctes.append(cte_query)
+
+        # Sharding metadata: each aggregate column is an independent projection
+        # over <source>_transform, so the agg CTE can be rebuilt for a group
+        # projecting only the columns that group's synth needs (plus the join
+        # key, always kept). The prefix stops at ``select`` so ``key_columns``
+        # (the GROUP BY key) and the surviving columns form the select list.
+        prefix = (
+            f"\n        -- Aggregate for {target.alias}\n"
+            f"        {cte_name} as (\n        select\n        "
+        )
+        suffix = (
+            f"\n        from {source.alias}_transform\n"
+            f"        {where_clause}\n"
+            f"        group by {relationship.parent_key}\n        )\n        "
+        )
+        columns = [ColumnSpec(name=f.name, projection=f.query) for f in agg_features]
+        spec = ShardableCTE(
+            name=cte_name,
+            kind="aggs",
+            prefix=prefix,
+            suffix=suffix,
+            key_columns=[f"{source.alias}_transform.{relationship.parent_key}"],
+            columns=columns,
+            rendered=cte_query,
+        )
+        self._emit_shardable(spec, cte_query)
+        # Every aggregate column lands as a synth column of the same name, fed
+        # by this CTE's join. Record the source so synth pruning can drop the
+        # join + this CTE when a group keeps none of its columns.
+        target_sources = self._synth_column_source.setdefault(target.alias, {})
+        for f in agg_features:
+            target_sources[f.name] = (cte_name, join_statement)
 
     def _build_direct_cte(
         self,
@@ -1004,7 +1159,11 @@ class FeaturePlanner:
             f"{relationship.child.table}.{relationship.child_key} "
         )
         self._joins[target.alias].append(join_statement)
-        self._ctes.append(cte_query)
+        self._emit_verbatim(cte_name, cte_query)
+        # Direct (static-join) features become synth columns of the target.
+        target_sources = self._synth_column_source.setdefault(target.alias, {})
+        for name in feature_names:
+            target_sources[name] = (cte_name, join_statement)
 
     def _build_direct_asof(
         self,
@@ -1069,6 +1228,16 @@ class FeaturePlanner:
             f"    ) as {cte_name} on true "
         )
         self._joins[target.alias].append(lateral_join)
+        # As-of features become synth columns of the target. The join is a
+        # lateral subquery (not a registered CTE) reading <source>_transform, so
+        # name that as the upstream CTE for reachability and carry the join.
+        target_sources = self._synth_column_source.setdefault(target.alias, {})
+        for feature in features:
+            if feature.type not in {"index", "key"}:
+                target_sources[feature.name] = (
+                    f"{source.alias}_transform",
+                    lateral_join,
+                )
 
     def _build_synth_cte(self, target: Entity) -> None:
         cte_table = f"{target.alias}_synth"
@@ -1097,7 +1266,28 @@ class FeaturePlanner:
         )
         """
 
-        self._ctes.append(cte_query)
+        # Sharding metadata. A synth column is either a base-table variable
+        # (no join, always available) or carried up by an upstream CTE (recorded
+        # in ``_synth_column_source``). The renderer rebuilds the FROM clause for
+        # a group from only the joins its surviving columns need, so ``suffix``
+        # holds just the base table; ``key_columns`` (identifier columns) are
+        # always projected. ``columns`` project the bare synth column name.
+        prefix = (
+            f"\n        -- sythetize aggregations and direct features for "
+            f"{target.alias}\n        {cte_table} as (\n        select\n        "
+        )
+        suffix = f"\n        from {target.table}"
+        columns = [ColumnSpec(name=name, projection=name) for name in feature_names]
+        spec = ShardableCTE(
+            name=cte_table,
+            kind="synth",
+            prefix=prefix,
+            suffix=suffix,
+            key_columns=list(id_columns),
+            columns=columns,
+            rendered=cte_query,
+        )
+        self._emit_shardable(spec, cte_query)
 
     def _build_transform_cte(self, target: Entity, features: Iterable[Feature]) -> None:
         cte_table = f"{target.alias}_transform"
@@ -1105,6 +1295,7 @@ class FeaturePlanner:
         id_columns = self._identifier_columns(target)
         synth_columns = self._synth_columns.get(target.alias, set())
         rendered_features = []
+        column_specs: List[ColumnSpec] = []
         for feature in features:
             if feature.type in ["index", "key"]:
                 continue
@@ -1114,11 +1305,18 @@ class FeaturePlanner:
                 # own definition references base-table columns absent from synth,
                 # so reference it by name. feature.name is already quoted when
                 # it needs to be.
-                rendered_features.append(f"{feature.name} as {feature.name}")
+                projection = f"{feature.name} as {feature.name}"
+                # A pass-through depends on exactly its own synth column.
+                depends = frozenset({feature.name})
             else:
                 # A genuine transformer output; its definition references synth
                 # columns by name and is valid against the synth CTE.
-                rendered_features.append(feature.query)
+                projection = feature.query
+                depends = self._synth_deps(projection, synth_columns)
+            rendered_features.append(projection)
+            column_specs.append(
+                ColumnSpec(name=feature.name, projection=projection, depends_on=depends)
+            )
 
         # Alias the source row so rolling ordered-set aggregates can correlate a
         # re-scan of the same _synth rows against it (PG forbids OVER on
@@ -1132,7 +1330,46 @@ class FeaturePlanner:
         )
         """
 
-        self._ctes.append(cte_query)
+        # Sharding metadata: the transform tuple is the program's widest CTE.
+        # Each column projects independently over <target>_synth and carries the
+        # synth columns it reads (``depends_on``), so a group can prune synth
+        # (and, transitively, the agg CTEs) to only what its columns need.
+        prefix = (
+            f"\n        -- transform {target.alias}\n        {cte_table} as ("
+            f"\n        select\n        "
+        )
+        suffix = f"\n        from {target.alias}_synth {TRANSFORM_EGO_ALIAS}\n        )\n        "
+        spec = ShardableCTE(
+            name=cte_table,
+            kind="transform",
+            prefix=prefix,
+            suffix=suffix,
+            key_columns=list(id_columns),
+            columns=column_specs,
+            rendered=cte_query,
+        )
+        self._emit_shardable(spec, cte_query)
+
+    @staticmethod
+    def _synth_deps(projection: str, synth_columns: Set[str]) -> frozenset[str]:
+        """Synth columns a transform projection reads, by literal-name scan.
+
+        Transformer SQL references its inputs by the *exact* synth column name
+        (a quoted identifier like ``"MEAN(orders.amount)"`` for carried-up
+        features, or a bare base-variable name like ``amount``). Each synth
+        column name therefore appears verbatim in the projection text iff the
+        column depends on it. Substring containment is safe here: quoted names
+        are delimited by quotes, and a bare base name is matched on word
+        boundaries to avoid spuriously matching a longer identifier.
+        """
+        deps: Set[str] = set()
+        for col in synth_columns:
+            if col.startswith('"'):
+                if col in projection:
+                    deps.add(col)
+            elif _bare_word_in(col, projection):
+                deps.add(col)
+        return frozenset(deps)
 
     # ------------------------------------------------------------------ #
     # Debug helpers

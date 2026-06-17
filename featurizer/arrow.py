@@ -157,6 +157,16 @@ class ArrowExporter:
                 conn.close()
         return table
 
+    def open_connection(self) -> Any:
+        """Open a connection from the factory / environment.
+
+        Public so callers that run several queries (e.g. the column-group
+        sharding path) can open one connection, reuse it across every group, and
+        close it once. Mirrors what :meth:`to_arrow` does internally when no
+        connection is supplied.
+        """
+        return self._open_connection()
+
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
