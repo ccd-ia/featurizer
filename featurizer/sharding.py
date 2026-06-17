@@ -31,9 +31,10 @@ rendered CTE string for its column lists, only scans CTE/join *text* for CTE
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Set
 
 from loguru import logger
@@ -448,3 +449,510 @@ class ColumnGroupSharder:
         if name.startswith('"'):
             return name
         return name.rsplit(".", 1)[-1]
+
+
+# ---------------------------------------------------------------------------- #
+# Temp-table materialization for oversized NON-TARGET child CTEs (issue #7).
+#
+# Column-group sharding splits the *target's* output, but a non-target child
+# CTE (a deeper-chain ``<src>_aggs_for_<parent>`` or a child's own
+# ``<child>_synth`` / ``<child>_transform``) is reused whole across groups, so a
+# single child CTE wider than 1664 cannot be made to fit by grouping the target.
+# The cascade is inherent: an oversized child agg forces its consumer synth (and
+# then transform) over the limit too, since the synth projects every agg column.
+#
+# The fix materializes each oversized child CTE into keyed TEMP-table *shards*
+# (each ≤ the column budget), bottom-up, and rewrites every downstream reference
+# from an inline CTE into joins against the shards. Execution becomes a
+# session-scoped sequence: run the ``CREATE TEMP TABLE … ON COMMIT DROP AS …``
+# preamble, then the target column-group SELECT(s), all on one connection.
+# ---------------------------------------------------------------------------- #
+
+# Prefix namespacing featurizer's temp tables away from user/session objects.
+TEMP_TABLE_PREFIX = "__fz_"
+# Feature columns per shard. Same budget as a column group: leaves headroom
+# under the 1600-column table limit for the carried key column(s).
+MATERIALIZE_MAX_COLUMNS = DEFAULT_MAX_COLUMNS_PER_GROUP
+
+_TRANSFORM_EGO_ALIAS = "_ego"  # matches planner.TRANSFORM_EGO_ALIAS
+
+
+@dataclass(frozen=True)
+class MaterializedShard:
+    """One TEMP-table shard of an oversized CTE.
+
+    ``cte_name`` is the logical CTE being materialized; ``table_name`` is the
+    shard's TEMP table; ``join_key`` is the bare key column it projects and that
+    its consumers join on; ``columns`` are the feature column names in this shard
+    (excluding the key); ``create_sql`` is the full ``CREATE TEMP TABLE … AS …``.
+    """
+
+    cte_name: str
+    table_name: str
+    join_key: str
+    columns: List[str]
+    create_sql: str
+
+
+@dataclass(frozen=True)
+class MaterializationPlan:
+    """Result of materialization planning.
+
+    ``ddl`` is the ordered list of ``CREATE TEMP TABLE`` statements to run as a
+    preamble (bottom-up: an oversized upstream before its consumer).
+    ``shards_by_cte`` maps each materialized CTE name to its ordered shards.
+    ``materialized_ctes`` is the set of logical CTE names now backed by temp
+    tables — the group-query renderer drops these from its ``with`` lists and
+    joins their shards instead.
+    """
+
+    ddl: List[str]
+    shards_by_cte: "OrderedDict[str, List[MaterializedShard]]"
+    materialized_ctes: Set[str] = field(default_factory=set)
+
+
+class MaterializationPlanner:
+    """Plans TEMP-table materialization for a plan's oversized child CTEs.
+
+    Self-sufficient: derives everything it needs (the target's CTE names, the
+    prunable target-level agg set, a CTE-name scanner, and CTE bodies) directly
+    from the :class:`PlannerResult`, so it shares no private state with
+    :class:`ColumnGroupSharder`. ``materialize_threshold`` defaults to the hard
+    PostgreSQL limit; tests pass a small value to force materialization on a
+    small config (mirroring ``ColumnGroupSharder.max_columns_per_group``) without
+    building a genuinely 1664-wide CTE.
+    """
+
+    def __init__(
+        self,
+        plan: PlannerResult,
+        *,
+        materialize_threshold: int = PG_MAX_TARGET_LIST,
+        max_columns_per_shard: int = MATERIALIZE_MAX_COLUMNS,
+    ) -> None:
+        if materialize_threshold < 1 or max_columns_per_shard < 1:
+            raise ValueError(
+                "materialize_threshold and max_columns_per_shard must be positive."
+            )
+        self.plan = plan
+        self.materialize_threshold = materialize_threshold
+        self.max_columns_per_shard = max_columns_per_shard
+
+        self.target_alias = plan.target.alias
+        self.transform_name = f"{self.target_alias}_transform"
+        self.synth_name = f"{self.target_alias}_synth"
+        # Target-level aggs are pruned per group, never materialized (same rule
+        # as ColumnGroupSharder): a synth-column source CTE of kind "aggs".
+        self._target_agg_ctes: Set[str] = {
+            cte_name
+            for cte_name, _ in plan.synth_column_source.values()
+            if plan.cte_specs.get(cte_name) is not None
+            and plan.cte_specs[cte_name].kind == "aggs"
+        }
+        self._scanner = _cte_name_scanner(plan.cte_order) if plan.cte_order else None
+
+    # ------------------------------------------------------------------ #
+    # Detection + ordering
+    # ------------------------------------------------------------------ #
+
+    def oversized_ctes(self) -> Dict[str, int]:
+        """Non-prunable intermediate CTEs wider than the threshold.
+
+        Same prunable set as :meth:`ColumnGroupSharder._oversized_intermediate_ctes`
+        (target transform/synth + target-level aggs are pruned per group, never
+        materialized), but judged against the configurable threshold.
+        """
+        prunable = {self.transform_name, self.synth_name} | self._target_agg_ctes
+        out: Dict[str, int] = {}
+        for name, spec in self.plan.cte_specs.items():
+            if name in prunable:
+                continue
+            width = len(spec.key_columns) + len(spec.columns)
+            if width > self.materialize_threshold:
+                out[name] = width
+        return out
+
+    def materialization_order(self) -> List[str]:
+        """Oversized CTEs in bottom-up order (an upstream before its consumer).
+
+        Edges are discovered by scanning each oversized CTE's body for the names
+        of *other* oversized CTEs (the existing name-reachability scan), never by
+        parsing column lists. The planner DAG is acyclic by construction
+        (children are built before parents), so a stable topological sort exists.
+        """
+        oversized = set(self.oversized_ctes())
+        # deps[a] = oversized CTEs whose names appear in a's body (a's upstreams).
+        deps: Dict[str, Set[str]] = {}
+        for name in oversized:
+            body = self._body(name) or ""
+            refs = self._scan(body) & oversized
+            refs.discard(name)
+            deps[name] = refs
+
+        ordered: List[str] = []
+        placed: Set[str] = set()
+        # Emit in the planner's original CTE order, deferring any CTE whose
+        # oversized upstreams have not all been placed (a simple, stable
+        # Kahn-style pass; the DAG is small and acyclic).
+        remaining = [n for n in self.plan.cte_order if n in oversized]
+        # Any oversized CTE not in cte_order (defensive) goes last.
+        remaining += [n for n in oversized if n not in remaining]
+        progress = True
+        while remaining and progress:
+            progress = False
+            still: List[str] = []
+            for name in remaining:
+                if deps[name] <= placed:
+                    ordered.append(name)
+                    placed.add(name)
+                    progress = True
+                else:
+                    still.append(name)
+            remaining = still
+        if remaining:
+            raise ValueError(
+                "Cycle detected among oversized CTEs while planning "
+                f"materialization: {remaining}. The planner DAG should be acyclic."
+            )
+        return ordered
+
+    # ------------------------------------------------------------------ #
+    # Build
+    # ------------------------------------------------------------------ #
+
+    def build(self) -> MaterializationPlan:
+        """Plan the full preamble: every oversized CTE's shard DDL, bottom-up."""
+        order = self.materialization_order()
+        shards_by_cte: "OrderedDict[str, List[MaterializedShard]]" = OrderedDict()
+        ddl: List[str] = []
+        materialized: Set[str] = set()
+        for cte_name in order:
+            shards = self._shards_for(cte_name, shards_by_cte)
+            shards_by_cte[cte_name] = shards
+            ddl.extend(shard.create_sql for shard in shards)
+            materialized.add(cte_name)
+        return MaterializationPlan(
+            ddl=ddl,
+            shards_by_cte=shards_by_cte,
+            materialized_ctes=materialized,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Per-CTE shard construction
+    # ------------------------------------------------------------------ #
+
+    def _shards_for(
+        self,
+        cte_name: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> List[MaterializedShard]:
+        spec = self.plan.cte_specs[cte_name]
+        mkey = self.plan.materialization_keys.get(cte_name)
+        if mkey is None:
+            raise ValueError(
+                f"Cannot materialize CTE {cte_name!r}: the planner recorded no "
+                "join key for it (an id-less entity cannot be re-joined). Narrow "
+                "this entity's primitive/interval breadth instead."
+            )
+        join_key = mkey.join_key
+        column_chunks = self._partition(spec.columns)
+        shards: List[MaterializedShard] = []
+        for idx, chunk in enumerate(column_chunks):
+            table_name = self._temp_name(cte_name, idx)
+            select_body = self._select_body(spec, chunk, idx, join_key, done)
+            create_sql = (
+                f"create temp table {table_name} on commit drop as\n{select_body}"
+            )
+            shards.append(
+                MaterializedShard(
+                    cte_name=cte_name,
+                    table_name=table_name,
+                    join_key=join_key,
+                    columns=[c.name for c in chunk],
+                    create_sql=create_sql,
+                )
+            )
+        return shards
+
+    def _select_body(
+        self,
+        spec: ShardableCTE,
+        chunk: List[ColumnSpec],
+        idx: int,
+        join_key: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        if spec.kind == "aggs":
+            return self._agg_select(spec, chunk, done)
+        if spec.kind == "synth":
+            return self._synth_select(spec, chunk, idx, join_key, done)
+        if spec.kind == "transform":
+            return self._transform_select(spec, chunk, idx, join_key, done)
+        raise ValueError(f"Cannot materialize CTE of kind {spec.kind!r}.")
+
+    def _agg_select(
+        self,
+        spec: ShardableCTE,
+        chunk: List[ColumnSpec],
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        """``select <key>, <chunk> from <src>_transform [where] group by <key>``.
+
+        The agg groups child rows by the parent key (already in ``key_columns``),
+        so every shard projects that single key. Its source ``<src>_transform`` is
+        reused as-is when bounded (pulled into an inline ``with``) or rewritten to
+        its shards when it was itself materialized.
+        """
+        projections = list(spec.key_columns) + [c.projection for c in chunk]
+        tail = self._strip_cte_close(spec.suffix)
+        tail = self._rewrite_from_sources(tail, done)
+        with_clause = self._inline_with(spec.name, done)
+        return with_clause + "select\n        " + ",\n        ".join(projections) + tail
+
+    def _synth_select(
+        self,
+        spec: ShardableCTE,
+        chunk: List[ColumnSpec],
+        idx: int,
+        join_key: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        """``select <keys>, <chunk> from <table> <rewritten left joins>``.
+
+        Only the first shard carries the full identifier columns; later shards
+        carry just the join key, so re-joining the shards with ``using(<key>)``
+        yields each non-key column exactly once. Child-agg joins that were
+        materialized are expanded into per-shard ``left join``s.
+        """
+        keys = self._shard_keys(spec, idx, join_key)
+        projections = keys + [c.projection for c in chunk]
+        entity = self._entity_of(spec)
+        joins = self.plan.joins.get(entity, [])
+        joins_sql = "".join(
+            "\n        left join " + j for j in self._rewrite_joins(joins, done)
+        )
+        with_clause = self._inline_with(spec.name, done, skip_joins=True)
+        return (
+            with_clause
+            + "select\n        "
+            + ",\n        ".join(projections)
+            + spec.suffix
+            + joins_sql
+        )
+
+    def _transform_select(
+        self,
+        spec: ShardableCTE,
+        chunk: List[ColumnSpec],
+        idx: int,
+        join_key: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        """``select <keys>, <chunk> from <synth source> _ego``.
+
+        The transform reads one row per entity from its synth; when that synth was
+        materialized, its shards are re-joined (``using(<key>)``) into a subquery
+        aliased ``_ego`` so the transformer projections still resolve their synth
+        columns by bare name.
+        """
+        keys = self._shard_keys(spec, idx, join_key)
+        projections = keys + [c.projection for c in chunk]
+        synth_name = f"{self._entity_of(spec)}_synth"
+        source = self._from_source(synth_name, _TRANSFORM_EGO_ALIAS, done)
+        return (
+            "select\n        "
+            + ",\n        ".join(projections)
+            + "\n        from "
+            + source
+        )
+
+    # ------------------------------------------------------------------ #
+    # Rewriting helpers
+    # ------------------------------------------------------------------ #
+
+    def _rewrite_joins(
+        self,
+        joins: List[str],
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> List[str]:
+        """Expand each ``left join`` clause that targets a materialized CTE into
+        one clause per shard (the CTE name swapped for each shard table)."""
+        out: List[str] = []
+        for join in joins:
+            hit = next((c for c in done if self._mentions(join, c)), None)
+            if hit is None:
+                out.append(join)
+                continue
+            for shard in done[hit]:
+                out.append(join.replace(hit, shard.table_name))
+        return out
+
+    def _rewrite_from_sources(
+        self,
+        text: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        """Rewrite ``from <cte>`` where ``<cte>`` was materialized into a re-join
+        subquery over its shards (used by the agg path for a materialized source
+        transform on deeper chains)."""
+        for cte in done:
+            pattern = re.compile(rf"from\s+{re.escape(cte)}(?![A-Za-z0-9_])")
+            if pattern.search(text):
+                rejoin = self._rejoin_subquery(done[cte])
+                text = pattern.sub(f"from {rejoin} {cte}", text)
+        return text
+
+    def _from_source(
+        self,
+        cte_name: str,
+        alias: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+    ) -> str:
+        """The FROM source for a CTE read directly (``from <cte> <alias>``):
+        the re-joined shards when materialized, else the CTE name."""
+        if cte_name in done:
+            return f"{self._rejoin_subquery(done[cte_name])} {alias}"
+        return f"{cte_name} {alias}"
+
+    def _rejoin_subquery(self, shards: List[MaterializedShard]) -> str:
+        """``(select * from s0 left join s1 using(<key>) …)`` — re-joins shards
+        into one logical row per key. Only the first shard carries the non-key
+        identifier columns, so ``select *`` yields each column once."""
+        if not shards:
+            return "(select 1)"
+        key = shards[0].join_key
+        first = shards[0].table_name
+        joins = "".join(f" left join {s.table_name} using ({key})" for s in shards[1:])
+        return f"(select * from {first}{joins})"
+
+    def _inline_with(
+        self,
+        cte_name: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+        *,
+        skip_joins: bool = False,
+    ) -> str:
+        """A ``with`` clause defining the non-materialized CTEs a materialized
+        CTE's body needs (e.g. an agg's ``<src>_transform`` + ``<src>_synth``),
+        in planner emission order. Materialized upstreams are excluded — they are
+        temp tables, referenced by the rewrite, not redefined here."""
+        needed = self._inline_upstreams(cte_name, done, skip_joins=skip_joins)
+        if not needed:
+            return ""
+        bodies = [self._body(n) or "" for n in needed]
+        return "with\n" + ",".join(bodies) + "\n"
+
+    def _inline_upstreams(
+        self,
+        cte_name: str,
+        done: "OrderedDict[str, List[MaterializedShard]]",
+        *,
+        skip_joins: bool,
+    ) -> List[str]:
+        """Transitive non-materialized CTE names a materialized CTE references,
+        in planner emission order (dependencies first)."""
+        spec = self.plan.cte_specs.get(cte_name)
+        # Seed from the CTE's own rendered body (its FROM / joins name upstreams).
+        if skip_joins and spec is not None:
+            seed_text = spec.suffix
+        else:
+            seed_text = self._body(cte_name) or ""
+        frontier = list((self._scan(seed_text) - {cte_name}) - set(done))
+        if skip_joins:
+            entity = self._entity_of(spec) if spec is not None else ""
+            for join in self.plan.joins.get(entity, []):
+                for ref in self._scan(join):
+                    if ref != cte_name and ref not in done:
+                        frontier.append(ref)
+        reachable: Set[str] = set()
+        while frontier:
+            name = frontier.pop()
+            if name in reachable or name in done or name == cte_name:
+                continue
+            if name not in self.plan.cte_specs and name not in self.plan.verbatim_ctes:
+                continue  # base table, not a CTE
+            reachable.add(name)
+            body = self._body(name) or ""
+            frontier.extend(self._scan(body) - reachable)
+        return [n for n in self.plan.cte_order if n in reachable]
+
+    # ------------------------------------------------------------------ #
+    # Small helpers
+    # ------------------------------------------------------------------ #
+
+    def _partition(self, columns: List[ColumnSpec]) -> List[List[ColumnSpec]]:
+        if not columns:
+            return [[]]
+        per = self.max_columns_per_shard
+        return [columns[i : i + per] for i in range(0, len(columns), per)]
+
+    def _shard_keys(self, spec: ShardableCTE, idx: int, join_key: str) -> List[str]:
+        """Key columns a shard projects: the first shard carries all identifier
+        columns; later shards carry only the join key (so a ``using(<key>)``
+        re-join keeps each non-key identifier column unambiguous)."""
+        if idx == 0:
+            return list(spec.key_columns)
+        qualified = next(
+            (k for k in spec.key_columns if self._bare(k) == join_key),
+            join_key,
+        )
+        return [qualified]
+
+    def _entity_of(self, spec: ShardableCTE) -> str:
+        """The entity alias owning a synth/transform CTE (``orders_synth`` ->
+        ``orders``)."""
+        if spec.kind == "synth":
+            return spec.name[: -len("_synth")]
+        if spec.kind == "transform":
+            return spec.name[: -len("_transform")]
+        # agg: ``<src>_aggs_for_<parent>`` -> ``<src>``
+        return spec.name.split("_aggs_for_")[0]
+
+    def _temp_name(self, cte_name: str, idx: int) -> str:
+        """A collision-safe, ≤63-byte TEMP table name for a shard.
+
+        Hashes the logical CTE name when the readable form would exceed
+        PostgreSQL's 63-byte identifier limit (it truncates silently, which would
+        alias two distinct CTEs onto one table)."""
+        readable = f"{TEMP_TABLE_PREFIX}{cte_name}__s{idx:03d}"
+        if len(readable) <= 63:
+            return readable
+        digest = hashlib.sha1(cte_name.encode()).hexdigest()[:8]
+        return f"{TEMP_TABLE_PREFIX}{digest}__s{idx:03d}"
+
+    def _body(self, name: str) -> str | None:
+        """The full-width rendered text for a CTE (verbatim or shardable),
+        byte-identical to the single-query renderer; ``None`` if unknown."""
+        if name in self.plan.verbatim_ctes:
+            return self.plan.verbatim_ctes[name]
+        spec = self.plan.cte_specs.get(name)
+        return spec.rendered if spec is not None else None
+
+    def _scan(self, text: str) -> Set[str]:
+        """Every known CTE name appearing in ``text`` (word-boundary matched)."""
+        if self._scanner is None:
+            return set()
+        return set(self._scanner.findall(text))
+
+    @staticmethod
+    def _mentions(text: str, name: str) -> bool:
+        """True if ``name`` appears in ``text`` on identifier word boundaries."""
+        return bool(
+            re.search(rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", text)
+        )
+
+    @staticmethod
+    def _bare(name: str) -> str:
+        """The unqualified column reference (``orders.order_id`` -> ``order_id``)."""
+        if name.startswith('"'):
+            return name
+        return name.rsplit(".", 1)[-1]
+
+    @staticmethod
+    def _strip_cte_close(suffix: str) -> str:
+        """Drop the trailing ``)`` that closes a CTE definition, leaving the bare
+        ``from … [where …] [group by …]`` tail for a ``create table as select``."""
+        stripped = suffix.rstrip()
+        if stripped.endswith(")"):
+            stripped = stripped[:-1]
+        return stripped

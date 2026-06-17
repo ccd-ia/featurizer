@@ -19,6 +19,7 @@ from featurizer.sharding import (
     PG_MAX_TABLE_COLUMNS,
     PG_MAX_TARGET_LIST,
     ColumnGroupSharder,
+    MaterializationPlanner,
 )
 
 
@@ -491,3 +492,105 @@ def test_oversized_child_warn_oversized_emits_named_bound():
     joined = "".join(messages)
     assert "items_aggs_for_orders" in joined
     assert "1664" in joined
+
+
+# ------------------------------------------------------------------ #
+# MaterializationPlanner: temp-table shards for the oversized child chain.
+# These assert on the *shape* of the CREATE TEMP TABLE preamble (DB-free);
+# execution + value-equivalence on real PostgreSQL lives in the integration
+# suite.
+# ------------------------------------------------------------------ #
+
+_CHAIN = {"items_aggs_for_orders", "orders_synth", "orders_transform"}
+
+
+def _materialization_plan():
+    f = _featurizer(_oversized_child_config())
+    mp = MaterializationPlanner(f._plan)
+    return f, mp, mp.build()
+
+
+def test_materialization_detects_oversized_chain():
+    f, mp, _ = _materialization_plan()
+    assert set(mp.oversized_ctes()) == _CHAIN
+    # Target-level CTEs are pruned per group, never materialized.
+    assert "stores_synth" not in mp.oversized_ctes()
+    assert "orders_aggs_for_stores" not in mp.oversized_ctes()
+
+
+def test_materialization_order_is_bottom_up():
+    _, mp, _ = _materialization_plan()
+    order = mp.materialization_order()
+    assert (
+        order.index("items_aggs_for_orders")
+        < order.index("orders_synth")
+        < order.index("orders_transform")
+    )
+
+
+def test_materialization_ddl_are_temp_tables():
+    _, _, plan = _materialization_plan()
+    assert plan.materialized_ctes == _CHAIN
+    assert plan.ddl, "expected a non-empty preamble"
+    for ddl in plan.ddl:
+        assert ddl.startswith("create temp table __fz_")
+        assert "on commit drop as" in ddl
+
+
+def test_materialization_shards_stay_under_budget():
+    _, mp, plan = _materialization_plan()
+    # items_aggs_for_orders (2107 cols) splits into >1 shard at the 1400 budget.
+    assert len(plan.shards_by_cte["items_aggs_for_orders"]) > 1
+    for shards in plan.shards_by_cte.values():
+        for shard in shards:
+            assert len(shard.columns) <= mp.max_columns_per_shard
+
+
+def test_materialization_shards_cover_every_column_once():
+    f, _, plan = _materialization_plan()
+    for cte_name, shards in plan.shards_by_cte.items():
+        full = [c.name for c in f._plan.cte_specs[cte_name].columns]
+        seen: list[str] = []
+        for shard in shards:
+            seen.extend(shard.columns)
+        assert seen == full, f"{cte_name}: shards do not partition columns exactly"
+
+
+def test_items_aggs_ddl_inlines_bounded_upstreams():
+    """The leaf agg's source ``items_transform`` (+ ``items_synth``) is bounded,
+    so it is pulled into an inline ``with`` rather than materialized."""
+    _, _, plan = _materialization_plan()
+    agg_ddl = "\n".join(
+        s.create_sql for s in plan.shards_by_cte["items_aggs_for_orders"]
+    )
+    assert "items_synth as (" in agg_ddl
+    assert "items_transform as (" in agg_ddl
+
+
+def test_orders_synth_ddl_joins_items_aggs_temp_shards():
+    """``orders_synth`` no longer inlines the oversized child agg; it left-joins
+    its temp shards instead."""
+    _, _, plan = _materialization_plan()
+    synth_ddl = "\n".join(s.create_sql for s in plan.shards_by_cte["orders_synth"])
+    assert "items_aggs_for_orders as (" not in synth_ddl
+    assert "__fz_items_aggs_for_orders__s000" in synth_ddl
+
+
+def test_orders_transform_ddl_rejoins_synth_shards():
+    """``orders_transform`` reads its synth from the re-joined synth shards."""
+    _, _, plan = _materialization_plan()
+    tf_ddl = "\n".join(s.create_sql for s in plan.shards_by_cte["orders_transform"])
+    assert "__fz_orders_synth__s000" in tf_ddl
+    assert "using (order_id)" in tf_ddl
+
+
+def test_materialization_threshold_knob_forces_small_config():
+    """A tiny threshold materializes even a small config's child chain, so the
+    DB-free path is exercisable without a genuinely 1664-wide CTE."""
+    f = _featurizer(_depth3_config())
+    mp = MaterializationPlanner(f._plan, materialize_threshold=1)
+    oversized = set(mp.oversized_ctes())
+    assert "items_aggs_for_orders" in oversized
+    assert "orders_synth" in oversized
+    # Target CTEs stay out even at threshold 1 (they are prunable).
+    assert "stores_synth" not in oversized

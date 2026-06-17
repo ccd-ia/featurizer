@@ -1352,6 +1352,17 @@ class FeaturePlanner:
             rendered=cte_query,
         )
         self._emit_shardable(spec, cte_query)
+        # Temp-table materialization key (issue #7): a synth is one row per entity,
+        # so its shards re-join on the entity id. Consumers read it as a FROM
+        # source (the transform's ``from <synth> _ego``), not a LEFT JOIN, so
+        # ``join_statement`` is empty — the materializer rebuilds the FROM from the
+        # shards via ``using(<id>)``. Recorded only when the entity has an id to
+        # re-join on; an id-less entity's synth cannot be materialized this way.
+        if target.id is not None:
+            self._materialization_keys[cte_table] = MaterializationKey(
+                join_key=target.id.name,
+                join_statement="",
+            )
 
     def _build_transform_cte(self, target: Entity, features: Iterable[Feature]) -> None:
         cte_table = f"{target.alias}_transform"
@@ -1413,6 +1424,13 @@ class FeaturePlanner:
             rendered=cte_query,
         )
         self._emit_shardable(spec, cte_query)
+        # Temp-table materialization key (issue #7): like the synth, a transform is
+        # one row per entity, re-joined on the entity id. See ``_build_synth_cte``.
+        if target.id is not None:
+            self._materialization_keys[cte_table] = MaterializationKey(
+                join_key=target.id.name,
+                join_statement="",
+            )
 
     @staticmethod
     def _synth_deps(projection: str, synth_columns: Set[str]) -> frozenset[str]:
