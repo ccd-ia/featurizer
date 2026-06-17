@@ -34,6 +34,52 @@ class TestConfigValidator:
         assert result.is_valid
         assert len(result.errors) == 0
 
+    def test_as_of_boundary_inclusive_passes(self):
+        """The default-equivalent 'inclusive' boundary is accepted."""
+        config = {
+            "target": "users",
+            "max_depth": 2,
+            "intervals": [],
+            "as_of_boundary": "inclusive",
+            "entities": [{"alias": "users", "table": "users", "id": "user_id"}],
+        }
+
+        result = ConfigValidator().validate(config)
+
+        assert result.is_valid
+
+    def test_as_of_boundary_exclusive_passes(self):
+        """The 'exclusive' boundary is accepted."""
+        config = {
+            "target": "users",
+            "max_depth": 2,
+            "intervals": [],
+            "as_of_boundary": "exclusive",
+            "entities": [{"alias": "users", "table": "users", "id": "user_id"}],
+        }
+
+        result = ConfigValidator().validate(config)
+
+        assert result.is_valid
+
+    def test_invalid_as_of_boundary_generates_error(self):
+        """An unknown boundary value is rejected with a suggestion."""
+        config = {
+            "target": "users",
+            "max_depth": 2,
+            "intervals": [],
+            "as_of_boundary": "inclsive",  # typo
+            "entities": [{"alias": "users", "table": "users", "id": "user_id"}],
+        }
+
+        result = ConfigValidator().validate(config)
+
+        assert not result.is_valid
+        assert any(
+            "as_of_boundary" in (error.location or "") for error in result.errors
+        )
+        assert any("inclusive" in (error.suggestion or "") for error in result.errors)
+
     def test_missing_required_keys(self):
         """Missing required keys generates errors."""
         config = {"target": "users"}  # Missing max_depth, intervals, entities

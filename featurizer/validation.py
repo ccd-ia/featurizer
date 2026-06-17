@@ -90,6 +90,8 @@ class ConfigValidator:
         "vector",
     }
 
+    VALID_AS_OF_BOUNDARIES = {"inclusive", "exclusive"}
+
     ISO8601_DURATION_PATTERN = re.compile(
         r"^P(?:(?P<years>\d+)Y)?(?:(?P<months>\d+)M)?(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?"
         r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?$"
@@ -227,6 +229,21 @@ class ConfigValidator:
                     message="'spatial_relationships' must be a list "
                     f"(got: {type(spatial).__name__})",
                     location="spatial_relationships",
+                )
+            )
+
+        # Validate as_of_boundary (if present): the point-in-time cut mode.
+        boundary = config.get("as_of_boundary")
+        if boundary is not None and boundary not in self.VALID_AS_OF_BOUNDARIES:
+            suggestion = self._suggest_similar(
+                str(boundary), self.VALID_AS_OF_BOUNDARIES
+            )
+            self.errors.append(
+                ValidationError(
+                    message=f"Invalid as_of_boundary: '{boundary}'",
+                    location="as_of_boundary",
+                    suggestion=f"Valid values: {', '.join(sorted(self.VALID_AS_OF_BOUNDARIES))}"
+                    + (f"\n  Did you mean '{suggestion}'?" if suggestion else ""),
                 )
             )
 
