@@ -13,14 +13,13 @@ import tempfile
 
 import pytest
 import yaml
+
+from featurizer import Featurizer
 from featurizer.sharding import (
     PG_MAX_TABLE_COLUMNS,
     PG_MAX_TARGET_LIST,
     ColumnGroupSharder,
 )
-
-from featurizer import Featurizer
-from featurizer.featurizer import DEFAULT_AGGREGATIONS, DEFAULT_TRANSFORMATIONS
 
 
 def _featurizer(config: dict) -> Featurizer:
@@ -331,3 +330,164 @@ def test_depth3_groups_cover_all_features_and_stay_under_limit():
         )
         seen |= {n for n in names if n in full}
     assert seen == full
+
+
+# ------------------------------------------------------------------ #
+# The #7 residual limitation: an oversized NON-TARGET child CTE.
+# Sharding the target cannot shrink it (it is reused whole across groups);
+# these tests pin the *detection* (which the temp-table materialization layer
+# consumes) and the fact that the cascade is inherent: an oversized child agg
+# forces its consumer synth/transform over the limit too.
+# ------------------------------------------------------------------ #
+
+
+def _oversized_child_config() -> dict:
+    """stores <- orders <- items, with ``items`` wide enough that
+    ``items_aggs_for_orders`` alone exceeds the 1664 target-list limit.
+
+    150 numeric item variables × a 16-aggregation set (no intervals → one
+    all-time window) ≈ 2 400 aggregate columns, comfortably over 1664.
+    """
+    item_vars = {"order_id": {"type": "index"}}
+    item_vars.update({f"m{i}": {"type": "numeric"} for i in range(150)})
+    return {
+        "target": "stores",
+        "max_depth": 3,
+        "intervals": [],
+        "aggregations": [
+            "count",
+            "sum",
+            "mean",
+            "min",
+            "max",
+            "stddev",
+            "variance",
+            "median",
+            "nunique",
+            "p25",
+            "p75",
+            "p90",
+            "p95",
+            "p99",
+            "iqr",
+            "range",
+        ],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "stores", "table": "stores", "id": "store_id"},
+            {
+                "alias": "orders",
+                "table": "orders",
+                "id": "order_id",
+                "temporal_ix": "ordered_at",
+                "variables": {
+                    "store_id": {"type": "index"},
+                    "total": {"type": "numeric"},
+                },
+            },
+            {
+                "alias": "items",
+                "table": "items",
+                "id": "item_id",
+                "temporal_ix": "added_at",
+                "variables": item_vars,
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "stores", "key": "store_id"},
+                "child": {"entity": "orders", "key": "store_id"},
+            },
+            {
+                "parent": {"entity": "orders", "key": "order_id"},
+                "child": {"entity": "items", "key": "order_id"},
+            },
+        ],
+    }
+
+
+def _cte_width(plan, name: str) -> int:
+    spec = plan.cte_specs[name]
+    return len(spec.key_columns) + len(spec.columns)
+
+
+def test_oversized_child_agg_is_detected():
+    """``items_aggs_for_orders`` exceeds the hard limit and is flagged as an
+    intermediate CTE that sharding cannot shrink."""
+    f = _featurizer(_oversized_child_config())
+    sharder = ColumnGroupSharder(f._plan)
+    oversized = sharder._oversized_intermediate_ctes()
+    assert "items_aggs_for_orders" in oversized
+    assert oversized["items_aggs_for_orders"] > PG_MAX_TARGET_LIST
+    # It is a non-target (deeper-chain) agg, so it is NOT prunable per group.
+    assert "items_aggs_for_orders" not in sharder._target_agg_ctes
+
+
+def test_oversized_child_cascade_is_inherent():
+    """An oversized child agg forces its consumer synth/transform over the limit
+    too — they project its columns (planner.py records every agg column as a
+    synth column). So the materialization layer must handle the whole non-target
+    chain, not just the leaf agg."""
+    f = _featurizer(_oversized_child_config())
+    sharder = ColumnGroupSharder(f._plan)
+    oversized = sharder._oversized_intermediate_ctes()
+    # The whole non-target chain is over the limit.
+    assert "orders_synth" in oversized, "consumer synth should cascade over-limit"
+    assert "orders_transform" in oversized, "consumer transform should cascade too"
+    # Sanity: the synth is at least as wide as the agg it projects.
+    assert _cte_width(f._plan, "orders_synth") >= _cte_width(
+        f._plan, "items_aggs_for_orders"
+    )
+
+
+def test_oversized_child_excludes_target_level_ctes():
+    """The target's own synth/transform and its target-level aggs are pruned per
+    group, so they are NOT reported as un-shrinkable oversized intermediates."""
+    f = _featurizer(_oversized_child_config())
+    sharder = ColumnGroupSharder(f._plan)
+    oversized = sharder._oversized_intermediate_ctes()
+    assert "stores_synth" not in oversized
+    assert "stores_transform" not in oversized
+    assert "orders_aggs_for_stores" not in oversized
+
+
+def test_oversized_child_does_not_fit_single_group():
+    f = _featurizer(_oversized_child_config())
+    sharder = ColumnGroupSharder(f._plan)
+    assert sharder.fits_single_group is False
+
+
+def test_materialization_key_recorded_for_agg_cte():
+    """The planner records the join geometry the temp-table materializer needs:
+    the agg CTE's group/join key and the consumer's LEFT JOIN clause."""
+    f = _featurizer(_oversized_child_config())
+    keys = f._plan.materialization_keys
+    assert "items_aggs_for_orders" in keys
+    mk = keys["items_aggs_for_orders"]
+    assert mk.join_key == "order_id"
+    # The join clause names the CTE (the materializer swaps it per shard).
+    assert "items_aggs_for_orders" in mk.join_statement
+    assert "order_id" in mk.join_statement
+
+
+def test_oversized_child_warn_oversized_emits_named_bound():
+    """``warn_oversized`` logs a bound naming each offending CTE without raising.
+
+    loguru holds the import-time ``sys.stderr`` reference, so ``capsys`` cannot
+    see its output; add a temporary loguru sink to capture the warnings instead.
+    """
+    from loguru import logger
+
+    f = _featurizer(_oversized_child_config())
+    sharder = ColumnGroupSharder(f._plan)
+
+    messages: list[str] = []
+    sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    try:
+        sharder.warn_oversized()
+    finally:
+        logger.remove(sink_id)
+
+    joined = "".join(messages)
+    assert "items_aggs_for_orders" in joined
+    assert "1664" in joined

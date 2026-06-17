@@ -92,6 +92,25 @@ class ShardableCTE:
 
 
 @dataclass(frozen=True)
+class MaterializationKey:
+    """Join geometry for a CTE that may be materialized into temp-table shards
+    when it alone exceeds PostgreSQL's 1664-column limit (issue #7).
+
+    ``join_key`` is the bare key column every shard projects and that its
+    consumer joins on (e.g. ``order_id`` for ``items_aggs_for_orders``).
+    ``join_statement`` is the original ``LEFT JOIN`` clause the consumer uses;
+    when a CTE is materialized, the materializer swaps the CTE name in this
+    clause for each shard's temp-table name. This is the one datum the sharder
+    cannot recover from the CTE text without parsing column lists (which the
+    sharding design forbids), so the planner records it where the join key is
+    already known.
+    """
+
+    join_key: str
+    join_statement: str
+
+
+@dataclass(frozen=True)
 class PlannerResult:
     target: Entity
     features: Dict[str, Set[Feature]]
@@ -109,6 +128,12 @@ class PlannerResult:
     cte_order: List[str] = field(default_factory=list)
     verbatim_ctes: Dict[str, str] = field(default_factory=dict)
     synth_column_source: Dict[str, Tuple[str, str]] = field(default_factory=dict)
+    # Per CTE name -> the join geometry needed to materialize it into temp-table
+    # shards (issue #7 oversized-child fix). Recorded for every agg/synth/transform
+    # CTE that *could* be the one exceeding the limit; the materializer only acts
+    # on those actually over it. Unlike ``synth_column_source`` (target-scoped),
+    # this spans every entity's CTEs, since the oversized CTE is usually a child's.
+    materialization_keys: Dict[str, "MaterializationKey"] = field(default_factory=dict)
 
 
 class FeaturePlanner:
@@ -155,6 +180,8 @@ class FeaturePlanner:
         # keeps a synth column they feed. Base-table variables are absent (they
         # come straight from the target table, no join, no upstream CTE).
         self._synth_column_source: Dict[str, Dict[str, Tuple[str, str]]] = {}
+        # CTE name -> join geometry for temp-table materialization (issue #7).
+        self._materialization_keys: Dict[str, MaterializationKey] = {}
 
     def plan(self) -> PlannerResult:
         """Drive the DFS traversal and return the synthesized artifacts.
@@ -183,6 +210,7 @@ class FeaturePlanner:
         self._cte_order = []
         self._verbatim_ctes = {}
         self._synth_column_source = {}
+        self._materialization_keys = {}
 
         logger.debug("Starting feature build for target {}", self._target.alias)
         with use_boundary(self.boundary):
@@ -201,6 +229,7 @@ class FeaturePlanner:
             synth_column_source=dict(
                 self._synth_column_source.get(self._target.alias, {})
             ),
+            materialization_keys=dict(self._materialization_keys),
         )
 
     # ------------------------------------------------------------------ #
@@ -1152,6 +1181,14 @@ class FeaturePlanner:
         target_sources = self._synth_column_source.setdefault(target.alias, {})
         for f in agg_features:
             target_sources[f.name] = (cte_name, join_statement)
+        # Join geometry for the temp-table materialization fallback (issue #7):
+        # this agg CTE is grouped by ``parent_key`` and its consumer (the target's
+        # synth) joins on that key, so each materialized shard projects + joins on
+        # it. Recorded for every agg; the materializer acts only on oversized ones.
+        self._materialization_keys[cte_name] = MaterializationKey(
+            join_key=relationship.parent_key,
+            join_statement=join_statement,
+        )
 
     def _build_direct_cte(
         self,
