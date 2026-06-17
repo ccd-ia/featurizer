@@ -495,6 +495,11 @@ last = WindowFunctionTransformer(
     function="last_value",
     input_types=["categorical", "index", "numeric"],
     order_by=_temporal_ordering,
+    # With ORDER BY and no explicit frame, PostgreSQL defaults to
+    # `range between unbounded preceding and current row`, so `last_value`
+    # returns the current row (i.e. `last` ≡ `identity`). Force the full
+    # partition frame so it returns the partition's actual last value.
+    frame=("unbounded preceding", "unbounded following"),
 )
 # nth_value = WindowFunctionTransformer(name='nth_value', function='', input_types=['categorical', 'index', 'numeric', 'date'])
 
@@ -1024,7 +1029,7 @@ neq = BinaryTransformer(name="neq", operation="!=")
 lt = BinaryTransformer(name="lt", operation="<")
 gt = BinaryTransformer(name="gt", operation=">")
 le = BinaryTransformer(name="le", operation="<=")
-ge = BinaryTransformer(name="ge", operation="=>")
+ge = BinaryTransformer(name="ge", operation=">=")
 time_since = BinaryTransformer(
     name="time_since",
     operation="-",

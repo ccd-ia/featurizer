@@ -189,3 +189,46 @@ def test_pct_change_transformer_computes_ratio():
     assert result is not None
     assert "case" in result.definition.lower()
     assert f"({feature.name} - lag" in result.definition
+
+
+def test_last_transformer_uses_full_partition_frame():
+    """``last`` must pin an explicit full-partition frame.
+
+    With ORDER BY and no frame, PostgreSQL defaults to
+    ``range between unbounded preceding and current row``, so ``last_value``
+    returns the *current* row (``last`` ≡ ``identity``). The fix forces
+    ``rows between unbounded preceding and unbounded following`` so it returns
+    the partition's actual last value. Regression for issue #4.
+    """
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    transformer = get_transformers(["last"])["last"]
+
+    result = transformer(entity, feature)
+
+    assert result is not None
+    definition = result.definition.lower()
+    assert "last_value(" in definition
+    assert "rows between unbounded preceding and unbounded following" in definition
+
+
+def test_ge_binary_transformer_uses_valid_operator():
+    """``ge`` must render the PostgreSQL ``>=`` operator, not the bogus ``=>``.
+
+    ``=>`` is not a PostgreSQL operator, so the generated predicate failed to
+    parse. Regression for issue #4.
+    """
+    from featurizer.primitives.transformations import ge, le
+
+    assert ge.operation == ">="
+    # ``le`` is the sibling and was always correct; assert it as a guard.
+    assert le.operation == "<="
+
+    entity = _make_numeric_entity()
+    a = _get_feature(entity, "duration_minutes")
+    b = _get_feature(entity, "duration_minutes")
+    result = ge(entity, a, b)
+
+    assert result is not None
+    assert " >= " in result.definition
+    assert "=>" not in result.definition
