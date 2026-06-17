@@ -594,3 +594,70 @@ def test_materialization_threshold_knob_forces_small_config():
     assert "orders_synth" in oversized
     # Target CTEs stay out even at threshold 1 (they are prunable).
     assert "stores_synth" not in oversized
+
+
+# ------------------------------------------------------------------ #
+# ColumnGroupSharder integration: group queries read the materialized
+# temp tables; the materialized chain (and its dead upstreams) are dropped
+# from the group WITH lists; the preamble rides on GroupedQueries.
+# ------------------------------------------------------------------ #
+
+
+def test_non_oversized_config_has_no_materialization():
+    """The common case is unchanged: no preamble, byte-identical group SQL."""
+    f = _featurizer(_wide_config())
+    built = ColumnGroupSharder(f._plan).build()
+    assert built.materialization is None
+
+
+def test_oversized_child_config_materializes_chain():
+    f = _featurizer(_oversized_child_config())
+    mplan = ColumnGroupSharder(f._plan).materialization()
+    assert mplan is not None
+    assert _CHAIN <= mplan.materialized_ctes
+    assert mplan.ddl  # a non-empty CREATE TEMP TABLE preamble
+
+
+def _materialized_depth3_build():
+    """Force the small depth-3 chain to materialize via a tiny threshold."""
+    f = _featurizer(_depth3_config())
+    sharder = ColumnGroupSharder(f._plan, materialize_threshold=1)
+    return f, sharder, sharder.build()
+
+
+def test_materialized_groups_carry_preamble():
+    _, _, built = _materialized_depth3_build()
+    assert built.materialization is not None
+    assert built.materialization.ddl
+
+
+def test_materialized_groups_read_temp_tables_not_inline_chain():
+    _, _, built = _materialized_depth3_build()
+    all_sql = "\n".join(built.queries.values())
+    # The target-level agg now reads the materialized orders_transform shards.
+    assert "__fz_orders_transform__s000" in all_sql
+    # None of the materialized chain is emitted as an inline CTE in the groups…
+    for cte in (
+        "orders_synth as (",
+        "orders_transform as (",
+        "items_aggs_for_orders as (",
+    ):
+        assert cte not in all_sql, f"{cte!r} should be a temp table, not inline"
+    # …nor are upstreams reachable only through a materialized CTE (dead weight).
+    for cte in ("items_synth as (", "items_transform as ("):
+        assert cte not in all_sql, f"dead upstream {cte!r} should be dropped"
+
+
+def test_materialized_groups_stay_under_limit():
+    _, _, built = _materialized_depth3_build()
+    for sql in built.queries.values():
+        for name, select_list in _cte_select_lists(sql).items():
+            assert _select_list_columns(select_list) <= PG_MAX_TARGET_LIST
+
+
+def test_materialized_groups_still_lead_with_join_keys():
+    """The (as_of_date, target id) re-join contract survives materialization."""
+    _, _, built = _materialized_depth3_build()
+    assert built.key_columns == ["as_of_date", "store_id"]
+    for sql in built.queries.values():
+        assert "select aod.as_of_date, t.*" in sql

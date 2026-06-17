@@ -35,7 +35,7 @@ import hashlib
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import AbstractSet, Dict, List, Set
 
 from loguru import logger
 
@@ -61,11 +61,16 @@ class GroupedQueries:
     ``key_columns`` are the leading columns every group projects and on which
     all groups re-join (``["as_of_date", <target id>]``). ``fits_single`` is
     True when the whole matrix fits in one group (the single-query fast path).
+    ``materialization`` carries the TEMP-table preamble (issue #7) when an
+    oversized non-target child CTE had to be materialized; the group ``queries``
+    then reference those temp tables and presuppose ``materialization.ddl`` ran
+    first on the same connection. ``None`` for the common (no-preamble) case.
     """
 
     queries: "OrderedDict[str, str]"
     key_columns: List[str]
     fits_single: bool
+    materialization: "MaterializationPlan | None" = None
 
 
 def _cte_name_scanner(names: List[str]) -> "re.Pattern[str]":
@@ -88,11 +93,13 @@ class ColumnGroupSharder:
         plan: PlannerResult,
         *,
         max_columns_per_group: int = DEFAULT_MAX_COLUMNS_PER_GROUP,
+        materialize_threshold: int = PG_MAX_TARGET_LIST,
     ) -> None:
         if max_columns_per_group < 1:
             raise ValueError("max_columns_per_group must be a positive integer.")
         self.plan = plan
         self.max_columns_per_group = max_columns_per_group
+        self.materialize_threshold = materialize_threshold
 
         self.target_alias = plan.target.alias
         self.transform_name = f"{self.target_alias}_transform"
@@ -136,6 +143,27 @@ class ColumnGroupSharder:
             _cte_name_scanner(self._all_cte_names) if self._all_cte_names else None
         )
 
+        # Temp-table materialization for oversized non-target child CTEs (issue
+        # #7). Built lazily and cached: a ``MaterializationPlan`` when the plan
+        # has child CTEs over the threshold, else ``None`` (the common case).
+        self._materializer = MaterializationPlanner(
+            plan, materialize_threshold=materialize_threshold
+        )
+        self._materialization_built = False
+        self._materialization_cache: "MaterializationPlan | None" = None
+
+    def materialization(self) -> "MaterializationPlan | None":
+        """The temp-table preamble plan, or ``None`` when no child CTE is over
+        the threshold. Cached after first call."""
+        if not self._materialization_built:
+            self._materialization_cache = (
+                self._materializer.build()
+                if self._materializer.oversized_ctes()
+                else None
+            )
+            self._materialization_built = True
+        return self._materialization_cache
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -173,16 +201,24 @@ class ColumnGroupSharder:
         return self.build().queries
 
     def build(self) -> GroupedQueries:
-        """Partition + render. Returns the ordered group queries and join keys."""
+        """Partition + render. Returns the ordered group queries and join keys.
+
+        When the plan has oversized non-target child CTEs, the materialization
+        preamble is computed once and every group query is rendered to reference
+        the resulting temp-table shards (the materialized CTEs and their now-dead
+        upstreams are dropped from each group's ``with``)."""
+        mplan = self.materialization()
+        materialized: Set[str] = mplan.materialized_ctes if mplan is not None else set()
         groups = self._partition_columns()
         queries: "OrderedDict[str, str]" = OrderedDict()
         for idx, group_columns in enumerate(groups):
             gid = f"group_{idx:03d}"
-            queries[gid] = self._render_group(group_columns)
+            queries[gid] = self._render_group(group_columns, materialized, mplan)
         return GroupedQueries(
             queries=queries,
             key_columns=list(self._key_columns),
             fits_single=self.fits_single_group,
+            materialization=mplan,
         )
 
     # ------------------------------------------------------------------ #
@@ -201,8 +237,17 @@ class ColumnGroupSharder:
     # Per-group rendering
     # ------------------------------------------------------------------ #
 
-    def _render_group(self, group_columns: List[ColumnSpec]) -> str:
-        """Build the self-contained query for one column group."""
+    def _render_group(
+        self,
+        group_columns: List[ColumnSpec],
+        materialized: AbstractSet[str] = frozenset(),
+        mplan: "MaterializationPlan | None" = None,
+    ) -> str:
+        """Build the self-contained query for one column group.
+
+        ``materialized`` names the CTEs backed by temp tables (issue #7): they are
+        dropped from the ``with`` list and references to them are rewritten to
+        their shards. ``mplan`` carries the shard mapping for the rewrite."""
         # 1. Synth columns this group needs = union of its columns' deps.
         needed_synth: Set[str] = set()
         for col in group_columns:
@@ -240,17 +285,22 @@ class ColumnGroupSharder:
 
         # 3. Reachability: pull in every CTE transitively referenced by the
         #    target synth/transform, the kept upstream CTEs, or the kept joins.
-        reachable = self._reachable_ctes(kept_upstream, kept_joins)
+        #    Materialized CTEs are temp tables, so they (and any upstream reachable
+        #    only through them) are excluded — the rewrite reads their shards.
+        reachable = self._reachable_ctes(kept_upstream, kept_joins, materialized)
 
         # 4. Render the CTE list in original emission order.
         rendered_ctes = self._render_ctes(
-            reachable, group_columns, needed_synth, kept_joins
+            reachable, group_columns, needed_synth, kept_joins, materialized, mplan
         )
 
         return self._wrap(rendered_ctes, group_columns)
 
     def _reachable_ctes(
-        self, kept_upstream: Set[str], kept_joins: List[str]
+        self,
+        kept_upstream: Set[str],
+        kept_joins: List[str],
+        materialized: AbstractSet[str] = frozenset(),
     ) -> Set[str]:
         """Transitive closure of CTE names a group's query references.
 
@@ -273,6 +323,7 @@ class ColumnGroupSharder:
         for join_sql in kept_joins:
             seeds.update(self._names_in(join_sql))
         seeds -= target_ctes
+        seeds -= materialized  # temp tables, not emitted as CTEs
 
         frontier = list(seeds)
         reachable.update(seeds)
@@ -282,7 +333,11 @@ class ColumnGroupSharder:
             if body is None:
                 continue
             for ref in self._names_in(body):
-                if ref not in reachable and ref not in target_ctes:
+                if (
+                    ref not in reachable
+                    and ref not in target_ctes
+                    and ref not in materialized
+                ):
                     reachable.add(ref)
                     frontier.append(ref)
         return reachable
@@ -293,24 +348,35 @@ class ColumnGroupSharder:
         group_columns: List[ColumnSpec],
         needed_synth: Set[str],
         kept_joins: List[str],
+        materialized: AbstractSet[str] = frozenset(),
+        mplan: "MaterializationPlan | None" = None,
     ) -> List[str]:
-        """Render each reachable CTE in emission order, pruning the target's."""
+        """Render each reachable CTE in emission order, pruning the target's.
+
+        Materialized CTEs are never emitted (they are temp tables); each emitted
+        CTE's references to a materialized CTE are rewritten to read its shards.
+        """
         out: List[str] = []
         for name in self.plan.cte_order:
-            if name not in reachable:
+            if name not in reachable or name in materialized:
                 continue
             if name == self.transform_name:
-                out.append(self._render_transform(group_columns))
+                text = self._render_transform(group_columns)
             elif name == self.synth_name:
-                out.append(self._render_synth(needed_synth, kept_joins))
+                text = self._render_synth(needed_synth, kept_joins)
             elif name in self._target_agg_ctes:
                 # A target-level agg CTE: prune to the surviving target synth
                 # columns it feeds.
-                out.append(self._render_agg(self.plan.cte_specs[name], needed_synth))
+                text = self._render_agg(self.plan.cte_specs[name], needed_synth)
             else:
                 # A bounded / non-target CTE (verbatim string, a deeper-chain
                 # agg, or a full-width child synth/transform): emit whole.
-                out.append(self._cte_body(name) or "")
+                text = self._cte_body(name) or ""
+            if mplan is not None:
+                # e.g. a target-level agg's ``from <child>_transform`` becomes a
+                # re-join over that transform's materialized shards.
+                text = self._materializer.rewrite_group_body(text, mplan)
+            out.append(text)
         return out
 
     def _render_transform(self, group_columns: List[ColumnSpec]) -> str:
@@ -769,6 +835,19 @@ class MaterializationPlanner:
     # ------------------------------------------------------------------ #
     # Rewriting helpers
     # ------------------------------------------------------------------ #
+
+    def rewrite_group_body(self, text: str, mplan: "MaterializationPlan") -> str:
+        """Rewrite a (non-materialized) group CTE's references to materialized
+        CTEs into reads of their temp shards.
+
+        Used by :class:`ColumnGroupSharder`: a target-level agg's
+        ``from <child>_transform`` becomes a re-join over that transform's shards,
+        so the group query reads the precomputed temp tables instead of the
+        over-limit child CTE. Emitted group CTEs reference materialized CTEs only
+        as FROM sources (the target agg over a child transform), so the FROM
+        rewrite is sufficient; child synths that *left join* a materialized agg
+        are themselves materialized and never emitted in a group."""
+        return self._rewrite_from_sources(text, mplan.shards_by_cte)
 
     def _rewrite_joins(
         self,
