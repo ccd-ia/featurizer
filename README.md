@@ -78,6 +78,58 @@ A simple configuration with customers and orders generates features like:
 -   `HOLT_WINTERS_TREND_14(orders.amount)` &#x2013; Trend direction over 14 periods
 
 
+## Output: DataFrame, Arrow, Parquet
+
+`to_dataframe()` is the notebook/EDA path: it runs the query, returns a pandas
+`DataFrame` indexed by `(as_of_date, <target id>)`, and is the right tool for
+interactive exploration.
+
+For handing a feature matrix to a training pipeline, use the Arrow/Parquet path.
+It is an optional extra&#x2014;install with `uv sync --extra parquet` (pyarrow):
+
+    f = Featurizer("config.yaml")
+    table = f.to_arrow()                 # pyarrow.Table
+    f.to_parquet("features.parquet")     # writes Parquet directly
+
+These stream the result out of PostgreSQL with binary `COPY` and decode it
+column-by-column into Arrow, so the full matrix never round-trips through pandas
+and two properties hold that `to_dataframe` does not give cheaply:
+
+-   **NULL fidelity.** A SQL `NULL` (no qualifying events in the window) stays an
+    Arrow null, never an `NaN`. pandas coerces integer/boolean columns with nulls
+    to `float`+`NaN`, conflating "no data" with "not-a-number".
+-   **Keys as columns.** Unlike the DataFrame index, `as_of_date` and the target
+    id are ordinary leading columns of the table.
+
+Computed `numeric` aggregates (`AVG`, `STDDEV`, &#x2026;) are cast to `float64`
+by default (`numeric_as_float=True`) for an ML-ready matrix; pass
+`numeric_as_float=False` to keep exact `decimal128`. Both Arrow paths accept the
+same `impute=` contract as `to_dataframe` (see below).
+
+The connection is taken from `DATABASE_URL` / `PG*` (no localhost fallback).
+When the query references session `TEMP` tables, pass an open psycopg connection
+via `to_arrow(connection=conn)` so the references resolve.
+
+
+## Imputation contract
+
+Featurizer never imputes inside the generated SQL&#x2014;missingness is signal.
+The opt-in pass (`impute=True` on `to_dataframe` / `to_arrow` / `to_parquet`, or
+`impute_features` / `impute_arrow` directly) fills **count-like** features
+(`COUNT`/`SUM`/`NUNIQUE`/`N_`/`EVENT_RATE`) with the structural zero, leaves
+**measures** (`AVG`/`MEDIAN`/`STDDEV`/percentiles/recency/&#x2026;) NULL, and
+emits a **stable `<feature>__missing` 0/1 column** for every feature that had
+nulls, recorded *before* any fill. Adapters may rely on the
+`f"{feature}__missing"` name on both the pandas and Arrow paths
+(`featurizer.MISSING_INDICATOR_SUFFIX`).
+
+`measure_strategy="mean"` / `"median"` fits the fill over the **whole returned
+matrix** (every as-of date and the entire cohort, including validation/test
+rows)&#x2014;temporal leakage (ADR-0001). On the engine paths it is refused
+unless you also pass `allow_full_matrix_fit=True`, and even then it emits a
+runtime warning. Fit imputers on your training split instead.
+
+
 <a id="org9b66329"></a>
 
 ## Selecting primitives

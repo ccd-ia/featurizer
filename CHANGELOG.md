@@ -6,6 +6,32 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **Arrow / Parquet output (`[parquet]` extra).** `Featurizer.to_arrow()` returns
+  a `pyarrow.Table` and `Featurizer.to_parquet(path)` writes Parquet, both backed
+  by psycopg binary `COPY (<query>) TO STDOUT (FORMAT binary)` decoded
+  column-by-column into Arrow. The full result set never round-trips through
+  pandas, SQL `NULL`s are preserved as Arrow nulls (not `NaN`), and `as_of_date`
+  + the target id are ordinary columns (no index). Computed `numeric` aggregates
+  cast to `float64` by default (`numeric_as_float=True`). `pyarrow` is a lazy,
+  guarded import; the core package works without the extra. Install with
+  `uv sync --extra parquet`.
+- **Fit-free imputation on the Arrow path.** `impute_arrow()` mirrors
+  `impute_features()` on a `pyarrow.Table` (count-like → 0, measures left null,
+  stable `<feature>__missing` indicators), exposed via `impute=True` on
+  `to_arrow`/`to_parquet`. The `<feature>__missing` suffix is now a documented,
+  stable contract (`featurizer.MISSING_INDICATOR_SUFFIX`) shared by both paths.
+
+### Changed
+
+- **Whole-matrix measure imputation is gated as leakage.** `measure_strategy` in
+  `{"mean","median"}` on the engine paths (`to_dataframe`/`to_arrow`/`to_parquet`)
+  fits the fill over the entire returned matrix — temporal leakage (ADR-0001). It
+  now requires an explicit `allow_full_matrix_fit=True` and emits a runtime
+  warning even then. The standalone `impute_features` helper stays ungated for
+  callers that pre-split their own data.
+
 ## [0.1.1] - 2026-06-17
 
 ### Fixed
