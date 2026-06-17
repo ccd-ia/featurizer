@@ -6,7 +6,19 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-17
+
 ### Added
+
+- **Configurable as-of boundary (issue #1).** A single `featurizer/boundary.py`
+  helper (`causal_predicate` / `daterange_window`) defines the point-in-time cut
+  once; every graph / peer / spatial / aggregation / subquery builder routes
+  through it. New top-level config key `as_of_boundary: inclusive | exclusive`
+  (default `inclusive`, `<=`) selects whether an event dated exactly on the
+  `as_of_date` is knowable; `exclusive` uses `<` and a half-open `[)` interval
+  window. The reversed `aod.as_of_date >= temporal_ix` spelling in
+  `_build_aggregations_cte` was rewritten to the canonical orientation. Default
+  behavior is byte-identical.
 
 - **Column-group sharding for wide feature matrices (issue #7).** PostgreSQL caps
   a result/CTE target list at 1664 entries, and the program's widest tuple is the
@@ -50,6 +62,26 @@ semantic versioning once a release is cut.
   now requires an explicit `allow_full_matrix_fit=True` and emits a runtime
   warning even then. The standalone `impute_features` helper stays ungated for
   callers that pre-split their own data.
+
+### Fixed
+
+- **`ge` operator and `last_value` frame (issue #4).** `ge` rendered the invalid
+  operator `=>` (now `>=`); `last`/`last_value` used the default window frame and
+  silently returned the current row (now framed `rows between unbounded preceding
+  and unbounded following`, returning the partition's actual last value).
+- **Deterministic `Feature.short_name` (issue #5).** Long names were truncated via
+  process-salted `hash()` (a different value each interpreter run); they now route
+  through the deterministic `pg_identifier` scheme (`raw[:54] + "~" + md5[:8]`),
+  with cross-process and collision tests.
+
+### Tests / CI
+
+- **Default-active primitives are executed against PostgreSQL (issue #6).**
+  `tests/integration/test_default_primitives_execution.py` runs the generated SQL
+  for every default-active aggregation and transformer on known fixtures and
+  asserts the computed values (not just that the SQL parses), with a checklist
+  test ensuring coverage. CI installs the `[parquet]` extra and runs the
+  executed-SQL suite.
 
 ## [0.1.1] - 2026-06-17
 
