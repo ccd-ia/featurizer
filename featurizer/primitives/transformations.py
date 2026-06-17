@@ -354,7 +354,7 @@ class WindowFunctionTransformer:
 
     def _build_window_function_call(self, parent, feature):
         expression = feature.name
-        partition = parent.id.name
+        partition = parent.id.name if parent.id else None
         if not partition:
             return None
         window_args = [expression] + list(self._resolve_args(feature))
@@ -618,7 +618,7 @@ class DistributionTransformer(WindowFunctionTransformer):
         )
 
     def _build_window_function_call(self, parent, feature):
-        partition = parent.id.name
+        partition = parent.id.name if parent.id else None
         if not partition:
             return None
         pieces = []

@@ -98,6 +98,34 @@ def test_rolling_mean_transformer_uses_frame():
     assert "rows between 2 preceding and current row" in result.definition.lower()
 
 
+def _make_idless_entity() -> Entity:
+    """An event entity with no primary id (``id: ~`` in YAML)."""
+    return Entity(
+        alias="measurements",
+        table="analytics.measurements",
+        temporal_ix="measured_at",
+        variables={"reading": {"type": "numeric"}},
+    )
+
+
+def test_window_transformers_skip_entity_without_id():
+    """Window functions need a partition key (the entity id); an id-less entity
+    must make them return None (skip), not raise AttributeError.
+
+    Regression for the ``parent.id.name`` dereference that crashed before the
+    None-check in both ``WindowFunctionTransformer`` and
+    ``DistributionTransformer``.
+    """
+    entity = _make_idless_entity()
+    assert entity.id is None
+    feature = _get_feature(entity, "reading")
+
+    # cum_sum -> WindowFunctionTransformer; percent_rank -> DistributionTransformer.
+    for name in ("cum_sum", "percent_rank"):
+        transformer = get_transformers([name])[name]
+        assert transformer(entity, feature) is None
+
+
 def test_rolling_median_transformer_uses_percentile():
     entity = _make_numeric_entity()
     feature = _get_feature(entity, "duration_minutes")
