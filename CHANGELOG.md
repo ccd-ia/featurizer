@@ -8,6 +8,19 @@ semantic versioning once a release is cut.
 
 ### Added
 
+- **Column-group sharding for wide feature matrices (issue #7).** PostgreSQL caps
+  a result/CTE target list at 1664 entries, and the program's widest tuple is the
+  `<target>_transform` CTE itself, so a wide config (variables × aggregations ×
+  intervals × transformers) produces SQL PostgreSQL rejects. `Featurizer` now
+  partitions the matrix into ordered column groups, each a self-contained query
+  whose every intermediate CTE (target `transform`/`synth` and per-child `aggs`)
+  is pruned to only the columns that group needs. New `Featurizer.query_groups`
+  returns `OrderedDict[str, str]` (`group_<NNN>` -> SQL); every group leads with
+  `(as_of_date, <target id>)` so the groups re-join into the full matrix.
+  `to_arrow()` returns one `pyarrow.Table` when the config fits, else an
+  `OrderedDict[str, pyarrow.Table]`; `to_parquet(path)` writes one file at `path`
+  when it fits, else `path/group_<NNN>.parquet`. Null fidelity is preserved per
+  group. See [ADR-0005](docs/adr/0005-column-group-sharding.md).
 - **Arrow / Parquet output (`[parquet]` extra).** `Featurizer.to_arrow()` returns
   a `pyarrow.Table` and `Featurizer.to_parquet(path)` writes Parquet, both backed
   by psycopg binary `COPY (<query>) TO STDOUT (FORMAT binary)` decoded
@@ -25,6 +38,12 @@ semantic versioning once a release is cut.
 
 ### Changed
 
+- **`Featurizer.query` refuses over-wide configs instead of emitting invalid SQL.**
+  When the feature matrix exceeds PostgreSQL's 1664-entry target-list limit,
+  `.query` now raises a clear `ValueError` pointing at `.query_groups` /
+  `.to_parquet` / `.to_arrow` (column-group sharding) rather than returning SQL
+  PostgreSQL would reject. Configs that fit are unchanged. The matrix is never
+  silently truncated.
 - **Whole-matrix measure imputation is gated as leakage.** `measure_strategy` in
   `{"mean","median"}` on the engine paths (`to_dataframe`/`to_arrow`/`to_parquet`)
   fits the fill over the entire returned matrix — temporal leakage (ADR-0001). It

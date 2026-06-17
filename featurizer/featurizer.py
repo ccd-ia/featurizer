@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Iterable, List, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections import OrderedDict
 
 import pandas as pd
 import yaml
@@ -147,8 +150,54 @@ class Featurizer:
 
     @property
     def query(self) -> str:
-        """Generate the SQL query for this featurizer configuration."""
+        """Generate the single SQL query for this featurizer configuration.
+
+        Raises:
+            ValueError: If the configuration is too wide to render as one valid
+                query — the ``<target>_transform`` CTE (or an intermediate CTE)
+                would exceed PostgreSQL's 1664-entry target-list limit. Use
+                :attr:`query_groups` / :meth:`to_parquet` / :meth:`to_arrow`
+                (column-group sharding, issue #7) instead. The matrix is never
+                silently truncated.
+        """
+        from .sharding import ColumnGroupSharder
+
+        sharder = ColumnGroupSharder(self._plan)
+        if not sharder.fits_single_group:
+            n_groups = sharder.n_groups
+            raise ValueError(
+                f"Feature matrix for target '{self.target.alias}' is too wide for a "
+                "single query: it exceeds PostgreSQL's 1664-entry target-list limit "
+                f"and partitions into {n_groups} column groups. Use "
+                "`.query_groups` (group_id -> SQL), `.to_parquet(dir)` (one Parquet "
+                "per group), or `.to_arrow()` (list of tables); all groups re-join "
+                "on (as_of_date, id). See docs/adr/0005-column-group-sharding.md."
+            )
         return self._renderer.render(self._plan)
+
+    @property
+    def query_groups(self) -> "OrderedDict[str, str]":
+        """SQL for each column group: ``group_<NNN>`` -> self-contained query.
+
+        Partitions the (possibly very wide) feature matrix into ordered column
+        groups, each a valid query whose every CTE tuple is under PostgreSQL's
+        1664-entry limit (issue #7). A config that fits in one query returns a
+        single ``group_000`` entry equal to :attr:`query`. Every group leads
+        with ``(as_of_date, <target id>)`` so the groups re-join into the full
+        matrix. Logs a bound when an intermediate (child) CTE is itself too
+        wide to fit — that case is not silently truncated.
+        """
+        from collections import OrderedDict
+
+        from .sharding import ColumnGroupSharder
+
+        sharder = ColumnGroupSharder(self._plan)
+        sharder.warn_oversized()
+        if sharder.fits_single_group:
+            # Reproduce ``.query`` exactly (byte-for-byte) for a config that
+            # needs no sharding, so callers can use ``query_groups`` uniformly.
+            return OrderedDict([("group_000", self._renderer.render(self._plan))])
+        return sharder.group_queries()
 
     def to_dataframe(
         self, *, impute: bool = False, **impute_kwargs: Any
@@ -198,7 +247,7 @@ class Featurizer:
         impute: bool = False,
         **impute_kwargs: Any,
     ) -> "Any":
-        """Execute the query and return a :class:`pyarrow.Table`, no pandas hop.
+        """Execute the query and return Arrow output, no pandas hop.
 
         Streams the result out of PostgreSQL with binary ``COPY`` and decodes it
         column-by-column into Arrow, so SQL NULLs are preserved as Arrow nulls
@@ -206,25 +255,36 @@ class Featurizer:
         a pandas frame. ``as_of_date`` and the target id are ordinary leading
         columns (no index), unlike :meth:`to_dataframe`.
 
+        Sharding (issue #7): when the matrix fits in one query a single
+        :class:`pyarrow.Table` is returned. When it is too wide for a single
+        valid query (over PostgreSQL's 1664-entry target-list limit), an
+        ``OrderedDict[str, pyarrow.Table]`` of column groups is returned instead
+        — ``group_<NNN>`` -> table. Every group table leads with
+        ``(as_of_date, <target id>)`` and the groups re-join on those keys to
+        reconstruct the full matrix.
+
         Args:
             connection: An open psycopg connection to run ``COPY`` on. Required
                 when the rendered query references session ``TEMP`` tables (the
                 integration harness). When ``None``, a connection is built from
-                ``DATABASE_URL`` / ``PG*`` and closed afterwards.
+                ``DATABASE_URL`` / ``PG*`` and closed afterwards. A single
+                connection is reused across all groups.
             numeric_as_float: Cast PostgreSQL ``numeric`` aggregate columns to
                 ``float64`` (ML-ready, ``to_dataframe``-comparable). Set ``False``
                 to keep exact ``decimal128``. NULLs are preserved either way.
             impute: When True, apply the Arrow-native imputation pass
-                (:func:`featurizer.imputation.impute_arrow`): count-like features
-                → 0, measures left null unless ``measure_strategy`` is given, with
-                stable ``<feature>__missing`` indicator columns. ``as_of_date``
-                and the target id are passed as ``key_columns`` and left untouched.
+                (:func:`featurizer.imputation.impute_arrow`) to each group:
+                count-like features → 0, measures left null unless
+                ``measure_strategy`` is given, with stable ``<feature>__missing``
+                indicator columns. ``as_of_date`` and the target id are passed as
+                ``key_columns`` and left untouched.
             **impute_kwargs: Forwarded to ``impute_arrow``. ``measure_strategy`` in
                 ``{"mean","median"}`` additionally requires
                 ``allow_full_matrix_fit=True`` (ADR-0001 leakage gate).
 
         Returns:
-            A pyarrow.Table.
+            A ``pyarrow.Table`` for a single-group config, otherwise an
+            ``OrderedDict[str, pyarrow.Table]`` keyed by group id.
 
         Raises:
             ImportError: If pyarrow (the ``[parquet]`` extra) is not installed.
@@ -235,29 +295,16 @@ class Featurizer:
             raise ValueError(
                 f"Target entity '{self.target.alias}' does not define a primary id."
             )
-        from .arrow import ArrowExporter
-
-        table = ArrowExporter().to_arrow(
-            self.query,
+        groups = self._arrow_groups(
             connection=connection,
             numeric_as_float=numeric_as_float,
+            impute=impute,
+            **impute_kwargs,
         )
-        if impute:
-            from .imputation import guard_full_matrix_fit, impute_arrow
-
-            guard_full_matrix_fit(
-                impute_kwargs.get("measure_strategy", "none"),
-                allow_full_matrix_fit=bool(
-                    impute_kwargs.pop("allow_full_matrix_fit", False)
-                ),
-                caller="to_arrow",
-            )
-            table = impute_arrow(
-                table,
-                key_columns=("as_of_date", self.target.id.name),
-                **impute_kwargs,
-            )
-        return table
+        if len(groups) == 1:
+            # Single-group config: preserve the original single-Table contract.
+            return next(iter(groups.values()))
+        return groups
 
     def to_parquet(
         self,
@@ -268,15 +315,22 @@ class Featurizer:
         impute: bool = False,
         **impute_kwargs: Any,
     ) -> None:
-        """Execute the query and write the result to a Parquet file.
+        """Execute the query and write the result to Parquet.
 
-        Thin wrapper over :meth:`to_arrow` plus ``pyarrow.parquet.write_table``;
+        Thin wrapper over the Arrow path plus ``pyarrow.parquet.write_table``;
         all arguments (including the imputation contract and its ADR-0001 leakage
         gate) behave exactly as in :meth:`to_arrow`. NULLs are written as Parquet
         nulls.
 
+        Sharding (issue #7): when the matrix fits in one query, a single Parquet
+        file is written at ``path``. When it is too wide for one valid query,
+        ``path`` is treated as a **directory** and one Parquet file per column
+        group is written under it as ``group_<NNN>.parquet``. All group files
+        re-join on ``(as_of_date, <target id>)`` to reconstruct the full matrix.
+
         Args:
-            path: Destination ``.parquet`` file path.
+            path: Destination ``.parquet`` file (single group) or output
+                directory (multiple groups; created if absent).
             connection: See :meth:`to_arrow`.
             numeric_as_float: See :meth:`to_arrow`.
             impute: See :meth:`to_arrow`.
@@ -285,15 +339,94 @@ class Featurizer:
         Raises:
             ImportError: If pyarrow (the ``[parquet]`` extra) is not installed.
         """
-        table = self.to_arrow(
+        import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]
+
+        groups = self._arrow_groups(
             connection=connection,
             numeric_as_float=numeric_as_float,
             impute=impute,
             **impute_kwargs,
         )
-        import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]
+        if len(groups) == 1:
+            pq.write_table(next(iter(groups.values())), path)
+            return
 
-        pq.write_table(table, path)
+        import os as _os
+
+        _os.makedirs(path, exist_ok=True)
+        for gid, table in groups.items():
+            pq.write_table(table, _os.path.join(path, f"{gid}.parquet"))
+        logger.info(
+            "Wrote {} column-group Parquet files to {} (re-join on {}).",
+            len(groups),
+            path,
+            ("as_of_date", self.target.id.name) if self.target.id else "(as_of_date,)",
+        )
+
+    def _arrow_groups(
+        self,
+        *,
+        connection: Any = None,
+        numeric_as_float: bool = True,
+        impute: bool = False,
+        **impute_kwargs: Any,
+    ) -> "OrderedDict[str, Any]":
+        """Run every column group through the Arrow exporter on one connection.
+
+        Always returns an ``OrderedDict`` (a single-group config yields one
+        entry). Imputation, when requested, runs per group with the same
+        ADR-0001 leakage gate as the single-query path; the gate is checked once
+        up front so a leaky strategy is refused before any query runs.
+        """
+        from .arrow import ArrowExporter
+
+        if impute:
+            from .imputation import guard_full_matrix_fit
+
+            guard_full_matrix_fit(
+                impute_kwargs.get("measure_strategy", "none"),
+                allow_full_matrix_fit=bool(impute_kwargs.get("allow_full_matrix_fit")),
+                caller="to_arrow",
+            )
+
+        group_sql = self.query_groups  # single-group short-circuit + warn lives here
+
+        exporter = ArrowExporter()
+        own_connection = connection is None
+        conn = connection if connection is not None else exporter.open_connection()
+        try:
+            from collections import OrderedDict as _OrderedDict
+
+            tables: "OrderedDict[str, Any]" = _OrderedDict()
+            for gid, sql in group_sql.items():
+                table = exporter.to_arrow(
+                    sql, connection=conn, numeric_as_float=numeric_as_float
+                )
+                if impute:
+                    table = self._impute_group(table, **impute_kwargs)
+                tables[gid] = table
+            return tables
+        finally:
+            if own_connection:
+                conn.close()
+
+    def _impute_group(self, table: Any, **impute_kwargs: Any) -> Any:
+        """Apply the Arrow imputation pass to one group's table.
+
+        The leakage gate is already checked in :meth:`_arrow_groups`; strip the
+        consumed ``allow_full_matrix_fit`` flag so ``impute_arrow`` does not see
+        an unexpected keyword.
+        """
+        from .imputation import impute_arrow
+
+        kwargs = dict(impute_kwargs)
+        kwargs.pop("allow_full_matrix_fit", None)
+        assert self.target.id is not None  # guarded by callers
+        return impute_arrow(
+            table,
+            key_columns=("as_of_date", self.target.id.name),
+            **kwargs,
+        )
 
     # ------------------------------------------------------------------ #
     # Internal helpers

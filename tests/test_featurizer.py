@@ -29,6 +29,16 @@ def test_featurizer_features_remain_hashable(sample_config_path):
     feature_set.update(features)
     assert len(feature_set) == len(features)
 
-    query_text = featurizer.query.lower()
-    assert "lateral (" in query_text
-    assert "care_plans_asof_for_patients" in query_text
+    # This config is wide enough that the single `<target>_transform` CTE tuple
+    # exceeds PostgreSQL's 1664-entry limit, so `.query` refuses (pointing at the
+    # sharded API) rather than emitting SQL Postgres would reject (issue #7).
+    import pytest
+
+    with pytest.raises(ValueError, match="too wide"):
+        _ = featurizer.query
+
+    # The sharded queries still carry the lateral join + as-of CTE; assert
+    # against the union of all column groups.
+    all_group_sql = "\n".join(featurizer.query_groups.values()).lower()
+    assert "lateral (" in all_group_sql
+    assert "care_plans_asof_for_patients" in all_group_sql

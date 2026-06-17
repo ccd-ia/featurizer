@@ -6,6 +6,11 @@ from .imputation import (
     impute_arrow,
     impute_features,
 )
+from .sharding import (
+    DEFAULT_MAX_COLUMNS_PER_GROUP,
+    ColumnGroupSharder,
+    GroupedQueries,
+)
 from .validation import (
     ValidationError,
     ValidationResult,
@@ -20,6 +25,9 @@ __all__ = [
     "impute_features",
     "impute_arrow",
     "MISSING_INDICATOR_SUFFIX",
+    "ColumnGroupSharder",
+    "GroupedQueries",
+    "DEFAULT_MAX_COLUMNS_PER_GROUP",
     "validate_config",
     "ValidationResult",
     "ValidationError",
