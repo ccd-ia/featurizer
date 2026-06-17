@@ -134,8 +134,12 @@ def test_rolling_median_transformer_uses_percentile():
     result = transformer(entity, feature)
 
     assert result is not None
-    assert "percentile_cont(0.5)" in result.definition.lower()
-    assert "rows between 6 preceding and current row" in result.definition.lower()
+    definition = result.definition.lower()
+    assert "percentile_cont(0.5)" in definition
+    # PostgreSQL forbids OVER on percentile_cont, so the rolling window is a
+    # correlated subquery: the 7 most-recent rows per ego, by the temporal index.
+    assert "limit 7" in definition
+    assert "_ego." in definition
 
 
 def test_rolling_iqr_transformer_differs_percentiles():

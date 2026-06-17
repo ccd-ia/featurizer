@@ -425,25 +425,41 @@ def _frame_for_window(window: int) -> Optional[Tuple[str, str]]:
     return (f"{window - 1} preceding", "current row")
 
 
-def _build_percentile_window(
+# Alias the transform CTE's source row (`from <alias>_synth <TRANSFORM_EGO_ALIAS>`)
+# so a rolling ordered-set aggregate can correlate a re-scan of the same _synth
+# rows against the current ("ego") row. Shared with planner._build_transform_cte.
+TRANSFORM_EGO_ALIAS = "_ego"
+
+
+def _build_rolling_percentile(
     parent: Entity,
     feature: Feature,
     percentile: float,
-    frame: Optional[Tuple[str, str]],
+    window: int,
 ) -> Optional[str]:
+    """A row-framed rolling percentile, as a correlated subquery.
+
+    PostgreSQL forbids ``OVER`` on ordered-set aggregates, so a windowed
+    ``percentile_cont`` cannot be a window function. Instead, for each ego row,
+    re-scan the entity's ``_synth`` rows, take the ``window`` most-recent by the
+    temporal index up to and including the current row, and take the percentile
+    over them. Transformers are only ever applied to ``_synth`` columns, so
+    ``feature.name`` is guaranteed to be a column of ``<alias>_synth``.
+    """
     partition = parent.id.name if parent.id else None
     if partition is None:
         return None
     order_by = _temporal_ordering(feature)
     if order_by is None:
         return None
-    frame_clause = ""
-    if frame:
-        start, end = frame
-        frame_clause = f" rows between {start} and {end}"
+    synth = f"{parent.alias}_synth"
+    ego = TRANSFORM_EGO_ALIAS
     return (
-        f"percentile_cont({percentile}) within group (order by {feature.name}) "
-        f"over (partition by {partition} order by {order_by}{frame_clause})"
+        f"(select percentile_cont({percentile}) within group (order by _w.v) "
+        f"from (select {synth}.{feature.name} as v from {synth} "
+        f"where {synth}.{partition} = {ego}.{partition} "
+        f"and {synth}.{order_by} <= {ego}.{order_by} "
+        f"order by {synth}.{order_by} desc limit {window}) _w)"
     )
 
 
@@ -741,8 +757,7 @@ class RollingMedianTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        frame = _frame_for_window(self.window)
-        expression = _build_percentile_window(parent, feature, 0.5, frame)
+        expression = _build_rolling_percentile(parent, feature, 0.5, self.window)
         if expression is None:
             return None
         return Feature(
@@ -763,9 +778,8 @@ class RollingIQRTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        frame = _frame_for_window(self.window)
-        p75 = _build_percentile_window(parent, feature, 0.75, frame)
-        p25 = _build_percentile_window(parent, feature, 0.25, frame)
+        p75 = _build_rolling_percentile(parent, feature, 0.75, self.window)
+        p25 = _build_rolling_percentile(parent, feature, 0.25, self.window)
         if not p75 or not p25:
             return None
         expression = f"({p75}) - ({p25})"
@@ -893,11 +907,13 @@ class HoltWintersTrendTransformer:
         if order_by is None:
             return None
         frame = _frame_for_window(self.window)
+        # regr_slope needs a numeric X axis; the temporal index is a date/
+        # timestamp, so regress the value against epoch seconds.
         expression = _build_temporal_window(
             "regr_slope",
             parent,
             feature,
-            args=[order_by],
+            args=[f"extract(epoch from {order_by})"],
             frame=frame,
         )
         if expression is None:

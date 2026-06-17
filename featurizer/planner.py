@@ -24,6 +24,7 @@ from .primitives import (
     pg_identifier,
 )
 from .primitives.aggregations import haversine_m
+from .primitives.transformations import TRANSFORM_EGO_ALIAS
 
 # Callback the graph-family CTE builders use to register a CTE + its join and
 # the feature names it produces (see ``_build_graph_cte.attach``).
@@ -1119,12 +1120,15 @@ class FeaturePlanner:
                 # columns by name and is valid against the synth CTE.
                 rendered_features.append(feature.query)
 
+        # Alias the source row so rolling ordered-set aggregates can correlate a
+        # re-scan of the same _synth rows against it (PG forbids OVER on
+        # percentile_cont). Bare column refs still resolve — single source.
         cte_query = f"""
         -- transform {target.alias}
         {cte_table} as (
         select
         {", ".join(id_columns + rendered_features)}
-        from {target.alias}_synth
+        from {target.alias}_synth {TRANSFORM_EGO_ALIAS}
         )
         """
 
