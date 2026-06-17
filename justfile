@@ -50,5 +50,20 @@ test-integration:
 test-realistic:
     DATABASE_URL={{pg_url}} uv run pytest -q -m "integration and slow"
 
+# Seed + run ONE example end to end against the throwaway database
+# (requires `just db-up`). NAME is a prefix: `just example 01` or
+# `just example 04-custom-primitives`.
+example NAME:
+    dir=$(ls -d examples/{{NAME}}* | head -1); \
+    DATABASE_URL={{pg_url}} uv run python "$dir/create_data.py"; \
+    DATABASE_URL={{pg_url}} uv run python "$dir/run_example.py" --execute
+
+# Seed + run ALL FOUR examples end to end (requires `just db-up`).
+examples:
+    just example 01
+    just example 02
+    just example 03
+    just example 04
+
 typecheck:
     uv run basedpyright

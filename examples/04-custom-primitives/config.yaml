@@ -7,6 +7,21 @@ intervals:
   - P7D   # Last 7 days
   - P30D  # Last 30 days
 
+# Mix built-in primitives with the custom ones registered by
+# custom_primitives.py (range, p95, log1p, zscore, bin). A focused set keeps the
+# matrix small; the custom primitives must be registered before this config is
+# loaded (run_example.py does that).
+aggregations:
+  - count
+  - mean
+  - range
+  - p95
+transformations:
+  - identity
+  - log1p
+  - zscore
+  - bin
+
 entities:
   - alias: accounts
     id: account_id

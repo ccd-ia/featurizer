@@ -7,6 +7,16 @@ intervals:
   - P30D  # Last 30 days
   - P90D  # Last 90 days
 
+# Deep nesting multiplies features fast across 5 entities, so keep a minimal
+# primitive set — the point here is the depth-3 traversal, not primitive breadth.
+# (The full default set would blow past PostgreSQL's 1664 columns-per-row limit.)
+aggregations:
+  - count
+  - sum
+  - mean
+transformations:
+  - identity
+
 entities:
   - alias: stores
     id: store_id

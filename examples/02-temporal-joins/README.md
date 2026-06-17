@@ -45,23 +45,20 @@ With as-of joins, features capture the state of care plans at specific moments:
 ## Files
 
 - `config.yaml` - Featurizer configuration with temporal relationship
-- `create_data.py` - Generates sample SQLite database with temporal data
+- `create_data.py` - Loads temporal data into PostgreSQL (schema `example_02`)
 - `run_example.py` - Runs feature generation with temporal joins
-- `data.db` - SQLite database (generated)
 
 ## Usage
 
 ```bash
-# 1. Generate sample data
-python create_data.py
+# From the repo root: start the throwaway PostgreSQL, then run end to end
+just db-up
+just example 02            # loads data + executes
 
-# 2. Run feature generation
-python run_example.py
-
-# 3. View generated SQL with temporal joins
-python run_example.py --show-sql
-
-# 4. Execute and save results
+# Or step by step (DATABASE_URL / PG* must point at a PostgreSQL):
+python create_data.py                    # load schema example_02
+python run_example.py                    # feature summary
+python run_example.py --show-sql         # inspect SQL (no database needed)
 python run_example.py --execute --output temporal_features.csv
 ```
 

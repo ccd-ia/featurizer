@@ -6,10 +6,15 @@ import os
 import sys
 from pathlib import Path
 
-# Add parent directory to path to import featurizer
+# Add repo root (featurizer) and examples/ (_db) to the path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import _db
 
 from featurizer import Featurizer
+
+SCHEMA = "example_02"
 
 
 def main():
@@ -18,16 +23,10 @@ def main():
         "--show-sql", action="store_true", help="Print generated SQL query"
     )
     parser.add_argument(
-        "--execute", action="store_true", help="Execute query against database"
+        "--execute", action="store_true", help="Execute query against PostgreSQL"
     )
     parser.add_argument("--output", type=str, help="Save results to CSV file")
     args = parser.parse_args()
-
-    # Check if database exists
-    db_path = Path(__file__).parent / "data.db"
-    if not db_path.exists():
-        print("Error: Database not found. Run 'python create_data.py' first.")
-        sys.exit(1)
 
     # Load configuration
     config_path = Path(__file__).parent / "config.yaml"
@@ -73,10 +72,11 @@ def main():
 
     # Execute if requested
     if args.execute:
-        print("\n⚙️  Executing query with temporal joins...")
+        print("\n⚙️  Executing query with temporal joins on PostgreSQL...")
 
-        # Set DATABASE_URL for records library
-        os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+        # Point records/SQLAlchemy at the example_02 schema (psycopg3 + search_path).
+        # Reads DATABASE_URL / PG* from the env; exits with guidance if unset.
+        os.environ["DATABASE_URL"] = _db.records_url(SCHEMA)
 
         try:
             df = featurizer.to_dataframe()
@@ -94,6 +94,10 @@ def main():
 
         except Exception as e:
             print(f"\n✗ Error executing query: {e}")
+            print(
+                "  Is the data loaded? Run `python create_data.py` (or "
+                "`just example 02`) against a running PostgreSQL (`just db-up`)."
+            )
             sys.exit(1)
 
     print("\n✓ Done!")

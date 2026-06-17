@@ -7,6 +7,26 @@ intervals:
   - P30D  # Last 30 days
   - P90D  # Last 90 days
 
+# A focused primitive set (the full default set would exceed PostgreSQL's 1664
+# columns-per-row limit on this config). Includes the rolling ordered-set stats
+# — rolling_median / rolling_iqr render as correlated subqueries (PostgreSQL
+# forbids OVER on percentile_cont), exercised end to end here.
+aggregations:
+  - count
+  - sum
+  - mean
+  - min
+  - max
+  - stddev
+  - median
+transformations:
+  - identity
+  - abs
+  - lag_1
+  - rolling_mean_7
+  - rolling_median_7
+  - rolling_iqr_7
+
 entities:
   - alias: patients
     id: patient_id

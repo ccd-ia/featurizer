@@ -51,11 +51,10 @@ The example shows:
 
 ## Files
 
-- `config.yaml` - Featurizer configuration
+- `config.yaml` - Featurizer configuration (selects the custom primitives)
 - `custom_primitives.py` - Custom aggregation and transformation implementations
-- `create_data.py` - Generates sample SQLite database
+- `create_data.py` - Loads financial data into PostgreSQL (schema `example_04`)
 - `run_example.py` - Runs feature generation with custom primitives
-- `data.db` - SQLite database (generated)
 
 ## Using Built-in Equivalents
 
@@ -75,17 +74,16 @@ aggs = get_aggregations(["median", "p95", "range"])
 ## Usage
 
 ```bash
-# 1. Generate sample data
-python create_data.py
+# From the repo root: start the throwaway PostgreSQL, then run end to end
+just db-up
+just example 04            # loads data + executes (registers custom primitives)
 
-# 2. Run with custom primitives
-python run_example.py
-
-# 3. View SQL with custom expressions
-python run_example.py --show-sql
-
-# 4. Execute and save results
+# Or step by step (DATABASE_URL / PG* must point at a PostgreSQL):
+python create_data.py                    # load schema example_04
+python run_example.py                    # feature summary
+python run_example.py --show-sql         # inspect SQL (no database needed)
 python run_example.py --execute --output custom_features.csv
+python run_example.py --list-primitives  # show registered primitives
 ```
 
 ## What You'll Learn

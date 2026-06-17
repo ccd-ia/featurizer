@@ -1,103 +1,94 @@
 # Featurizer Examples
 
-This directory contains practical, self-contained examples demonstrating key features of the Featurizer library.
+This directory contains practical examples demonstrating key features of the Featurizer library.
 
 ## Overview
 
 Each example includes:
 - **README.md** - Detailed explanation of the scenario and concepts
 - **config.yaml** - Featurizer configuration file
-- **create_data.py** - Script to generate sample SQLite database
-- **run_example.py** - Script to run feature generation
-- **data.db** - Generated SQLite database (created by create_data.py)
+- **create_data.py** - Loads sample data into PostgreSQL (its own schema)
+- **run_example.py** - Generates features, prints SQL, and (with `--execute`) runs the query
 
-All examples use SQLite databases for simplicity and require no external dependencies beyond Python and Featurizer.
+Featurizer emits **PostgreSQL-dialect** SQL (lateral joins, `percentile_cont …
+within group`, `::date` casts), so executing an example needs a PostgreSQL
+database. The easiest way is the throwaway Docker container the repo's `justfile`
+manages; you can also point `DATABASE_URL` / `PG*` at any PostgreSQL you have.
+Generating and inspecting the SQL (`--show-sql`) needs **no** database.
+
+Each example loads into its own schema (`example_01` … `example_04`) and runs
+with that schema on the `search_path`, so the configs use bare table names and
+each example keeps its own `as_of_dates`.
 
 ## Examples
 
 ### [01-basic-aggregations](./01-basic-aggregations/)
-**Difficulty:** Beginner
-**Scenario:** E-commerce (Customers → Orders)
+**Difficulty:** Beginner — E-commerce (Customers → Orders)
 
-Demonstrates:
-- Basic parent-child relationships
-- Aggregations (count, mean, sum, stddev)
-- Time-windowed features (P7D, P30D)
-- Feature naming conventions
-
-**Start here if you're new to Featurizer.**
+Basic parent-child aggregations (count, sum, mean, min, max, stddev, nunique),
+time windows (P7D, P30D), feature naming. **Start here.**
 
 ### [02-temporal-joins](./02-temporal-joins/)
-**Difficulty:** Intermediate
-**Scenario:** Healthcare (Patients → Care Plans)
+**Difficulty:** Intermediate — Healthcare (Patients → Care Plans)
 
-Demonstrates:
-- As-of join semantics
-- Temporal relationships with grace periods
-- Point-in-time feature generation
-- LATERAL join SQL generation
-
-**Learn about temporal feature engineering.**
+As-of join semantics, grace periods, point-in-time generation, LATERAL SQL.
+Also exercises rolling stats (`rolling_mean_7`, `rolling_median_7`,
+`rolling_iqr_7`) — the ordered-set rolling stats render as correlated subqueries
+(PostgreSQL forbids `OVER` on `percentile_cont`).
 
 ### [03-deep-nesting](./03-deep-nesting/)
-**Difficulty:** Intermediate
-**Scenario:** Retail Supply Chain (Stores → Orders → Products → Suppliers)
+**Difficulty:** Intermediate — Retail Supply Chain (Stores → Orders → Order Items → Products → Suppliers)
 
-Demonstrates:
-- Multi-level relationships (depth=3)
-- Feature aggregation across chains
-- Complex entity graphs
-- CTE structure for nested relationships
-
-**Understand how features propagate through multiple levels.**
+Multi-level relationships (depth=3), feature propagation across chains, CTE
+structure. Tables are created in FK-dependency order (PostgreSQL resolves
+`REFERENCES` at creation time).
 
 ### [04-custom-primitives](./04-custom-primitives/)
-**Difficulty:** Advanced
-**Scenario:** Financial Analytics (Accounts → Transactions)
+**Difficulty:** Advanced — Financial Analytics (Accounts → Transactions)
 
-Demonstrates:
-- Creating custom aggregation primitives
-- Creating custom transformation primitives
-- Registering primitives with the system
-- Custom SQL expression generation
-
-**Learn how to extend Featurizer with domain-specific primitives.**
+Creating and registering custom aggregations (`range`, `p95`) and
+transformations (`log1p`, `zscore`, `bin`) against the current primitive API,
+then selecting them in `config.yaml`.
 
 ## Quick Start
 
-Each example follows the same workflow:
+```bash
+# From the repository root. Start the throwaway PostgreSQL once:
+just db-up
+
+# Seed + run a single example end to end (NAME is a prefix):
+just example 01            # or 02, 03, 04
+# ...or run all four:
+just examples
+
+# Tear the database down when done (the container is ephemeral):
+just db-down
+```
+
+Without `just` (point at any PostgreSQL via the environment):
 
 ```bash
-# 1. Navigate to an example directory
-cd 01-basic-aggregations/
+export DATABASE_URL=postgresql://user:pass@host:5432/dbname   # or set PG* vars
+uv run python examples/01-basic-aggregations/create_data.py    # load the schema
+uv run python examples/01-basic-aggregations/run_example.py --execute
+```
 
-# 2. Generate sample data
-python create_data.py
+Inspect the generated SQL without any database:
 
-# 3. Run feature generation (shows summary)
-python run_example.py
-
-# 4. View generated SQL
-python run_example.py --show-sql
-
-# 5. Execute query and save results
-python run_example.py --execute --output features.csv
+```bash
+uv run python examples/01-basic-aggregations/run_example.py --show-sql
 ```
 
 ## Learning Path
 
-**Recommended order:**
-
-1. **Start with Example 1** to understand basic concepts
-2. **Try Example 2** to learn temporal joins
-3. **Explore Example 3** to see deep nesting in action
-4. **Study Example 4** when you need custom primitives
+1. **Example 1** — basic concepts
+2. **Example 2** — temporal joins (+ rolling stats)
+3. **Example 3** — deep nesting
+4. **Example 4** — custom primitives
 
 ## Common Patterns
 
 ### Configuration Structure
-
-All examples follow this YAML structure:
 
 ```yaml
 target: entity_alias       # Target entity for features
@@ -106,6 +97,12 @@ max_depth: 2               # Maximum relationship depth
 intervals:                 # Time windows for aggregations
   - P7D
   - P30D
+
+aggregations:              # Optional: a focused set (defaults to the full set,
+  - count                  # which can exceed PostgreSQL's 1664 columns-per-row
+  - mean                   # limit on wide configs)
+transformations:
+  - identity
 
 entities:                  # Entity definitions
   - alias: entity_name
@@ -128,75 +125,43 @@ relationships:             # Parent-child relationships
       grace: P7D
 ```
 
-### Database Requirements
+### Primitive selection (why the configs are curated)
 
-All examples create an `as_of_dates` table required by Featurizer:
+With no `aggregations:` / `transformations:` keys, Featurizer uses the full
+default set (69 aggregations, 83 transformers). On even a two-entity config that
+synthesizes **thousands** of feature columns — past PostgreSQL's hard limit of
+1664 columns per row, and far past anything legible in a tutorial. Each example
+therefore selects a focused set; widen it as you like (mind the 1664 ceiling).
+
+### The `as_of_dates` table
+
+Every `create_data.py` creates an `as_of_dates` table — the time points at which
+features are computed — in the example's schema:
 
 ```sql
-CREATE TABLE as_of_dates (
-    as_of_date DATE PRIMARY KEY
-);
+CREATE TABLE as_of_dates (as_of_date DATE PRIMARY KEY);
 ```
 
-This table defines the time points at which features are calculated.
-
-## Example Outputs
-
-### Feature Counts
-
-Typical feature counts by example:
-
-- **Example 1:** ~40-60 features (basic aggregations)
-- **Example 2:** ~30-50 features (temporal joins)
-- **Example 3:** ~100-150 features (deep nesting creates many combinations)
-- **Example 4:** ~40-60 features (+ custom primitives)
-
-### Generated SQL
-
-All examples generate SQL with:
-- Multiple CTEs for feature synthesis and transformation
-- Proper temporal filtering
-- Window functions for time-based features
-- Joins following the relationship graph
-
-Use `--show-sql` to inspect the generated queries and learn SQL patterns.
+The generated query reads it as `from as_of_dates as aod`, resolved via the
+schema on the `search_path`.
 
 ## Troubleshooting
 
-### "Database not found" error
-Run `python create_data.py` first to generate the SQLite database.
+### "No PostgreSQL configured"
+`--execute` needs a database. Run `just db-up`, or export `DATABASE_URL` / `PG*`.
+`--show-sql` works without one.
 
-### "Module not found" error
-Make sure you're running from within the example directory, or that featurizer is installed:
-```bash
-pip install -e /path/to/featurizer
-```
+### "✗ Error executing query" / empty results
+Make sure you loaded the data first: `python create_data.py` (or `just example NN`)
+against the same database `run_example.py` points at.
 
-### SQLite vs PostgreSQL differences
-These examples use SQLite for simplicity. Some features work differently in PostgreSQL:
-- Median/Percentile functions (Example 4) use different syntax
-- Date/time functions may differ
-- Some advanced aggregations require PostgreSQL-specific functions
-
-To use with PostgreSQL, update the `run_example.py` DATABASE_URL and adjust SQL generation if needed.
+### Driver note
+Execution goes through `records`/SQLAlchemy with the **psycopg3** driver — the
+examples build a `postgresql+psycopg://…` URL (the project doesn't depend on
+psycopg2) and pin the schema with a libpq `options=-csearch_path=<schema>`.
 
 ## Next Steps
 
-After completing these examples:
-
-1. **Read the main README** in the repository root for architecture details
-2. **Review AGENTS.md** for understanding the planner/renderer/executor pipeline
-3. **Explore featurizer/primitives/** to see available aggregations and transformations
-4. **Try your own datasets** by creating custom config.yaml files
-
-## Contributing Examples
-
-Have an interesting use case? Contributions are welcome!
-
-New examples should:
-- Follow the same directory structure
-- Include comprehensive README.md
-- Use SQLite for portability
-- Include sample data generation
-- Add error handling in run_example.py
-- Document key learning objectives
+1. Read the main `README.md` for architecture details
+2. Explore `featurizer/primitives/` for available aggregations and transformations
+3. Try your own datasets with a custom `config.yaml`

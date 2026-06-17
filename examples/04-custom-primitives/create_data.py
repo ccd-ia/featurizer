@@ -1,12 +1,20 @@
 #!/usr/bin/env python
-"""Generate sample financial data for Example 4 (Custom Primitives)."""
+"""Generate sample financial data for Example 4 (Custom Primitives).
+
+Loads into PostgreSQL. Run via ``just example 04`` (which starts the throwaway
+database first), or set DATABASE_URL / PG* and run directly. See ``examples/_db.py``.
+"""
 
 import random
-import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))  # examples/ for _db
+import _db
+
 # Configuration
+SCHEMA = "example_04"
 NUM_ACCOUNTS = 75
 MIN_TRANSACTIONS_PER_ACCOUNT = 0
 MAX_TRANSACTIONS_PER_ACCOUNT = 100
@@ -19,23 +27,17 @@ random.seed(42)
 
 
 def create_database():
-    """Create SQLite database with financial data."""
-    db_path = Path(__file__).parent / "data.db"
-
-    # Remove existing database
-    if db_path.exists():
-        db_path.unlink()
-
-    conn = sqlite3.connect(db_path)
+    """Load financial data into the ``example_04`` schema on PostgreSQL."""
+    conn = _db.connect(SCHEMA)
     cursor = conn.cursor()
 
-    # Create tables
+    # Create tables (bare names resolve via the search_path set by _db.connect)
     cursor.execute("""
         CREATE TABLE accounts (
             account_id INTEGER PRIMARY KEY,
             open_date DATE NOT NULL,
             account_type TEXT NOT NULL,
-            credit_limit REAL NOT NULL
+            credit_limit DOUBLE PRECISION NOT NULL
         )
     """)
 
@@ -44,7 +46,7 @@ def create_database():
             transaction_id INTEGER PRIMARY KEY,
             account_id INTEGER NOT NULL,
             transaction_date DATE NOT NULL,
-            amount REAL NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
             transaction_type TEXT NOT NULL,
             FOREIGN KEY (account_id) REFERENCES accounts(account_id)
         )
@@ -74,7 +76,7 @@ def create_database():
 
         accounts.append((i, open_date.date(), account_type, credit_limit))
 
-    cursor.executemany("INSERT INTO accounts VALUES (?, ?, ?, ?)", accounts)
+    cursor.executemany("INSERT INTO accounts VALUES (%s, %s, %s, %s)", accounts)
 
     # Generate transactions
     transactions = []
@@ -109,7 +111,9 @@ def create_database():
             )
             transaction_id += 1
 
-    cursor.executemany("INSERT INTO transactions VALUES (?, ?, ?, ?, ?)", transactions)
+    cursor.executemany(
+        "INSERT INTO transactions VALUES (%s, %s, %s, %s, %s)", transactions
+    )
 
     # Generate as_of_dates (monthly for 2024)
     as_of_dates = []
@@ -117,7 +121,7 @@ def create_database():
         date = datetime(2024, month, 1).date()
         as_of_dates.append((date,))
 
-    cursor.executemany("INSERT INTO as_of_dates VALUES (?)", as_of_dates)
+    cursor.executemany("INSERT INTO as_of_dates VALUES (%s)", as_of_dates)
 
     conn.commit()
 
@@ -139,19 +143,16 @@ def create_database():
     cursor.execute("SELECT AVG(amount), MIN(amount), MAX(amount) FROM transactions")
     avg_amount, min_amount, max_amount = cursor.fetchone()
 
-    # Calculate median using SQLite (different from PostgreSQL)
-    cursor.execute("""
-        SELECT amount
-        FROM transactions
-        ORDER BY amount
-        LIMIT 1
-        OFFSET (SELECT COUNT(*) FROM transactions) / 2
-    """)
+    # Median via PostgreSQL's ordered-set aggregate (the same primitive the
+    # custom Median aggregation emits).
+    cursor.execute(
+        "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY amount) FROM transactions"
+    )
     median_amount = cursor.fetchone()[0]
 
     conn.close()
 
-    print("✓ Database created successfully!")
+    print("✓ Data loaded successfully!")
     print("\nStatistics:")
     print(f"  Accounts: {num_accounts}")
     print(f"  Transactions: {num_transactions}")
@@ -161,7 +162,7 @@ def create_database():
     print(f"    Mean: ${avg_amount:.2f}")
     print(f"    Median: ${median_amount:.2f}")
     print(f"    Range: ${min_amount:.2f} to ${max_amount:.2f}")
-    print(f"\nDatabase: {db_path}")
+    print(f"\nSchema: {SCHEMA}")
 
 
 if __name__ == "__main__":

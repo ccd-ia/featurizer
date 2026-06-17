@@ -7,6 +7,21 @@ intervals:
   - P7D   # Last 7 days
   - P30D  # Last 30 days
 
+# A focused primitive set keeps the feature matrix small and readable. The full
+# default set would synthesize thousands of columns — past PostgreSQL's 1664
+# per-row limit and far past anything legible in a tutorial.
+aggregations:
+  - count
+  - sum
+  - mean
+  - min
+  - max
+  - stddev
+  - nunique
+transformations:
+  - identity
+  - abs
+
 entities:
   - alias: customers
     id: customer_id

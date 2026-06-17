@@ -45,23 +45,20 @@ Plus transformations:
 ## Files
 
 - `config.yaml` - Featurizer configuration
-- `create_data.py` - Generates sample SQLite database
+- `create_data.py` - Loads sample data into PostgreSQL (schema `example_01`)
 - `run_example.py` - Runs feature generation
-- `data.db` - SQLite database (generated)
 
 ## Usage
 
 ```bash
-# 1. Generate sample data
-python create_data.py
+# From the repo root: start the throwaway PostgreSQL, then run end to end
+just db-up
+just example 01            # loads data + executes
 
-# 2. Run feature generation
-python run_example.py
-
-# 3. View generated SQL
-python run_example.py --show-sql
-
-# 4. Execute and save results
+# Or step by step (DATABASE_URL / PG* must point at a PostgreSQL):
+python create_data.py                    # load schema example_01
+python run_example.py                    # feature summary
+python run_example.py --show-sql         # inspect SQL (no database needed)
 python run_example.py --execute --output features.csv
 ```
 

@@ -66,23 +66,20 @@ Features aggregate across multiple levels:
 ## Files
 
 - `config.yaml` - Featurizer configuration with max_depth=3
-- `create_data.py` - Generates sample SQLite database with multi-level relationships
+- `create_data.py` - Loads multi-level data into PostgreSQL (schema `example_03`)
 - `run_example.py` - Runs feature generation with deep nesting
-- `data.db` - SQLite database (generated)
 
 ## Usage
 
 ```bash
-# 1. Generate sample data
-python create_data.py
+# From the repo root: start the throwaway PostgreSQL, then run end to end
+just db-up
+just example 03            # loads data + executes
 
-# 2. Run feature generation
-python run_example.py
-
-# 3. View generated SQL with deep joins
-python run_example.py --show-sql
-
-# 4. Execute and save results
+# Or step by step (DATABASE_URL / PG* must point at a PostgreSQL):
+python create_data.py                    # load schema example_03
+python run_example.py                    # feature summary
+python run_example.py --show-sql         # inspect SQL (no database needed)
 python run_example.py --execute --output deep_features.csv
 ```
 

@@ -1,12 +1,20 @@
 #!/usr/bin/env python
-"""Generate sample retail supply chain data for Example 3 (Deep Nesting)."""
+"""Generate sample retail supply chain data for Example 3 (Deep Nesting).
+
+Loads into PostgreSQL. Run via ``just example 03`` (which starts the throwaway
+database first), or set DATABASE_URL / PG* and run directly. See ``examples/_db.py``.
+"""
 
 import random
-import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))  # examples/ for _db
+import _db
+
 # Configuration
+SCHEMA = "example_03"
 NUM_STORES = 20
 NUM_SUPPLIERS = 15
 NUM_PRODUCTS = 50
@@ -26,17 +34,31 @@ random.seed(42)
 
 
 def create_database():
-    """Create SQLite database with multi-level supply chain data."""
-    db_path = Path(__file__).parent / "data.db"
-
-    # Remove existing database
-    if db_path.exists():
-        db_path.unlink()
-
-    conn = sqlite3.connect(db_path)
+    """Load multi-level supply chain data into the ``example_03`` schema."""
+    conn = _db.connect(SCHEMA)
     cursor = conn.cursor()
 
-    # Create tables
+    # Create tables in FK-dependency order (PostgreSQL resolves REFERENCES at
+    # creation time, so a referenced table must already exist): suppliers ->
+    # products -> stores -> orders -> order_items.
+    cursor.execute("""
+        CREATE TABLE suppliers (
+            supplier_id INTEGER PRIMARY KEY,
+            country TEXT NOT NULL,
+            rating DOUBLE PRECISION NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE products (
+            product_id INTEGER PRIMARY KEY,
+            supplier_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            base_cost DOUBLE PRECISION NOT NULL,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id)
+        )
+    """)
+
     cursor.execute("""
         CREATE TABLE stores (
             store_id INTEGER PRIMARY KEY,
@@ -62,27 +84,9 @@ def create_database():
             order_id INTEGER NOT NULL,
             product_id INTEGER NOT NULL,
             quantity INTEGER NOT NULL,
-            unit_price REAL NOT NULL,
+            unit_price DOUBLE PRECISION NOT NULL,
             FOREIGN KEY (order_id) REFERENCES orders(order_id),
             FOREIGN KEY (product_id) REFERENCES products(product_id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE products (
-            product_id INTEGER PRIMARY KEY,
-            supplier_id INTEGER NOT NULL,
-            category TEXT NOT NULL,
-            base_cost REAL NOT NULL,
-            FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id)
-        )
-    """)
-
-    cursor.execute("""
-        CREATE TABLE suppliers (
-            supplier_id INTEGER PRIMARY KEY,
-            country TEXT NOT NULL,
-            rating REAL NOT NULL
         )
     """)
 
@@ -99,7 +103,7 @@ def create_database():
         rating = round(random.uniform(1.0, 5.0), 1)
         suppliers.append((i, country, rating))
 
-    cursor.executemany("INSERT INTO suppliers VALUES (?, ?, ?)", suppliers)
+    cursor.executemany("INSERT INTO suppliers VALUES (%s, %s, %s)", suppliers)
 
     # Generate products (depth 2)
     products = []
@@ -109,7 +113,7 @@ def create_database():
         base_cost = round(random.uniform(5.0, 500.0), 2)
         products.append((i, supplier_id, category, base_cost))
 
-    cursor.executemany("INSERT INTO products VALUES (?, ?, ?, ?)", products)
+    cursor.executemany("INSERT INTO products VALUES (%s, %s, %s, %s)", products)
 
     # Generate stores (depth 0 - target)
     base_date = datetime(2022, 1, 1)
@@ -120,7 +124,7 @@ def create_database():
         size_sqft = random.randint(1000, 50000)
         stores.append((i, open_date.date(), region, size_sqft))
 
-    cursor.executemany("INSERT INTO stores VALUES (?, ?, ?, ?)", stores)
+    cursor.executemany("INSERT INTO stores VALUES (%s, %s, %s, %s)", stores)
 
     # Generate orders (depth 1)
     orders = []
@@ -138,7 +142,7 @@ def create_database():
             orders.append((order_id, store_id, order_date.date(), status))
             order_id += 1
 
-    cursor.executemany("INSERT INTO orders VALUES (?, ?, ?, ?)", orders)
+    cursor.executemany("INSERT INTO orders VALUES (%s, %s, %s, %s)", orders)
 
     # Generate order_items (depth 2)
     items = []
@@ -152,7 +156,7 @@ def create_database():
             items.append((item_id, order_id_val, product_id, quantity, unit_price))
             item_id += 1
 
-    cursor.executemany("INSERT INTO order_items VALUES (?, ?, ?, ?, ?)", items)
+    cursor.executemany("INSERT INTO order_items VALUES (%s, %s, %s, %s, %s)", items)
 
     # Generate as_of_dates (quarterly for 2023-2024)
     as_of_dates = []
@@ -161,7 +165,7 @@ def create_database():
             date = datetime(year, month, 1).date()
             as_of_dates.append((date,))
 
-    cursor.executemany("INSERT INTO as_of_dates VALUES (?)", as_of_dates)
+    cursor.executemany("INSERT INTO as_of_dates VALUES (%s)", as_of_dates)
 
     conn.commit()
 
@@ -200,7 +204,7 @@ def create_database():
 
     conn.close()
 
-    print("✓ Database created successfully!")
+    print("✓ Data loaded successfully!")
     print("\nStatistics:")
     print(f"  Stores (depth 0): {num_stores}")
     print(f"  Orders (depth 1): {num_orders}")
@@ -210,7 +214,7 @@ def create_database():
     print(f"  As-of dates: {num_dates}")
     print(f"  Average supplier rating: {avg_rating:.1f}")
     print(f"  Suppliers with orders: {connected_suppliers}")
-    print(f"\nDatabase: {db_path}")
+    print(f"\nSchema: {SCHEMA}")
 
 
 if __name__ == "__main__":

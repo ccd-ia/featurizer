@@ -1,7 +1,20 @@
-"""Custom aggregation and transformation primitives for financial analytics."""
+"""Custom aggregation and transformation primitives for financial analytics.
 
-from featurizer.primitives.abstractions import Feature
-from featurizer.primitives.aggregations import Aggregator
+These demonstrate the current primitive API and emit PostgreSQL-valid SQL:
+
+- An **aggregation** subclasses ``Aggregator`` (or a richer base such as
+  ``OrderedSetAggregator``) and overrides ``_build_aggregate_expression`` to
+  return the SQL aggregate; the base wraps it into a ``Feature``. Interval
+  variants pass ``interval`` so the expression can add the ``daterange`` filter.
+- A **transformation** subclasses ``Transformer`` and overrides
+  ``_build_transformer_call`` to return a scalar SQL expression over the
+  current row; the base wraps it into a ``Feature``.
+
+Register *instances* (not classes) via ``register_aggregation`` /
+``register_transformer``, then select them by name in ``config.yaml``.
+"""
+
+from featurizer.primitives.aggregations import Aggregator, OrderedSetAggregator
 from featurizer.primitives.transformations import Transformer
 from featurizer.primitives.utils import register_aggregation, register_transformer
 
@@ -10,34 +23,36 @@ from featurizer.primitives.utils import register_aggregation, register_transform
 # ============================================================================
 
 
-class Median(Aggregator):
-    """Calculate median value."""
-
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for median calculation.
-
-        Note: This uses percentile_cont which is PostgreSQL-specific.
-        For SQLite, you would need a different approach.
-        """
-        return f"percentile_cont(0.5) WITHIN GROUP (ORDER BY {feature.name}) AS {alias}"
-
-
-class Percentile95(Aggregator):
-    """Calculate 95th percentile."""
-
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for 95th percentile calculation."""
-        return (
-            f"percentile_cont(0.95) WITHIN GROUP (ORDER BY {feature.name}) AS {alias}"
-        )
-
-
 class Range(Aggregator):
-    """Calculate range (max - min)."""
+    """Spread of a value: ``max(x) - min(x)``.
 
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for range calculation."""
-        return f"(MAX({feature.name}) - MIN({feature.name})) AS {alias}"
+    PostgreSQL's ``FILTER`` clause attaches to a single aggregate, so for an
+    interval window each of ``max`` and ``min`` is filtered independently.
+    """
+
+    def __init__(self):
+        super().__init__(name="range")
+
+    def _agg(self, fn, feature, interval):
+        expr = f"{fn}({feature.name})"
+        if interval and feature.entity and feature.entity.temporal_ix:
+            event_date = feature.entity.temporal_ix.name
+            daterange = (
+                f"daterange((aod.as_of_date - interval '{interval}')::date, "
+                f"aod.as_of_date::date, '[]')"
+            )
+            expr += f" filter (where {daterange} @> {event_date}::date)"
+        return expr
+
+    def _build_aggregate_expression(self, feature, interval=None):
+        return f"({self._agg('max', feature, interval)} - {self._agg('min', feature, interval)})"
+
+
+class Percentile95(OrderedSetAggregator):
+    """95th percentile via the ordered-set base (handles WITHIN GROUP + interval)."""
+
+    def __init__(self):
+        super().__init__(name="p95", aggregate="percentile_cont", direct_argument=0.95)
 
 
 # ============================================================================
@@ -45,46 +60,47 @@ class Range(Aggregator):
 # ============================================================================
 
 
-class Log(Transformer):
-    """Natural logarithm transformation."""
+class Log1p(Transformer):
+    """Natural log with a +1 offset: ``ln(x + 1)``.
 
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for log transformation."""
-        # Add small constant to avoid log(0)
-        return f"LN({feature.name} + 1) AS {alias}"
+    Guarded with a CASE: the logarithm is undefined for ``x + 1 <= 0``, and this
+    data has negative values (withdrawals), so those map to NULL rather than
+    raising. (Without the guard PostgreSQL errors on the whole query.)
+    """
+
+    def __init__(self):
+        super().__init__(name="log1p")
+
+    def _build_transformer_call(self, feature):
+        return f"case when {feature.name} + 1 > 0 then ln({feature.name} + 1) end"
 
 
 class ZScore(Transformer):
-    """Z-score standardization transformation."""
+    """Z-score standardization across the rows in scope (``OVER ()``)."""
 
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for z-score transformation.
+    def __init__(self):
+        super().__init__(name="zscore")
 
-        Note: This is a window function that requires appropriate partitioning.
-        For simplicity, this calculates z-score across all rows.
-        """
-        return f"""
-            (({feature.name} - AVG({feature.name}) OVER ())
-             / NULLIF(STDDEV({feature.name}) OVER (), 0)) AS {alias}
-        """.strip()
+    def _build_transformer_call(self, feature):
+        return (
+            f"(({feature.name} - avg({feature.name}) over ()) "
+            f"/ nullif(stddev({feature.name}) over (), 0))"
+        )
 
 
 class BinCount(Transformer):
-    """Discretize continuous values into 5 bins."""
+    """Discretize into 5 equal-width bins (0–4) across the rows in scope."""
 
-    def to_sql(self, feature: Feature, alias: str) -> str:
-        """Generate SQL for binning into 5 equal-width bins."""
-        return f"""
-            CASE
-                WHEN {feature.name} IS NULL THEN NULL
-                ELSE CAST(
-                    FLOOR(
-                        5 * ({feature.name} - MIN({feature.name}) OVER ())
-                        / NULLIF(MAX({feature.name}) OVER () - MIN({feature.name}) OVER (), 0)
-                    ) AS INTEGER
-                )
-            END AS {alias}
-        """.strip()
+    def __init__(self):
+        super().__init__(name="bin", output_type="numeric")
+
+    def _build_transformer_call(self, feature):
+        f = feature.name
+        return (
+            f"case when {f} is null then null "
+            f"else cast(floor(5 * ({f} - min({f}) over ()) "
+            f"/ nullif(max({f}) over () - min({f}) over (), 0)) as integer) end"
+        )
 
 
 # ============================================================================
@@ -94,16 +110,13 @@ class BinCount(Transformer):
 
 def register_all_custom_primitives():
     """Register all custom primitives with the feature system."""
-    # Register aggregations
-    register_aggregation("median", Median)
-    register_aggregation("p95", Percentile95)
-    register_aggregation("range", Range)
+    register_aggregation("range", Range())
+    register_aggregation("p95", Percentile95())
 
-    # Register transformations
-    register_transformer("log", Log)
-    register_transformer("zscore", ZScore)
-    register_transformer("bin", BinCount)
+    register_transformer("log1p", Log1p())
+    register_transformer("zscore", ZScore())
+    register_transformer("bin", BinCount())
 
     print("✓ Registered custom primitives:")
-    print("  Aggregations: median, p95, range")
-    print("  Transformations: log, zscore, bin")
+    print("  Aggregations: range, p95")
+    print("  Transformations: log1p, zscore, bin")

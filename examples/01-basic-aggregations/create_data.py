@@ -1,12 +1,20 @@
 #!/usr/bin/env python
-"""Generate sample e-commerce data for Example 1."""
+"""Generate sample e-commerce data for Example 1 (loads into PostgreSQL).
+
+Run via ``just example 01`` (which starts the throwaway database first), or set
+DATABASE_URL / PG* and run directly. See ``examples/_db.py``.
+"""
 
 import random
-import sqlite3
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent.parent))  # examples/ for _db
+import _db
+
 # Configuration
+SCHEMA = "example_01"
 NUM_CUSTOMERS = 100
 MIN_ORDERS_PER_CUSTOMER = 0
 MAX_ORDERS_PER_CUSTOMER = 20
@@ -19,17 +27,11 @@ random.seed(42)
 
 
 def create_database():
-    """Create SQLite database with sample data."""
-    db_path = Path(__file__).parent / "data.db"
-
-    # Remove existing database
-    if db_path.exists():
-        db_path.unlink()
-
-    conn = sqlite3.connect(db_path)
+    """Load sample data into the ``example_01`` schema on PostgreSQL."""
+    conn = _db.connect(SCHEMA)
     cursor = conn.cursor()
 
-    # Create tables
+    # Create tables (bare names resolve via the search_path set by _db.connect)
     cursor.execute("""
         CREATE TABLE customers (
             customer_id INTEGER PRIMARY KEY,
@@ -44,7 +46,7 @@ def create_database():
             order_id INTEGER PRIMARY KEY,
             customer_id INTEGER NOT NULL,
             order_date DATE NOT NULL,
-            amount REAL NOT NULL,
+            amount DOUBLE PRECISION NOT NULL,
             status TEXT NOT NULL,
             FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
         )
@@ -68,7 +70,7 @@ def create_database():
 
         customers.append((i, signup_date.date(), country, age))
 
-    cursor.executemany("INSERT INTO customers VALUES (?, ?, ?, ?)", customers)
+    cursor.executemany("INSERT INTO customers VALUES (%s, %s, %s, %s)", customers)
 
     # Generate orders
     orders = []
@@ -91,7 +93,7 @@ def create_database():
             orders.append((order_id, customer_id, order_date.date(), amount, status))
             order_id += 1
 
-    cursor.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orders)
+    cursor.executemany("INSERT INTO orders VALUES (%s, %s, %s, %s, %s)", orders)
 
     # Generate as_of_dates (monthly snapshots for 2024)
     as_of_dates = []
@@ -99,7 +101,7 @@ def create_database():
         date = datetime(2024, month, 1).date()
         as_of_dates.append((date,))
 
-    cursor.executemany("INSERT INTO as_of_dates VALUES (?)", as_of_dates)
+    cursor.executemany("INSERT INTO as_of_dates VALUES (%s)", as_of_dates)
 
     conn.commit()
 
@@ -121,7 +123,7 @@ def create_database():
 
     conn.close()
 
-    print("✓ Database created successfully!")
+    print("✓ Data loaded successfully!")
     print("\nStatistics:")
     print(f"  Customers: {num_customers}")
     print(f"  Orders: {num_orders}")
@@ -130,7 +132,7 @@ def create_database():
     print(
         f"  Order amounts: ${min_amount:.2f} - ${max_amount:.2f} (avg: ${avg_amount:.2f})"
     )
-    print(f"\nDatabase: {db_path}")
+    print(f"\nSchema: {SCHEMA}")
 
 
 if __name__ == "__main__":
