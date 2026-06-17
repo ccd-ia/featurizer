@@ -6,6 +6,28 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-17
+
+### Fixed
+
+- **Rolling ordered-set aggregates are now PostgreSQL-valid.** `rolling_median_*`
+  and `rolling_iqr_*` rendered `percentile_cont(…) within group (…) OVER (…)`,
+  which PostgreSQL rejects (no `OVER` on ordered-set aggregates). They now render
+  as a row-framed correlated subquery over the entity's `_synth` rows (the
+  transform CTE aliases its source row as `_ego` to correlate).
+- **`holt_winters_trend_*` time axis.** `regr_slope(value, date)` is invalid
+  (the regressor must be numeric); regress against `extract(epoch from <ts>)`.
+
+### Changed
+
+- **Examples execute on PostgreSQL** instead of SQLite (the engine emits
+  PG-dialect SQL, so SQLite `--execute` never worked). Each example loads into a
+  per-example schema via `DATABASE_URL`/`PG*`, configs select a focused primitive
+  set (the full set exceeds PostgreSQL's 1664 columns-per-row limit), and
+  `just example NN` / `just examples` run them over the ephemeral `db-up` harness.
+  Example 04's custom primitives were rewritten to the current
+  `Aggregator`/`Transformer` API. `--show-sql` remains database-free.
+
 ## [0.1.0] - 2026-06-16
 
 ### Added
