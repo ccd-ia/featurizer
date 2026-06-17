@@ -6,6 +6,8 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-16
+
 ### Added
 
 - **Peer-group features (M1d)** — `peer_groups: [{by: <column>, measures: […]}]`
@@ -35,6 +37,8 @@ semantic versioning once a release is cut.
   realistic assertion vs an independent recomputation).
 - Project artifacts: `CONTEXT.md` glossary, `docs/adr/` (0001–0004),
   `CONTRIBUTING.md`, and CI (`.github/workflows/test.yml`).
+- README badges (CI, license, Python, type-checked) and an architecture diagram
+  (`docs/images/architecture.svg`).
 
 ### Fixed
 
@@ -44,9 +48,24 @@ semantic versioning once a release is cut.
   safety, and PK==FK double projection. `#7` `daterange @> timestamp` invalid →
   `::date` cast at every interval window. `#8` >63-byte feature names collide
   after PostgreSQL truncation → stable hash cap (`pg_identifier`).
+- Window-function transformers (the cumulative `WindowFunctionTransformer`
+  family and the ranking/`DistributionTransformer` family) dereferenced
+  `parent.id.name` before the `None` check, raising `AttributeError` on an
+  entity without an `id` (e.g. `id: ~`). They now no-op when there is no
+  partition key — which previously crashed the documented `Featurizer(...).query`
+  smoke test. Regression test added.
 
 ### Changed
 
 - Registered-primitive counts: 69 aggregations, 83 transformers (was 43 / 71).
   Peer-group, spatial, and φ-bridge features are planner passes, not registry
   primitives.
+- Type checking tightened to basedpyright **strict** (`pyrightconfig.json`). The
+  `reportUnknown*` rules stay off at the untyped third-party boundaries
+  (`records`, `psycopg`, `pandas`); tightening those is tracked as future work.
+- Logging for agent/operator debuggability: planner `_debug` payloads now carry
+  synthesized feature **names** (not just counts); `sql.render()` logs CTE count
+  and query length; the executor wraps database failures in a `RuntimeError` that
+  logs the full rendered SQL so a failing CTE can be traced back to its builder.
+- `_haversine_m` → `haversine_m` (now public; shared by the planner's spatial
+  pass).

@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 470">
+  <defs>
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="glowSubtle" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="gradBluePurple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#58a6ff"/>
+      <stop offset="100%" stop-color="#bc8cff"/>
+    </linearGradient>
+    <linearGradient id="gradGreenCyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3fb950"/>
+      <stop offset="100%" stop-color="#79c0ff"/>
+    </linearGradient>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#bc8cff"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#3fb950"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto" markerUnits="strokeWidth">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#d29922"/>
+    </marker>
+  </defs>
+
+  <style>
+    /* Static visibility first — headless renderers (rsvg-convert) never run the
+       animation, so opacity must not depend on it. The fade is decoration only. */
+    .fade1, .fade2, .fade3, .fade4, .fade5, .fade6 { opacity: 1; }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .fade1 { animation: fadeIn 0.6s ease-out 0.05s 1 normal none; }
+    .fade2 { animation: fadeIn 0.6s ease-out 0.20s 1 normal none; }
+    .fade3 { animation: fadeIn 0.6s ease-out 0.35s 1 normal none; }
+    .fade4 { animation: fadeIn 0.6s ease-out 0.50s 1 normal none; }
+    .fade5 { animation: fadeIn 0.6s ease-out 0.65s 1 normal none; }
+    .fade6 { animation: fadeIn 0.6s ease-out 0.80s 1 normal none; }
+    text { font-family: system-ui, -apple-system, sans-serif; }
+    .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+  </style>
+
+  <!-- Background -->
+  <rect width="1080" height="470" fill="#0d1117" rx="0"/>
+
+  <!-- Header -->
+  <g class="fade1">
+    <text x="40" y="44" fill="#8b949e" font-size="14" font-weight="600" letter-spacing="1.5">FEATURIZER &#8212; POSTGRESQL DEEP FEATURE SYNTHESIS PIPELINE</text>
+  </g>
+
+  <!-- ===== Connections (drawn behind nodes) ===== -->
+  <g filter="url(#glowSubtle)">
+    <line class="fade2" x1="196" y1="162" x2="226" y2="162" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrowBlue)"/>
+    <line class="fade2" x1="396" y1="162" x2="426" y2="162" stroke="#79c0ff" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <line class="fade3" x1="616" y1="162" x2="646" y2="162" stroke="#bc8cff" stroke-width="2" marker-end="url(#arrowPurple)"/>
+    <line class="fade4" x1="836" y1="162" x2="866" y2="162" stroke="#bc8cff" stroke-width="2" marker-end="url(#arrowGreen)"/>
+    <!-- phi-bridge feeds up into the Planner -->
+    <line class="fade5" x1="522" y1="288" x2="522" y2="208" stroke="#d29922" stroke-width="2" marker-end="url(#arrowAmber)"/>
+    <!-- Executor emits the feature matrix -->
+    <line class="fade6" x1="960" y1="206" x2="960" y2="288" stroke="#3fb950" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  </g>
+
+  <!-- ===== Stage 1: config.yaml ===== -->
+  <g class="fade1" filter="url(#dropShadow)">
+    <rect x="30" y="120" width="166" height="84" rx="12" fill="#0d1117" stroke="#58a6ff" stroke-width="2"/>
+    <text x="113" y="150" fill="#58a6ff" font-size="15" font-weight="600" text-anchor="middle">config.yaml</text>
+    <text x="113" y="170" fill="#8b949e" font-size="10.5" text-anchor="middle">entities &#183; relationships</text>
+    <text x="113" y="186" fill="#8b949e" font-size="10.5" text-anchor="middle">intervals &#183; target</text>
+  </g>
+
+  <!-- ===== Stage 2: Validator ===== -->
+  <g class="fade2" filter="url(#dropShadow)">
+    <rect x="230" y="120" width="166" height="84" rx="12" fill="#0d1117" stroke="#79c0ff" stroke-width="2"/>
+    <text x="313" y="150" fill="#79c0ff" font-size="15" font-weight="600" text-anchor="middle">Validator</text>
+    <text x="313" y="169" class="mono" fill="#8b949e" font-size="10.5" text-anchor="middle">validation.py</text>
+    <text x="313" y="186" fill="#8b949e" font-size="10.5" text-anchor="middle">structure &#183; semantics</text>
+  </g>
+
+  <!-- ===== Stage 3: Planner (core) ===== -->
+  <g class="fade3" filter="url(#dropShadow)">
+    <rect x="430" y="120" width="186" height="84" rx="12" fill="#0d1117" stroke="url(#gradBluePurple)" stroke-width="2.5"/>
+    <text x="523" y="150" fill="#bc8cff" font-size="15" font-weight="700" text-anchor="middle">Planner</text>
+    <text x="523" y="169" class="mono" fill="#8b949e" font-size="10.5" text-anchor="middle">planner.py</text>
+    <text x="523" y="186" fill="#8b949e" font-size="10.5" text-anchor="middle">DFS traversal &#8594; CTEs</text>
+  </g>
+
+  <!-- ===== Stage 4: SQL Renderer ===== -->
+  <g class="fade4" filter="url(#dropShadow)">
+    <rect x="650" y="120" width="186" height="84" rx="12" fill="#0d1117" stroke="#bc8cff" stroke-width="2"/>
+    <text x="743" y="150" fill="#bc8cff" font-size="15" font-weight="600" text-anchor="middle">SQL Renderer</text>
+    <text x="743" y="169" class="mono" fill="#8b949e" font-size="10.5" text-anchor="middle">sql.py</text>
+    <text x="743" y="186" fill="#8b949e" font-size="10.5" text-anchor="middle">LATERAL over as_of_dates</text>
+  </g>
+
+  <!-- ===== Stage 5: Executor ===== -->
+  <g class="fade5" filter="url(#dropShadow)">
+    <rect x="870" y="120" width="180" height="84" rx="12" fill="#0d1117" stroke="#3fb950" stroke-width="2"/>
+    <text x="960" y="150" fill="#3fb950" font-size="15" font-weight="600" text-anchor="middle">Executor</text>
+    <text x="960" y="169" class="mono" fill="#8b949e" font-size="10.5" text-anchor="middle">executor.py</text>
+    <text x="960" y="186" fill="#8b949e" font-size="10.5" text-anchor="middle">runs query on Postgres</text>
+  </g>
+
+  <!-- ===== Side input: phi-bridge precompute ===== -->
+  <g class="fade5" filter="url(#dropShadow)">
+    <rect x="430" y="290" width="186" height="74" rx="12" fill="#0d1117" stroke="#d29922" stroke-width="2"/>
+    <text x="523" y="318" fill="#d29922" font-size="14" font-weight="600" text-anchor="middle">&#966;-bridge precompute</text>
+    <text x="523" y="337" class="mono" fill="#8b949e" font-size="10.5" text-anchor="middle">featurizer/bridge/</text>
+    <text x="523" y="353" fill="#8b949e" font-size="10.5" text-anchor="middle">Markov &#183; TF-IDF &#183; graph &#183; embed</text>
+  </g>
+  <g class="fade6">
+    <text x="30" y="412" fill="#8b949e" font-size="11" opacity="0.85">&#966;-bridge materializes a per-row column &#8594; declared as a Variable &#8594; aggregated by the SQL spine</text>
+  </g>
+
+  <!-- ===== Output: feature matrix ===== -->
+  <g class="fade6" filter="url(#dropShadow)">
+    <rect x="870" y="290" width="180" height="74" rx="12" fill="#0d1117" stroke="url(#gradGreenCyan)" stroke-width="2.5"/>
+    <text x="960" y="318" fill="#3fb950" font-size="14" font-weight="700" text-anchor="middle">feature matrix</text>
+    <text x="960" y="337" fill="#8b949e" font-size="10.5" text-anchor="middle">pandas DataFrame</text>
+    <text x="960" y="353" fill="#8b949e" font-size="10.5" text-anchor="middle">as_of_date &#215; entity</text>
+  </g>
+
+  <!-- Footer note -->
+  <g class="fade6">
+    <text x="540" y="438" fill="#8b949e" font-size="11" opacity="0.6">point-in-time correct: every feature is bounded by &#8804; as_of_date (no label leakage)</text>
+  </g>
+</svg>

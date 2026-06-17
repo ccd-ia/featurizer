@@ -1539,7 +1539,7 @@ cross_type_latency = CrossTypeLatency()
 # --- Spatial substrate (plain-SQL haversine; rides the backward traversal) ---
 
 
-def _haversine_m(lat1, lon1, lat2, lon2):
+def haversine_m(lat1, lon1, lat2, lon2):
     """Great-circle distance in metres (R = 6371000) between two lat/lon pairs."""
     return (
         f"2 * 6371000 * asin(sqrt("
@@ -1590,7 +1590,7 @@ class DistanceTravelled(SpatialAggregator):
         causal = self._causal_filter(feature, interval)
         sx = self._spatial(feature)
         ts = feature.name
-        step = _haversine_m("plat", "plon", "lat", "lon")
+        step = haversine_m("plat", "plon", "lat", "lon")
         return (
             f"(SELECT SUM({step}) FROM ("
             f"SELECT sub.{sx.lat} AS lat, sub.{sx.lon} AS lon, "
@@ -1612,7 +1612,7 @@ class RadiusOfGyration(SpatialAggregator):
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         sx = self._spatial(feature)
-        dist = _haversine_m("clat", "clon", "lat", "lon")
+        dist = haversine_m("clat", "clon", "lat", "lon")
         return (
             f"(SELECT sqrt(AVG(power({dist}, 2))) FROM ("
             f"SELECT sub.{sx.lat} AS lat, sub.{sx.lon} AS lon, "

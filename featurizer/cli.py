@@ -1168,8 +1168,10 @@ TRANSFORMATION_DOCS: Dict[str, Dict[str, Any]] = {
 
 def list_primitives_command(args: argparse.Namespace) -> int:
     """List available primitives."""
-    # Ensure primitives are loaded
-    from . import primitives  # noqa: F401
+    # Import for side effects: populates the aggregation/transformer registries.
+    from . import primitives
+
+    _ = primitives  # referenced so the import is not flagged as unused
 
     show_all = args.type == "all"
     show_agg = show_all or args.type == "agg"

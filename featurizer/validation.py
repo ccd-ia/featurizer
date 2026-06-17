@@ -849,9 +849,14 @@ class ConfigValidator:
 
     @staticmethod
     def _detect_cycles(
-        relationships: List[Dict[str, Any]], entity_aliases: Set[str]
+        relationships: List[Any], entity_aliases: Set[str]
     ) -> List[List[str]]:
-        """Detect circular relationships using DFS."""
+        """Detect circular relationships using DFS.
+
+        ``relationships`` arrives straight from parsed config, so individual
+        entries are not guaranteed to be dicts; the ``isinstance`` guard below
+        is a real runtime check, hence the deliberately loose ``List[Any]``.
+        """
         # Build adjacency list
         graph: Dict[str, List[str]] = {alias: [] for alias in entity_aliases}
 

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from loguru import logger
+
 from .planner import PlannerResult
 
 
@@ -21,7 +23,7 @@ class SQLRenderer:
         """
         ctes = ",".join(plan.ctes)
         target_alias = plan.target.alias
-        return f"""
+        query = f"""
         select aod.as_of_date, t.*
         from as_of_dates as aod
         cross join lateral (
@@ -35,3 +37,10 @@ class SQLRenderer:
 
         order by aod.as_of_date
         """
+        logger.debug(
+            "Rendered SQL for target '{}': {} CTEs, {} chars",
+            target_alias,
+            len(plan.ctes),
+            len(query),
+        )
+        return query

@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional
 
 import pandas as pd
 import records  # type: ignore[import-untyped]
+from loguru import logger
 
 
 class QueryExecutor:
@@ -31,8 +32,25 @@ class QueryExecutor:
 
         Returns:
             DataFrame indexed by ['as_of_date', target_id]
+
+        Raises:
+            RuntimeError: If the database rejects the rendered query. The full
+                SQL is logged at error level so the failing CTE name can be
+                traced back to the planner builder that emitted it.
         """
         db = self._database_factory()
-        rows = db.query(query)
-        df = rows.export("df")
+        try:
+            rows = db.query(query)
+            df = rows.export("df")
+        except Exception as exc:
+            logger.error(
+                "Featurizer query execution failed: {}\n--- rendered SQL ---\n{}",
+                exc,
+                query,
+            )
+            raise RuntimeError(
+                f"Featurizer query execution failed ({exc}). The rendered SQL is "
+                "logged above; look up the CTE named in the database error and "
+                "trace it back to the planner builder that emitted it."
+            ) from exc
         return df.set_index(["as_of_date", target_id], inplace=False)

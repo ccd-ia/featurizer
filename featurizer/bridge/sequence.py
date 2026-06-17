@@ -50,9 +50,9 @@ class MarkovSurprisalBridge(BridgeComputer):
         self, rows: List[Dict[str, Any]], *, fit_rows: List[Dict[str, Any]]
     ) -> Dict[Any, float]:
         # Fit transition and unigram counts on the pre-t₀ sequences.
-        transitions: Dict[Any, Counter] = defaultdict(Counter)
-        unigram: Counter = Counter()
-        vocab: set = set()
+        transitions: Dict[Any, Counter[Any]] = defaultdict(Counter)
+        unigram: Counter[Any] = Counter()
+        vocab: set[Any] = set()
         for seq in self._sequences(fit_rows).values():
             states = [r[self.state_col] for r in seq]
             for state in states:

@@ -12,8 +12,22 @@ from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
 from icecream import ic
 from loguru import logger
 
-from .primitives import Entity, ERGraph, Feature, Relationship, SpatialIx, pg_identifier
-from .primitives.aggregations import _haversine_m
+from .primitives import (
+    EdgeSpec,
+    Entity,
+    ERGraph,
+    Feature,
+    PeerGroupSpec,
+    Relationship,
+    SpatialIx,
+    SpatialRelationshipSpec,
+    pg_identifier,
+)
+from .primitives.aggregations import haversine_m
+
+# Callback the graph-family CTE builders use to register a CTE + its join and
+# the feature names it produces (see ``_build_graph_cte.attach``).
+AttachFn = Callable[[str, str, "list[str]"], None]
 
 
 @dataclass(frozen=True)
@@ -34,8 +48,8 @@ class FeaturePlanner:
         target_alias: str,
         max_depth: int,
         intervals: Sequence[str],
-        aggregations: Mapping[str, Callable],
-        transformations: Mapping[str, Callable],
+        aggregations: Mapping[str, Callable[..., Feature | None]],
+        transformations: Mapping[str, Callable[..., Feature | None]],
         debug: bool = False,
     ) -> None:
         self.graph = graph
@@ -197,7 +211,7 @@ class FeaturePlanner:
         for edge in self.graph.get_edges_for_node(node):
             self._build_graph_cte(node, edge)
 
-    def _build_graph_cte(self, node: Entity, edge) -> None:
+    def _build_graph_cte(self, node: Entity, edge: EdgeSpec) -> None:
         """Emit one CTE per requested graph family for ``node`` over ``edge``.
 
         Families are requested via ``edge: {features: [...]}`` (default
@@ -269,18 +283,18 @@ class FeaturePlanner:
         )
 
     @staticmethod
-    def _graph_feature_name(metric: str, node: Entity, edge) -> str:
+    def _graph_feature_name(metric: str, node: Entity, edge: EdgeSpec) -> str:
         return pg_identifier(f"{metric}({node.alias}.{edge.alias})")
 
     @staticmethod
-    def _graph_causal(edge, *, prefix: str, alias: str = "") -> str:
+    def _graph_causal(edge: EdgeSpec, *, prefix: str, alias: str = "") -> str:
         """Causal bound on the edge timestamp; empty for static graphs."""
         if not edge.timestamp:
             return ""
         col = f"{alias}.{edge.timestamp}" if alias else edge.timestamp
         return f" {prefix} {col} <= aod.as_of_date"
 
-    def _graph_degree_cte(self, node: Entity, edge, attach) -> None:
+    def _graph_degree_cte(self, node: Entity, edge: EdgeSpec, attach: AttachFn) -> None:
         causal = self._graph_causal(edge, prefix="where")
         weight_expr = edge.weight if edge.weight else "null"
         union = (
@@ -329,7 +343,9 @@ class FeaturePlanner:
         """
         attach(cte_name, cte_query, [name for name, _ in columns])
 
-    def _graph_reciprocity_cte(self, node: Entity, edge, attach) -> None:
+    def _graph_reciprocity_cte(
+        self, node: Entity, edge: EdgeSpec, attach: AttachFn
+    ) -> None:
         """Fraction of a node's outgoing edges that are reciprocated.
 
         Reads the *directed* edge table: an edge s->t is reciprocated when
@@ -356,7 +372,7 @@ class FeaturePlanner:
         """
         attach(cte_name, cte_query, [name])
 
-    def _graph_neighbours_cte(self, node: Entity, edge) -> str:
+    def _graph_neighbours_cte(self, node: Entity, edge: EdgeSpec) -> str:
         """Emit (once) the shared undirected, deduplicated neighbour CTE."""
         cte_name = f"{edge.alias}_nbrs_for_{node.alias}"
         causal = self._graph_causal(edge, prefix="where")
@@ -375,7 +391,9 @@ class FeaturePlanner:
         self._ctes.append(cte_query)
         return cte_name
 
-    def _graph_k_hop_cte(self, node: Entity, edge, nbrs: str, attach) -> None:
+    def _graph_k_hop_cte(
+        self, node: Entity, edge: EdgeSpec, nbrs: str, attach: AttachFn
+    ) -> None:
         """Count of distinct nodes at exactly 2 hops (not ego, not a neighbour)."""
         name = self._graph_feature_name("K_HOP_2_COUNT", node, edge)
         cte_name = f"{edge.alias}_k2_for_{node.alias}"
@@ -396,7 +414,9 @@ class FeaturePlanner:
         """
         attach(cte_name, cte_query, [name])
 
-    def _graph_clustering_cte(self, node: Entity, edge, nbrs: str, attach) -> None:
+    def _graph_clustering_cte(
+        self, node: Entity, edge: EdgeSpec, nbrs: str, attach: AttachFn
+    ) -> None:
         """Local clustering coefficient: connected neighbour pairs / possible pairs."""
         name = self._graph_feature_name("CLUSTERING_COEFF", node, edge)
         cte_name = f"{edge.alias}_clust_for_{node.alias}"
@@ -423,7 +443,12 @@ class FeaturePlanner:
         attach(cte_name, cte_query, [name])
 
     def _graph_linkpred_cte(
-        self, node: Entity, edge, nbrs: str, families: list[str], attach
+        self,
+        node: Entity,
+        edge: EdgeSpec,
+        nbrs: str,
+        families: list[str],
+        attach: AttachFn,
     ) -> None:
         """Ego-level link-prediction scores, averaged over the ego's neighbours.
 
@@ -574,7 +599,7 @@ class FeaturePlanner:
     def _build_peer_group_cte(
         self,
         entity: Entity,
-        spec,
+        spec: PeerGroupSpec,
         child_count_ctes: List[tuple[Relationship, str]],
     ) -> None:
         assert entity.id is not None  # guarded by _build_peer_group_features
@@ -716,10 +741,12 @@ class FeaturePlanner:
         return None
 
     @staticmethod
-    def _spatial_feature_name(metric: str, spec) -> str:
+    def _spatial_feature_name(metric: str, spec: SpatialRelationshipSpec) -> str:
         return pg_identifier(f"{metric}({spec.name})")
 
-    def _build_spatial_relationship_cte(self, left: Entity, spec) -> None:
+    def _build_spatial_relationship_cte(
+        self, left: Entity, spec: SpatialRelationshipSpec
+    ) -> None:
         right = self.graph.entities.get(spec.right)
         if right is None:
             logger.warning(
@@ -746,7 +773,7 @@ class FeaturePlanner:
 
         llat, llon = left_coords
         rlat, rlon = right_coords
-        dist = _haversine_m(f"e.{llat}", f"e.{llon}", f"r.{rlat}", f"r.{rlon}")
+        dist = haversine_m(f"e.{llat}", f"e.{llon}", f"r.{rlat}", f"r.{rlon}")
         bandwidth = spec.bandwidth_m
         # Neighbour scan bounded as-of when the right table is time-varying.
         right_causal = (
@@ -846,6 +873,7 @@ class FeaturePlanner:
             target=target.alias,
             source=source.alias,
             count=len(sorted_aggs),
+            names=[f.name for f in sorted_aggs],
         )
 
         self._features[source.alias].update(aggregation_set)
@@ -863,6 +891,7 @@ class FeaturePlanner:
             target=target.alias,
             source=source.alias,
             count=len(directs),
+            names=[f.name for f in directs],
         )
 
         self._features[target.alias].update(directs)
@@ -889,11 +918,14 @@ class FeaturePlanner:
             if isinstance(candidate, Feature):
                 flattened.add(candidate)
             elif isinstance(candidate, (list, tuple, set)):
-                for item in candidate:
-                    if isinstance(item, Feature):
-                        flattened.add(item)
+                flattened.update(candidate)
 
-        self._debug("transformations", target=target.alias, count=len(flattened))
+        self._debug(
+            "transformations",
+            target=target.alias,
+            count=len(flattened),
+            names=sorted(f.name for f in flattened),
+        )
         self._features[target.alias].update(flattened)
         sorted_flattened = self._sort_features(flattened)
         self._build_transform_cte(target, sorted_flattened)
@@ -1102,10 +1134,10 @@ class FeaturePlanner:
     # Debug helpers
     # ------------------------------------------------------------------ #
 
-    def _debug(self, message: str, **context) -> None:
+    def _debug(self, message: str, **context: object) -> None:
         if not self._debug_enabled:
             return
-        payload = {"message": message}
+        payload: dict[str, object] = {"message": message}
         if context:
             payload.update(context)
         ic(payload)

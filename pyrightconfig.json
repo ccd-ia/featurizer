@@ -9,8 +9,11 @@
   ],
   "pythonVersion": "3.10",
   "pythonPlatform": "Linux",
-  "typeCheckingMode": "standard",
+  "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false,
+  // Kept off under strict: the untyped third-party boundaries (records,
+  // psycopg, pandas) otherwise produce ~360 reportUnknown* diagnostics with no
+  // local fix. Tightening these is tracked as future work (see CHANGELOG).
   "reportUnknownMemberType": false,
   "reportUnknownArgumentType": false,
   "reportUnknownVariableType": false,

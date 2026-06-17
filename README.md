@@ -22,12 +22,19 @@
 
 **Automated feature engineering for temporal data using PostgreSQL.**
 
+[![CI](https://github.com/nanounanue/featurizer/actions/workflows/test.yml/badge.svg)](https://github.com/nanounanue/featurizer/actions/workflows/test.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://www.python.org/downloads/)
+[![Type checked: basedpyright strict](https://img.shields.io/badge/types-basedpyright%20strict-2a6db0.svg)](pyrightconfig.json)
+
 Featurizer implements [Deep Feature Synthesis](https://dai.lids.mit.edu/projects/deep-feature-synthesis/) (DFS) for relational
 databases with first-class support for temporal semantics. Given a
 schema of entities and relationships, it automatically synthesizes
 hundreds of meaningful features by traversing the entity graph,
 applying aggregations across relationships, and generating
 time-windowed statistics.
+
+<p align="center"><img src="docs/images/architecture.svg" width="820" alt="Featurizer pipeline: config.yaml → Validator → Planner → SQL Renderer → Executor, with the φ-bridge precompute feeding the Planner and a point-in-time-correct feature matrix as output"/></p>
 
 
 <a id="org1e0062f"></a>

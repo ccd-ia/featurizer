@@ -5,6 +5,31 @@ description = "DFS implementation for PostgreSQL temporal datasources"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [{ name = "Adolfo De Unánue", email = "adolfo+git@unanue.mx" }]
+keywords = [
+  "feature-engineering",
+  "deep-feature-synthesis",
+  "dfs",
+  "postgresql",
+  "sql",
+  "machine-learning",
+  "temporal",
+  "feature-store",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
+]
 dependencies = [
   "icecream",
   "loguru",
@@ -13,6 +38,11 @@ dependencies = [
   "pyyaml",
   "records",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nanounanue/featurizer"
+Repository = "https://github.com/nanounanue/featurizer"
+Issues = "https://github.com/nanounanue/featurizer/issues"
 
 [project.optional-dependencies]
 viz = [
@@ -33,8 +63,8 @@ bridge = [
   "pgvector>=0.2",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "basedpyright>=1.31.7",
     "jupyter-console>=6.6.3",
     "pytest>=8.2",
