@@ -1,5 +1,10 @@
 """Tests for core abstractions: Entity, Relationship, Feature, ERGraph."""
 
+import hashlib
+import os
+import subprocess
+import sys
+
 from featurizer.primitives.abstractions import (
     Entity,
     ERGraph,
@@ -299,12 +304,41 @@ class TestFeature:
         assert feat.short_name == "short"
 
     def test_feature_short_name_over_limit(self):
-        """short_name returns hash if over 63 chars."""
+        """short_name returns a deterministic truncated string over the limit."""
         long_name = "a" * 64
         feat = Feature(name=long_name, type="numeric")
 
-        assert feat.short_name != long_name
-        assert isinstance(feat.short_name, int)
+        short = feat.short_name
+        assert isinstance(short, str)
+        assert short != long_name
+        # Truncated to <= 63 bytes with the stable raw[:54]+"~"+md5[:8] scheme.
+        assert len(short.encode()) <= 63
+        assert short == "a" * 54 + "~" + hashlib.md5(long_name.encode()).hexdigest()[:8]
+        # Deterministic: recomputing on a fresh instance yields the same value.
+        assert Feature(name=long_name, type="numeric").short_name == short
+
+    def test_feature_short_name_no_collisions_on_similar_long_names(self):
+        """Structurally-similar long names must map to distinct identifiers.
+
+        These nested ``AGG(entity.AGG(...|interval=...))`` shapes share long
+        common prefixes, so naive prefix truncation would collapse them. The
+        8-hex-char (32-bit) MD5 suffix keeps them distinct: over the expected
+        feature count (thousands) the birthday-collision probability is
+        ~n^2 / 2^33, i.e. << 1, so 32 bits is ample headroom.
+        """
+        prefix = "MEAN(orders.SUM(line_items.extended_quantity_per_shipment"
+        names = [
+            f"{prefix}|interval={iv})|window={w})"
+            for iv in ("P1W", "P1M", "P3M", "P6M", "P1Y", "P2Y")
+            for w in ("P7D", "P14D", "P30D", "P90D", "P180D")
+        ]
+        # Sanity: every name is genuinely over the byte limit (so all are hashed)
+        # and they share the same truncated 54-char prefix.
+        assert all(len(n.encode()) > 63 for n in names)
+        assert len({n[:54] for n in names}) == 1
+
+        short_names = [Feature(name=n, type="numeric").short_name for n in names]
+        assert len(set(short_names)) == len(names)
 
     def test_feature_equality_by_name(self):
         """Features are equal if names match."""
@@ -498,3 +532,43 @@ class TestERGraph:
         assert len(forward_rels) == 1
         rel = list(forward_rels)[0]
         assert rel.child is child
+
+
+def _short_name_in_subprocess(name: str, hashseed: str) -> str:
+    """Compute ``Feature(name=...).short_name`` in a fresh interpreter.
+
+    Runs with an explicit ``PYTHONHASHSEED`` so that, if ``short_name`` ever
+    regresses to Python's salted ``hash()``, the two invocations diverge.
+    """
+    code = (
+        "from featurizer.primitives.abstractions import Feature;"
+        "import sys;"
+        "print(Feature(name=sys.argv[1], type='numeric').short_name, end='')"
+    )
+    env = {**os.environ, "PYTHONHASHSEED": hashseed}
+    result = subprocess.run(
+        [sys.executable, "-c", code, name],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout
+
+
+def test_feature_short_name_is_deterministic_across_processes():
+    """short_name must be stable across interpreter runs / PYTHONHASHSEED.
+
+    Feature names become Parquet column names and persisted feature-importance
+    keys downstream (bug #5), so a per-process-random value would corrupt them.
+    We spawn two subprocesses with different hash seeds and assert the long-name
+    identifier is identical; a ``hash()``-based implementation would not be.
+    """
+    long_name = "VERY_LONG_AGGREGATE(orders.items.quantity|interval=P1Y)" * 2
+    assert len(long_name.encode()) > 63  # ensure the truncation path is exercised
+
+    out_a = _short_name_in_subprocess(long_name, "0")
+    out_b = _short_name_in_subprocess(long_name, "12345")
+
+    assert out_a == out_b
+    assert out_a == Feature(name=long_name, type="numeric").short_name

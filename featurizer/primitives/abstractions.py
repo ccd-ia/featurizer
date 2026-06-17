@@ -30,18 +30,31 @@ GRAPH_FEATURE_FAMILIES = (
 )
 
 
-def pg_identifier(raw: str) -> str:
-    """Quote a generated feature name as a PostgreSQL identifier.
+def _truncate_identifier(raw: str) -> str:
+    """Cap a name at PostgreSQL's 63-byte identifier limit, deterministically.
 
     PostgreSQL truncates identifiers to 63 bytes (NAMEDATALEN - 1); two long
     names sharing a 63-byte prefix would silently collide into one ambiguous
-    column, so long names are capped with a stable hash suffix (bug #8).
+    column, so long names are capped with a stable hash suffix (bug #8). The
+    suffix is the first 8 hex chars (32 bits) of the MD5 of the *full* name,
+    so the mapping is identical across processes and runs. With feature counts
+    in the thousands, the birthday-collision probability over a shared 54-char
+    prefix is negligible (~n^2 / 2^33). Returns the bare identifier (no quotes).
     """
     raw = raw.replace('"', "")
     if len(raw.encode()) > 63:
         digest = hashlib.md5(raw.encode()).hexdigest()[:8]
         raw = f"{raw[:54]}~{digest}"
-    return f'"{raw}"'
+    return raw
+
+
+def pg_identifier(raw: str) -> str:
+    """Quote a generated feature name as a PostgreSQL identifier.
+
+    Long names are capped via :func:`_truncate_identifier` before quoting so
+    they survive PostgreSQL's 63-byte cap without silently colliding (bug #8).
+    """
+    return f'"{_truncate_identifier(raw)}"'
 
 
 class ERGraph:
@@ -357,11 +370,17 @@ class Feature:
         return f"""{self.definition} as "{str.replace(self.name, '"', "")}" """
 
     @property
-    def short_name(self) -> str | int:
-        if len(self.name) <= 63:
-            return self.name
-        else:
-            return hash(self)
+    def short_name(self) -> str:
+        """A deterministic, PostgreSQL-safe bare identifier for this feature.
+
+        Feature names become Parquet column names and persisted
+        feature-importance keys downstream, so this must be stable across runs
+        and processes. Long names are truncated with a stable hash suffix (the
+        same scheme as :func:`pg_identifier`, minus the quoting); short names
+        pass through unchanged. Never use ``hash()`` here -- Python string
+        hashing is salted per process via ``PYTHONHASHSEED`` (bug #5).
+        """
+        return _truncate_identifier(self.name)
 
 
 class Variable(Feature):
