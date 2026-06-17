@@ -14,7 +14,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --extra parquet
       - name: pytest (fast tier, no database)
         run: uv run pytest -q -m "not integration"
       - name: basedpyright
@@ -43,7 +43,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - run: uv sync
+      - run: uv sync --extra parquet
       # The realistic-dataset tier ("integration and slow") needs `just seed`,
       # which downloads external datasets; it runs locally, not in CI. CI covers
       # the TEMP-table integration tests that execute generated SQL on a real
