@@ -12,6 +12,12 @@ from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set
 from icecream import ic
 from loguru import logger
 
+from .boundary import (
+    DEFAULT_BOUNDARY,
+    AsOfBoundary,
+    causal_predicate,
+    use_boundary,
+)
 from .primitives import (
     EdgeSpec,
     Entity,
@@ -51,6 +57,7 @@ class FeaturePlanner:
         intervals: Sequence[str],
         aggregations: Mapping[str, Callable[..., Feature | None]],
         transformations: Mapping[str, Callable[..., Feature | None]],
+        boundary: AsOfBoundary = DEFAULT_BOUNDARY,
         debug: bool = False,
     ) -> None:
         self.graph = graph
@@ -59,6 +66,7 @@ class FeaturePlanner:
         self.intervals = intervals
         self.aggregations = aggregations
         self.transformations = transformations
+        self.boundary: AsOfBoundary = boundary
         self._debug_enabled = debug
 
         self._target: Entity | None = None
@@ -72,7 +80,13 @@ class FeaturePlanner:
         self._synth_columns: Dict[str, Set[str]] = {}
 
     def plan(self) -> PlannerResult:
-        """Drive the DFS traversal and return the synthesized artifacts."""
+        """Drive the DFS traversal and return the synthesized artifacts.
+
+        The whole traversal runs under :func:`~featurizer.boundary.use_boundary`
+        so every builder *and* the shared aggregator singletons read the same
+        as-of operator (see ``featurizer/boundary.py`` for why the mode is held
+        in a context variable rather than passed through each primitive call).
+        """
         try:
             self._target = self.graph.entities[self.target_alias]
         except KeyError as exc:
@@ -90,7 +104,8 @@ class FeaturePlanner:
         self._synth_columns = {}
 
         logger.debug("Starting feature build for target {}", self._target.alias)
-        self._build_features(self._target)
+        with use_boundary(self.boundary):
+            self._build_features(self._target)
 
         return PlannerResult(
             target=self._target,
@@ -293,7 +308,7 @@ class FeaturePlanner:
         if not edge.timestamp:
             return ""
         col = f"{alias}.{edge.timestamp}" if alias else edge.timestamp
-        return f" {prefix} {col} <= aod.as_of_date"
+        return causal_predicate(col, prefix=prefix)
 
     def _graph_degree_cte(self, node: Entity, edge: EdgeSpec, attach: AttachFn) -> None:
         causal = self._graph_causal(edge, prefix="where")
@@ -581,7 +596,9 @@ class FeaturePlanner:
             child = rel.child
             child_temporal = child.temporal_ix.name if child.temporal_ix else None
             causal = (
-                f"where c.{child_temporal} <= aod.as_of_date" if child_temporal else ""
+                causal_predicate(f"c.{child_temporal}", prefix="where").strip()
+                if child_temporal
+                else ""
             )
             cte_name = f"peer_evt_{child.alias}_for_{entity.alias}"
             cte_query = f"""
@@ -612,11 +629,15 @@ class FeaturePlanner:
         # 1 when the ego itself is a peer (a member knowable as-of the cutoff),
         # so leave-one-out subtracts the ego only when it belongs to the set.
         in_grp = (
-            f"(case when e.{temporal} <= aod.as_of_date then 1 else 0 end)"
+            f"(case when {causal_predicate(f'e.{temporal}')} then 1 else 0 end)"
             if temporal
             else "1"
         )
-        membership = f"where e2.{temporal} <= aod.as_of_date" if temporal else ""
+        membership = (
+            causal_predicate(f"e2.{temporal}", prefix="where").strip()
+            if temporal
+            else ""
+        )
         n_excl = f"(g.n - {in_grp})"
 
         grp_cols: List[str] = [f"e2.{by} as grp", "count(*) as n"]
@@ -644,7 +665,9 @@ class FeaturePlanner:
                 f"/ nullif({n_excl} - 1, 0))"
             )
             std_excl = f"sqrt(greatest({var_excl}, 0))"
-            peer_causal = f" and p.{temporal} <= aod.as_of_date" if temporal else ""
+            peer_causal = (
+                causal_predicate(f"p.{temporal}", prefix="and") if temporal else ""
+            )
             pctile = (
                 f"((select count(*) from {table} p where p.{by} = e.{by} "
                 f"and p.{id_col} <> e.{id_col} and p.{measure} < e.{measure}"
@@ -778,7 +801,7 @@ class FeaturePlanner:
         bandwidth = spec.bandwidth_m
         # Neighbour scan bounded as-of when the right table is time-varying.
         right_causal = (
-            f" and r.{right.temporal_ix.name} <= aod.as_of_date"
+            causal_predicate(f"r.{right.temporal_ix.name}", prefix="and")
             if right.temporal_ix
             else ""
         )
@@ -951,8 +974,12 @@ class FeaturePlanner:
         rendered_features = [
             feature.query for feature in features if feature.type not in ["key"]
         ]
+        # Canonical orientation: column on the left, aod.as_of_date on the right
+        # (the same spelling every other builder uses), so the invariant reads
+        # identically everywhere. Previously written reversed as
+        # ``aod.as_of_date >= temporal_ix`` (issue #1).
         where_clause = (
-            f"where aod.as_of_date >= {source.temporal_ix.name}"
+            causal_predicate(source.temporal_ix.name, prefix="where")
             if source.temporal_ix
             else ""
         )

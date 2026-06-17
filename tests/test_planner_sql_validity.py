@@ -348,3 +348,49 @@ def test_spatial_emits_expected_families():
         "KDE_INTENSITY(nearby)",
     ):
         assert family in sql, f"missing spatial feature {family!r}"
+
+
+# --- as-of boundary mode (issue #1) ---------------------------------------- #
+
+
+def test_as_of_boundary_defaults_to_inclusive_operator():
+    """Without the key the scalar cut stays ``<=`` (unchanged behaviour)."""
+    flat = " ".join(_render(_parent_child_config(max_depth=2)).split())
+    assert "ordered_at <= aod.as_of_date" in flat
+    assert "ordered_at < aod.as_of_date" not in flat
+
+
+def test_as_of_boundary_exclusive_flips_scalar_operator():
+    """``exclusive`` rewrites the aggregation CTE cut to ``<``."""
+    config = _parent_child_config(max_depth=2)
+    config["as_of_boundary"] = "exclusive"
+    flat = " ".join(_render(config).split())
+    assert "ordered_at < aod.as_of_date" in flat
+    assert "ordered_at <= aod.as_of_date" not in flat
+
+
+def test_as_of_boundary_exclusive_flips_daterange_upper_bound():
+    """``exclusive`` switches interval windows from closed ``'[]'`` to ``'[)'``."""
+    config = _parent_child_config(max_depth=2)
+    config["intervals"] = ["P1M"]
+
+    inclusive = _render(config)
+    assert "aod.as_of_date::date, '[]')" in inclusive
+    assert "aod.as_of_date::date, '[)')" not in inclusive
+
+    config["as_of_boundary"] = "exclusive"
+    exclusive = _render(config)
+    assert "aod.as_of_date::date, '[)')" in exclusive
+    assert "aod.as_of_date::date, '[]')" not in exclusive
+
+
+def test_as_of_boundary_exclusive_threads_through_peer_and_subquery_cuts():
+    """The exclusive operator reaches the peer-group and correlated-subquery
+    builders too — the whole program shares one boundary definition."""
+    config = _peer_config()
+    config["aggregations"] = ["count", "gap_mean"]  # gap_mean is a SubqueryAggregator
+    config["as_of_boundary"] = "exclusive"
+    flat = " ".join(_render(config).split())
+    # Peer membership cut (planner) and the subquery cut (aggregations) both flip.
+    assert "where e2.first_seen < aod.as_of_date" in flat
+    assert "<= aod.as_of_date" not in flat

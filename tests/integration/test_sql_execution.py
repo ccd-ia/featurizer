@@ -502,3 +502,71 @@ def test_graph_degree_features_with_causal_bound(pg_conn):
     assert degree("2023-12-31", 1, "DEGREE") == 4
     # Causal bound at 2023-04-01: the 2023-06-15 edge (3->1) is excluded.
     assert degree("2023-04-01", 1, "IN_DEGREE") == 1
+
+
+def _seed_boundary_orders(conn) -> None:
+    """One customer; one order dated exactly on the as_of_date, one before it."""
+    create_temp_table(conn, "customers", [("customer_id", "int")], [(1,)])
+    create_temp_table(
+        conn,
+        "orders",
+        [
+            ("order_id", "int"),
+            ("customer_id", "int"),
+            ("ordered_at", "date"),
+            ("amount", "numeric"),
+        ],
+        [
+            (1, 1, "2023-12-15", 10.0),  # strictly before the cutoff
+            (2, 1, "2024-01-01", 20.0),  # exactly on the as_of_date
+        ],
+    )
+    create_temp_table(conn, "as_of_dates", [("as_of_date", "date")], [("2024-01-01",)])
+
+
+def test_asof_boundary_inclusive_includes_on_cutoff_event(pg_conn):
+    """Default (inclusive, ``<=``) counts an event dated exactly on the cutoff."""
+    _seed_boundary_orders(pg_conn)
+    config = _customer_orders_config()  # no as_of_boundary key -> default inclusive
+    rows = run_featurizer(pg_conn, config)
+    row = rows[0]
+
+    # Both the 2023-12-15 and the on-cutoff 2024-01-01 order are knowable.
+    assert int(row["COUNT(orders.order_id)"]) == 2
+    assert float(row["SUM(orders.amount)"]) == 30.0
+
+
+def test_asof_boundary_exclusive_excludes_on_cutoff_event(pg_conn):
+    """Exclusive (``<``) drops an event dated exactly on the cutoff."""
+    _seed_boundary_orders(pg_conn)
+    config = _customer_orders_config()
+    config["as_of_boundary"] = "exclusive"
+    rows = run_featurizer(pg_conn, config)
+    row = rows[0]
+
+    # The on-cutoff 2024-01-01 order is no longer knowable; only 2023-12-15 is.
+    assert int(row["COUNT(orders.order_id)"]) == 1
+    assert float(row["SUM(orders.amount)"]) == 10.0
+
+
+def test_asof_boundary_interval_window_tracks_mode(pg_conn):
+    """The interval daterange upper bound follows the boundary mode too.
+
+    A P1M window anchored at 2024-01-01 includes the on-cutoff event under
+    ``inclusive`` (closed ``'[]'`` upper bound) but excludes it under
+    ``exclusive`` (half-open ``'[)'``).
+    """
+    _seed_boundary_orders(pg_conn)
+
+    inclusive = _customer_orders_config()
+    inclusive["intervals"] = ["P1M"]
+    incl_row = run_featurizer(pg_conn, inclusive)[0]
+    # Window [2023-12-01, 2024-01-01] sees both orders.
+    assert float(incl_row["SUM(orders.amount|interval=P1M)"]) == 30.0
+
+    exclusive = _customer_orders_config()
+    exclusive["intervals"] = ["P1M"]
+    exclusive["as_of_boundary"] = "exclusive"
+    excl_row = run_featurizer(pg_conn, exclusive)[0]
+    # Window [2023-12-01, 2024-01-01) drops the on-cutoff order.
+    assert float(excl_row["SUM(orders.amount|interval=P1M)"]) == 10.0

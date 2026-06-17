@@ -27,6 +27,7 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 (e.g., "sum of orders in the last 7 days").
 """
 
+from ..boundary import causal_predicate, daterange_window
 from .abstractions import Feature, SpatialIx, pg_identifier
 from .utils import register_aggregation
 
@@ -112,10 +113,8 @@ class Aggregator:
         if interval:
             # filter by clause
             event_date = feature.entity.temporal_ix.name
-            daterange = f" daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]') "
-            aggregate_expression.append(
-                f" filter (where {daterange} @>  {event_date}::date) "
-            )
+            window = daterange_window(interval, column=event_date)
+            aggregate_expression.append(f" filter (where {window}) ")
         return " ".join(aggregate_expression)
 
     def __call__(self, parent, child, feature, interval=None, *, relationship=None):
@@ -372,8 +371,7 @@ class OrderedSetAggregator(Aggregator):
             filters.append(f"{feature.name} = {feature.specials}")
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filters.append(f"{daterange} @> {event_date}::date")
+            filters.append(daterange_window(interval, column=event_date))
         if filters:
             aggregate_expression.append(f" filter (where {' and '.join(filters)})")
         return " ".join(aggregate_expression)
@@ -414,8 +412,7 @@ class IQR(Aggregator):
         p25 = f"percentile_cont(0.25) within group(order by {feature.name})"
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
             p75 += filt
             p25 += filt
         return f"({p75}) - ({p25})"
@@ -434,8 +431,7 @@ class CoefficientOfVariation(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return f"stddev({feature.name}){filt} / NULLIF(avg({feature.name}){filt}, 0)"
 
 
@@ -452,8 +448,7 @@ class Range(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return f"max({feature.name}){filt} - min({feature.name}){filt}"
 
 
@@ -477,8 +472,7 @@ class EventRate(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return (
             f"count(*){filt} / NULLIF(EXTRACT(EPOCH FROM "
             f"max({feature.name}){filt} - min({feature.name}){filt}), 0)"
@@ -505,8 +499,7 @@ class TimeSpan(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return (
             f"EXTRACT(EPOCH FROM max({feature.name}){filt} - min({feature.name}){filt})"
         )
@@ -538,8 +531,7 @@ class Recency(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return f"(aod.as_of_date::date - (max({feature.name}){filt})::date)"
 
 
@@ -563,8 +555,7 @@ class Tenure(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return f"(aod.as_of_date::date - (min({feature.name}){filt})::date)"
 
 
@@ -588,8 +579,7 @@ class InterEventHazard(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = f"daterange((aod.as_of_date - interval '{interval}')::date, aod.as_of_date::date, '[]')"
-            filt = f" filter (where {daterange} @> {event_date}::date)"
+            filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return (
             f"(count(*){filt})::float / "
             f"NULLIF((aod.as_of_date::date - (min({feature.name}){filt})::date), 0)"
@@ -653,12 +643,8 @@ class SubqueryAggregator(Aggregator):
             return ""
         col = f"{alias}.{tix.name}"
         if interval:
-            daterange = (
-                f"daterange((aod.as_of_date - interval '{interval}')::date, "
-                f"aod.as_of_date::date, '[]')"
-            )
-            return f" and {daterange} @> {col}::date"
-        return f" and {col} <= aod.as_of_date"
+            return f" and {daterange_window(interval, column=col)}"
+        return causal_predicate(col, prefix="and")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         raise NotImplementedError
@@ -1385,10 +1371,11 @@ class TwoWindowDriftAggregator(SubqueryAggregator):
     @staticmethod
     def _windows(feature, interval):
         ts = feature.entity.temporal_ix.name
-        recent = (
-            f"daterange((aod.as_of_date - interval '{interval}')::date, "
-            f"aod.as_of_date::date, '[]') @> sub.{ts}::date"
-        )
+        # The recent window's upper bound IS the as-of cut, so it follows the
+        # boundary mode. The baseline window's '[)' upper bound is structural —
+        # it tiles against the recent window's lower bound at t0-W and must stay
+        # half-open to avoid double-counting that day, independent of the mode.
+        recent = f"{daterange_window(interval, column=f'sub.{ts}')}"
         baseline = (
             f"daterange((aod.as_of_date - (2 * interval '{interval}'))::date, "
             f"(aod.as_of_date - interval '{interval}')::date, '[)') @> sub.{ts}::date"

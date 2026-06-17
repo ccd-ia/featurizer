@@ -10,6 +10,7 @@ import yaml
 from icecream import ic
 from loguru import logger
 
+from .boundary import DEFAULT_BOUNDARY, AsOfBoundary
 from .executor import QueryExecutor
 from .planner import FeaturePlanner, PlannerResult
 from .primitives import Entity, ERGraph, Feature
@@ -85,6 +86,12 @@ class Featurizer:
 
         self.max_depth: int = config["max_depth"]
         self.intervals: List[str] = config["intervals"]
+        # Point-in-time boundary mode: ``inclusive`` (default, ``<=``) keeps an
+        # event dated exactly on the as_of_date knowable; ``exclusive`` (``<``)
+        # treats it as not-yet-knowable. Validated in ConfigValidator.
+        self.as_of_boundary: AsOfBoundary = config.get(
+            "as_of_boundary", DEFAULT_BOUNDARY
+        )
 
         self.graph: ERGraph = ERGraph(
             config["entities"],
@@ -108,6 +115,7 @@ class Featurizer:
             intervals=self.intervals,
             aggregations=self.aggregations,
             transformations=self.transformations,
+            boundary=self.as_of_boundary,
             debug=self._debug_enabled,
         )
         self._plan: PlannerResult = planner.plan()
