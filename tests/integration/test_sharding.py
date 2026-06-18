@@ -546,3 +546,148 @@ def test_to_arrow_runs_materialization_preamble(pg_conn):
         arow = by_id[sid]
         for col in set(single[0]) - {"as_of_date", "store_id"}:
             assert arow[col] == srow[col], f"{col} differs for store {sid}"
+
+
+def _null_eq(a, b) -> bool:
+    """Value equality treating NULL/None/NaN as equal (pandas may coerce None to
+    NaN on numeric columns; the single-query rows carry Decimal/None)."""
+    import math
+
+    a_null = a is None or (isinstance(a, float) and math.isnan(a))
+    b_null = b is None or (isinstance(b, float) and math.isnan(b))
+    if a_null or b_null:
+        return a_null and b_null
+    return a == b
+
+
+def test_to_dataframe_materialized_equals_single_query(pg_conn):
+    """``to_dataframe(connection=…)`` runs the preamble + group queries on the one
+    connection and re-joins them into the indexed frame, value-equal to the single
+    query."""
+    _seed_depth3(pg_conn)
+    single = _run(pg_conn, _featurizer(_depth3_config()).query)
+    single_by_id = {r["store_id"]: r for r in single}
+    feature_cols = set(single[0]) - {"as_of_date", "store_id"}
+
+    f = _materialized_featurizer(_depth3_config())
+    df = f.to_dataframe(connection=pg_conn)
+
+    assert list(df.index.names) == ["as_of_date", "store_id"]
+    assert set(df.columns) == feature_cols
+    assert len(df) == len(single)
+    for (_aod, sid), row in df.iterrows():
+        srow = single_by_id[sid]
+        for col in feature_cols:
+            assert _null_eq(row[col], srow[col]), f"{col} differs for store {sid}"
+
+
+# ------------------------------------------------------------------ #
+# Branching chain: orders has two grandchildren (items + payments), so its synth
+# joins two as-of child aggs — exercises multiple as-of-correlated joins.
+# ------------------------------------------------------------------ #
+
+
+def _branching_config() -> dict:
+    """stores <- orders <- {items, payments}."""
+    return {
+        "target": "stores",
+        "max_depth": 3,
+        "intervals": [],
+        "aggregations": ["count", "sum", "mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "stores", "table": "stores", "id": "store_id"},
+            {
+                "alias": "orders",
+                "table": "orders",
+                "id": "order_id",
+                "temporal_ix": "ordered_at",
+                "variables": {
+                    "store_id": {"type": "index"},
+                    "total": {"type": "numeric"},
+                },
+            },
+            {
+                "alias": "items",
+                "table": "items",
+                "id": "item_id",
+                "temporal_ix": "added_at",
+                "variables": {
+                    "order_id": {"type": "index"},
+                    "price": {"type": "numeric"},
+                },
+            },
+            {
+                "alias": "payments",
+                "table": "payments",
+                "id": "payment_id",
+                "temporal_ix": "paid_at",
+                "variables": {
+                    "order_id": {"type": "index"},
+                    "amount": {"type": "numeric"},
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "stores", "key": "store_id"},
+                "child": {"entity": "orders", "key": "store_id"},
+            },
+            {
+                "parent": {"entity": "orders", "key": "order_id"},
+                "child": {"entity": "items", "key": "order_id"},
+            },
+            {
+                "parent": {"entity": "orders", "key": "order_id"},
+                "child": {"entity": "payments", "key": "order_id"},
+            },
+        ],
+    }
+
+
+def _seed_branching(conn) -> None:
+    _seed_depth3(conn)  # stores, orders, items, as_of_dates
+    create_temp_table(
+        conn,
+        "payments",
+        [
+            ("payment_id", "int"),
+            ("order_id", "int"),
+            ("paid_at", "date"),
+            ("amount", "numeric"),
+        ],
+        [
+            (200, 10, datetime.date(2023, 5, 1), 80.0),
+            (201, 11, datetime.date(2023, 5, 3), 50.0),
+        ],
+    )
+
+
+def test_branching_chain_materialized_equals_single_query(pg_conn):
+    """orders_synth joins two as-of child aggs (items + payments); the materialized
+    rejoin still reproduces the single query exactly."""
+    _seed_branching(pg_conn)
+    single = _run(pg_conn, _featurizer(_branching_config()).query)
+    single_by_id = {r["store_id"]: r for r in single}
+    feature_cols = set(single[0]) - {"as_of_date", "store_id"}
+
+    f = _materialized_featurizer(_branching_config())
+    grouped = f._grouped()
+    # Both child aggs are materialized.
+    assert "items_aggs_for_orders" in grouped.materialization.materialized_ctes
+    assert "payments_aggs_for_orders" in grouped.materialization.materialized_ctes
+
+    with pg_conn.cursor() as cur:
+        for ddl in grouped.materialization.ddl:
+            cur.execute(ddl)
+    joined: dict = {}
+    for sql in grouped.queries.values():
+        for row in _run(pg_conn, sql):
+            joined.setdefault((row["as_of_date"], row["store_id"]), {}).update(row)
+
+    assert set(joined) == {(r["as_of_date"], r["store_id"]) for r in single}
+    for sid, srow in single_by_id.items():
+        jrow = next(v for (a, s), v in joined.items() if s == sid)
+        assert set(jrow) - {"as_of_date", "store_id"} == feature_cols
+        for col in feature_cols:
+            assert srow[col] == jrow[col], f"{col} differs for store {sid}"

@@ -253,17 +253,29 @@ class Featurizer:
         return list(mplan.ddl) if mplan is not None else []
 
     def to_dataframe(
-        self, *, impute: bool = False, **impute_kwargs: Any
+        self, *, connection: Any = None, impute: bool = False, **impute_kwargs: Any
     ) -> pd.DataFrame:
         """Execute the query and return results as a DataFrame.
 
         Args:
+            connection: An open psycopg connection to run on (required when the
+                query references session ``TEMP`` tables — the integration
+                harness). When ``None``, the fast single-query path uses
+                ``records`` and the grouped/materialized path builds its own
+                connection from the environment and closes it afterwards.
             impute: When True, run the opt-in imputation pass (count-like
                 features → 0, measures left NULL unless ``measure_strategy`` is
                 given, with ``<feature>__missing`` indicator columns). The
                 default keeps the raw NULLs, since missingness is signal.
             **impute_kwargs: Forwarded to
                 :func:`featurizer.imputation.impute_features`.
+
+        A config that fits one valid query uses the fast (single-query) path; a
+        wide or oversized-child config (issue #7) runs the column-group queries —
+        and any TEMP-table materialization preamble — on one connection and
+        re-joins them on ``(as_of_date, target_id)`` into the same indexed frame.
+        Passing ``connection`` forces the one-connection path (so it can see
+        session TEMP tables) regardless of width.
 
         Returns:
             DataFrame indexed by ['as_of_date', target_id]
@@ -275,7 +287,20 @@ class Featurizer:
             raise ValueError(
                 f"Target entity '{self.target.alias}' does not define a primary id."
             )
-        df = self._executor.to_dataframe(self.query, self.target.id.name)
+        grouped = self._grouped()
+        if grouped.fits_single and connection is None:
+            df = self._executor.to_dataframe(self.query, self.target.id.name)
+        else:
+            df = self._executor.to_dataframe_materialized(
+                preamble_ddl=(
+                    grouped.materialization.ddl
+                    if grouped.materialization is not None
+                    else []
+                ),
+                group_queries=grouped.queries,
+                target_id=self.target.id.name,
+                connection=connection,
+            )
         if impute:
             from .imputation import guard_full_matrix_fit, impute_features
 

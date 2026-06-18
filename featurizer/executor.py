@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import pandas as pd
 import records  # type: ignore[import-untyped]
@@ -54,3 +54,64 @@ class QueryExecutor:
                 "trace it back to the planner builder that emitted it."
             ) from exc
         return df.set_index(["as_of_date", target_id], inplace=False)
+
+    def to_dataframe_materialized(
+        self,
+        *,
+        preamble_ddl: list[str],
+        group_queries: Mapping[str, str],
+        target_id: str,
+        connection: Any = None,
+    ) -> pd.DataFrame:
+        """Execute a grouped / temp-table-materialized query on ONE connection.
+
+        The ``records`` fast path opens a fresh connection per query, so the
+        session ``TEMP`` tables created by the materialization preamble (issue #7)
+        would not survive across the group queries. This path runs the preamble +
+        every group query on a single psycopg connection (non-autocommit, so
+        ``ON COMMIT DROP`` shards live for the transaction), then re-joins the
+        column groups on ``(as_of_date, target_id)`` into one frame — the same
+        indexed contract as :meth:`to_dataframe`.
+
+        Args:
+            preamble_ddl: ``CREATE TEMP TABLE`` statements to run first (may be []).
+            group_queries: ``group_id -> SQL`` (each leads with as_of_date + id).
+            target_id: The target entity's id column (the re-join key).
+            connection: An open psycopg connection to reuse (e.g. the integration
+                harness). When ``None``, one is built from the environment and
+                closed afterwards.
+
+        Returns:
+            DataFrame indexed by ``['as_of_date', target_id]``.
+        """
+        from .arrow import default_connection
+
+        own_connection = connection is None
+        conn = connection if connection is not None else default_connection()
+        try:
+            if preamble_ddl:
+                with conn.cursor() as cur:
+                    for ddl in preamble_ddl:
+                        cur.execute(ddl)
+            frames: list[pd.DataFrame] = []
+            for sql in group_queries.values():
+                with conn.cursor() as cur:
+                    cur.execute(sql)
+                    cols: list[str] = [desc.name for desc in cur.description]
+                    rows = cur.fetchall()
+                frames.append(pd.DataFrame(rows, columns=pd.Index(cols)))
+        except Exception as exc:
+            logger.error("Featurizer materialized execution failed: {}", exc)
+            raise RuntimeError(
+                f"Featurizer materialized query execution failed ({exc}). The "
+                "preamble + group queries are logged above; trace the CTE named in "
+                "the database error back to the planner builder that emitted it."
+            ) from exc
+        finally:
+            if own_connection:
+                conn.close()
+
+        result = frames[0]
+        for frame in frames[1:]:
+            result = result.merge(frame, on=["as_of_date", target_id], how="outer")
+        return result.set_index(["as_of_date", target_id], inplace=False)
