@@ -562,6 +562,15 @@ MATERIALIZE_MAX_COLUMNS = DEFAULT_MAX_COLUMNS_PER_GROUP
 
 _TRANSFORM_EGO_ALIAS = "_ego"  # matches planner.TRANSFORM_EGO_ALIAS
 
+# The as-of date column. A materialized CTE that (transitively) depends on the
+# point-in-time boundary ``aod.as_of_date`` — which is bound only in the final
+# query's outer lateral — must instead carry it as a real column, so the temp
+# table becomes an ``(as_of_date × entity)``-keyed feature table (the triage
+# shape). Introduced once via ``cross join as_of_dates aod`` where ``aod`` is
+# first needed, then carried (and joined on) downstream.
+AS_OF_DATE = "as_of_date"
+_AS_OF_SOURCE = "as_of_dates"
+
 
 @dataclass(frozen=True)
 class MaterializedShard:
@@ -571,6 +580,9 @@ class MaterializedShard:
     shard's TEMP table; ``join_key`` is the bare key column it projects and that
     its consumers join on; ``columns`` are the feature column names in this shard
     (excluding the key); ``create_sql`` is the full ``CREATE TEMP TABLE … AS …``.
+    ``asof`` is True when the shard is keyed on ``(as_of_date, join_key)`` because
+    it depends on the as-of boundary (its consumers must then also correlate on
+    ``as_of_date``).
     """
 
     cte_name: str
@@ -578,6 +590,7 @@ class MaterializedShard:
     join_key: str
     columns: List[str]
     create_sql: str
+    asof: bool = False
 
 
 @dataclass(frozen=True)
@@ -707,16 +720,29 @@ class MaterializationPlanner:
     # ------------------------------------------------------------------ #
 
     def build(self) -> MaterializationPlan:
-        """Plan the full preamble: every oversized CTE's shard DDL, bottom-up."""
+        """Plan the full preamble: every oversized CTE's shard DDL, bottom-up.
+
+        As-of dependency is computed incrementally as CTEs are placed (bottom-up,
+        so upstream status is known): a CTE is as-of-keyed when its own body
+        references ``aod.as_of_date`` (a causal filter) **or** any of its already
+        materialized upstreams is as-of-keyed. Such a CTE carries a real
+        ``as_of_date`` column; its consumers correlate on it.
+        """
         order = self.materialization_order()
         shards_by_cte: "OrderedDict[str, List[MaterializedShard]]" = OrderedDict()
         ddl: List[str] = []
         materialized: Set[str] = set()
+        asof_ctes: Set[str] = set()
         for cte_name in order:
-            shards = self._shards_for(cte_name, shards_by_cte)
+            body = self._body(cte_name) or ""
+            upstream_asof = bool(self._scan(body) & asof_ctes)
+            is_asof = ("aod.as_of_date" in body) or upstream_asof
+            shards = self._shards_for(cte_name, shards_by_cte, is_asof)
             shards_by_cte[cte_name] = shards
             ddl.extend(shard.create_sql for shard in shards)
             materialized.add(cte_name)
+            if is_asof:
+                asof_ctes.add(cte_name)
         return MaterializationPlan(
             ddl=ddl,
             shards_by_cte=shards_by_cte,
@@ -731,6 +757,7 @@ class MaterializationPlanner:
         self,
         cte_name: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        asof: bool,
     ) -> List[MaterializedShard]:
         spec = self.plan.cte_specs[cte_name]
         mkey = self.plan.materialization_keys.get(cte_name)
@@ -745,7 +772,7 @@ class MaterializationPlanner:
         shards: List[MaterializedShard] = []
         for idx, chunk in enumerate(column_chunks):
             table_name = self._temp_name(cte_name, idx)
-            select_body = self._select_body(spec, chunk, idx, join_key, done)
+            select_body = self._select_body(spec, chunk, idx, join_key, done, asof)
             create_sql = (
                 f"create temp table {table_name} on commit drop as\n{select_body}"
             )
@@ -756,6 +783,7 @@ class MaterializationPlanner:
                     join_key=join_key,
                     columns=[c.name for c in chunk],
                     create_sql=create_sql,
+                    asof=asof,
                 )
             )
         return shards
@@ -767,33 +795,55 @@ class MaterializationPlanner:
         idx: int,
         join_key: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        asof: bool,
     ) -> str:
         if spec.kind == "aggs":
-            return self._agg_select(spec, chunk, done)
+            return self._agg_select(spec, chunk, join_key, done, asof)
         if spec.kind == "synth":
-            return self._synth_select(spec, chunk, idx, join_key, done)
+            return self._synth_select(spec, chunk, idx, join_key, done, asof)
         if spec.kind == "transform":
-            return self._transform_select(spec, chunk, idx, join_key, done)
+            return self._transform_select(spec, chunk, idx, join_key, done, asof)
         raise ValueError(f"Cannot materialize CTE of kind {spec.kind!r}.")
 
     def _agg_select(
         self,
         spec: ShardableCTE,
         chunk: List[ColumnSpec],
+        join_key: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        asof: bool,
     ) -> str:
         """``select <key>, <chunk> from <src>_transform [where] group by <key>``.
 
         The agg groups child rows by the parent key (already in ``key_columns``),
         so every shard projects that single key. Its source ``<src>_transform`` is
         reused as-is when bounded (pulled into an inline ``with``) or rewritten to
-        its shards when it was itself materialized.
+        its shards when it was itself materialized. When the agg depends on the
+        as-of boundary (it carries a causal ``where … <= aod.as_of_date``), it
+        cross-joins ``as_of_dates`` to bind ``aod``, keys on ``as_of_date``, and
+        groups by it — making the temp table an ``(as_of_date × key)`` table.
         """
-        projections = list(spec.key_columns) + [c.projection for c in chunk]
-        tail = self._strip_cte_close(spec.suffix)
-        tail = self._rewrite_from_sources(tail, done)
         with_clause = self._inline_with(spec.name, done)
-        return with_clause + "select\n        " + ",\n        ".join(projections) + tail
+        feature_projections = list(spec.key_columns) + [c.projection for c in chunk]
+        if not asof:
+            tail = self._rewrite_from_sources(self._strip_cte_close(spec.suffix), done)
+            return (
+                with_clause
+                + "select\n        "
+                + ",\n        ".join(feature_projections)
+                + tail
+            )
+        projections = [f"aod.{AS_OF_DATE}"] + feature_projections
+        source = self._aliased_source(f"{self._entity_of(spec)}_transform", done)
+        where = self._extract_where(spec.suffix)
+        parts = [
+            with_clause + "select\n        " + ",\n        ".join(projections),
+            f"from {_AS_OF_SOURCE} aod cross join {source}",
+        ]
+        if where:
+            parts.append(where)
+        parts.append(f"group by aod.{AS_OF_DATE}, {join_key}")
+        return "\n        ".join(parts)
 
     def _synth_select(
         self,
@@ -802,27 +852,41 @@ class MaterializationPlanner:
         idx: int,
         join_key: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        asof: bool,
     ) -> str:
         """``select <keys>, <chunk> from <table> <rewritten left joins>``.
 
         Only the first shard carries the full identifier columns; later shards
         carry just the join key, so re-joining the shards with ``using(<key>)``
         yields each non-key column exactly once. Child-agg joins that were
-        materialized are expanded into per-shard ``left join``s.
+        materialized are expanded into per-shard ``left join``s. When the synth
+        depends on the as-of boundary (it joins an as-of child agg), it cross-joins
+        ``as_of_dates`` to pair each entity row with each as-of date, and the agg
+        joins additionally correlate on ``as_of_date``.
         """
         keys = self._shard_keys(spec, idx, join_key)
-        projections = keys + [c.projection for c in chunk]
         entity = self._entity_of(spec)
         joins = self.plan.joins.get(entity, [])
         joins_sql = "".join(
             "\n        left join " + j for j in self._rewrite_joins(joins, done)
         )
         with_clause = self._inline_with(spec.name, done, skip_joins=True)
+        if not asof:
+            projections = keys + [c.projection for c in chunk]
+            return (
+                with_clause
+                + "select\n        "
+                + ",\n        ".join(projections)
+                + spec.suffix
+                + joins_sql
+            )
+        projections = [f"aod.{AS_OF_DATE}"] + keys + [c.projection for c in chunk]
+        table = self._strip_from(spec.suffix)
         return (
             with_clause
             + "select\n        "
             + ",\n        ".join(projections)
-            + spec.suffix
+            + f"\n        from {_AS_OF_SOURCE} aod cross join {table}"
             + joins_sql
         )
 
@@ -833,18 +897,22 @@ class MaterializationPlanner:
         idx: int,
         join_key: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        asof: bool,
     ) -> str:
         """``select <keys>, <chunk> from <synth source> _ego``.
 
         The transform reads one row per entity from its synth; when that synth was
-        materialized, its shards are re-joined (``using(<key>)``) into a subquery
-        aliased ``_ego`` so the transformer projections still resolve their synth
-        columns by bare name.
+        materialized, its shards are re-joined into a subquery aliased ``_ego`` so
+        the transformer projections still resolve their synth columns by bare name.
+        An as-of transform carries ``as_of_date`` straight from its as-of synth
+        shards (re-joined on ``(as_of_date, key)``); it introduces no cross join.
         """
         keys = self._shard_keys(spec, idx, join_key)
-        projections = keys + [c.projection for c in chunk]
         synth_name = f"{self._entity_of(spec)}_synth"
         source = self._from_source(synth_name, _TRANSFORM_EGO_ALIAS, done)
+        projections = (
+            ([AS_OF_DATE] if asof else []) + keys + [c.projection for c in chunk]
+        )
         return (
             "select\n        "
             + ",\n        ".join(projections)
@@ -863,11 +931,20 @@ class MaterializationPlanner:
         Used by :class:`ColumnGroupSharder`: a target-level agg's
         ``from <child>_transform`` becomes a re-join over that transform's shards,
         so the group query reads the precomputed temp tables instead of the
-        over-limit child CTE. Emitted group CTEs reference materialized CTEs only
-        as FROM sources (the target agg over a child transform), so the FROM
-        rewrite is sufficient; child synths that *left join* a materialized agg
-        are themselves materialized and never emitted in a group."""
-        return self._rewrite_from_sources(text, mplan.shards_by_cte)
+        over-limit child CTE. When that child CTE is as-of-keyed, the rewrite also
+        injects ``<cte>.as_of_date = aod.as_of_date`` (``aod`` is bound by the
+        group query's outer lateral) so the agg reads only this as-of date's rows.
+        Emitted group CTEs reference materialized CTEs only as FROM sources, so the
+        FROM rewrite is sufficient; child synths that *left join* a materialized
+        agg are themselves materialized and never emitted in a group."""
+        for cte, shards in mplan.shards_by_cte.items():
+            pattern = re.compile(rf"from\s+{re.escape(cte)}(?![A-Za-z0-9_])")
+            if not pattern.search(text):
+                continue
+            text = pattern.sub(f"from {self._rejoin_subquery(shards)} {cte}", text)
+            if shards and shards[0].asof:
+                text = self._inject_asof_filter(text, cte)
+        return text
 
     def _rewrite_joins(
         self,
@@ -875,7 +952,9 @@ class MaterializationPlanner:
         done: "OrderedDict[str, List[MaterializedShard]]",
     ) -> List[str]:
         """Expand each ``left join`` clause that targets a materialized CTE into
-        one clause per shard (the CTE name swapped for each shard table)."""
+        one clause per shard (the CTE name swapped for each shard table). A join to
+        an as-of shard additionally correlates on ``as_of_date = aod.as_of_date``
+        (``aod`` is bound by the synth's own ``cross join as_of_dates``)."""
         out: List[str] = []
         for join in joins:
             hit = next((c for c in done if self._mentions(join, c)), None)
@@ -883,7 +962,14 @@ class MaterializationPlanner:
                 out.append(join)
                 continue
             for shard in done[hit]:
-                out.append(join.replace(hit, shard.table_name))
+                clause = join.replace(hit, shard.table_name)
+                if shard.asof:
+                    clause = clause.replace(
+                        " on ",
+                        f" on {shard.table_name}.{AS_OF_DATE} = aod.{AS_OF_DATE} and ",
+                        1,
+                    )
+                out.append(clause)
         return out
 
     def _rewrite_from_sources(
@@ -916,13 +1002,60 @@ class MaterializationPlanner:
     def _rejoin_subquery(self, shards: List[MaterializedShard]) -> str:
         """``(select * from s0 left join s1 using(<key>) …)`` — re-joins shards
         into one logical row per key. Only the first shard carries the non-key
-        identifier columns, so ``select *`` yields each column once."""
+        identifier columns, so ``select *`` yields each column once. As-of shards
+        re-join on ``(as_of_date, key)`` so each (as-of date, entity) row is one."""
         if not shards:
             return "(select 1)"
         key = shards[0].join_key
         first = shards[0].table_name
-        joins = "".join(f" left join {s.table_name} using ({key})" for s in shards[1:])
+        using = f"({AS_OF_DATE}, {key})" if shards[0].asof else f"({key})"
+        joins = "".join(f" left join {s.table_name} using {using}" for s in shards[1:])
         return f"(select * from {first}{joins})"
+
+    @staticmethod
+    def _aliased_source(
+        name: str, done: "OrderedDict[str, List[MaterializedShard]]"
+    ) -> str:
+        """A FROM source for an agg's ``<src>_transform``: the bare CTE/table name
+        when not materialized (it lives in the inline ``with``), else its shards
+        re-joined and aliased back to ``name`` so qualified refs still resolve."""
+        if name in done:
+            shards = done[name]
+            key = shards[0].join_key
+            using = f"({AS_OF_DATE}, {key})" if shards[0].asof else f"({key})"
+            first = shards[0].table_name
+            joins = "".join(
+                f" left join {s.table_name} using {using}" for s in shards[1:]
+            )
+            return f"(select * from {first}{joins}) {name}"
+        return name
+
+    @staticmethod
+    def _extract_where(suffix: str) -> str:
+        """The agg's causal ``where … <= aod.as_of_date`` clause from its suffix,
+        or ``""`` when the source entity has no temporal index (no causal filter)."""
+        m = re.search(r"\bwhere\b(.*?)(?:\bgroup\s+by\b|\)|\Z)", suffix, re.S)
+        return ("where" + m.group(1).rstrip()) if m else ""
+
+    @staticmethod
+    def _strip_from(suffix: str) -> str:
+        """The table a synth selects from (``"\\n from orders"`` -> ``"orders"``)."""
+        m = re.search(r"\bfrom\s+(.+)", suffix, re.S)
+        return m.group(1).strip() if m else ""
+
+    @staticmethod
+    def _inject_asof_filter(text: str, cte: str) -> str:
+        """Add ``<cte>.as_of_date = aod.as_of_date`` to a consumer reading an
+        as-of materialized CTE — merged into its ``where`` if present, else added
+        before its ``group by`` (a target agg always groups)."""
+        cond = f"{cte}.{AS_OF_DATE} = aod.{AS_OF_DATE}"
+        m = re.search(r"\bwhere\b", text)
+        if m:
+            return text[: m.end()] + f" {cond} and" + text[m.end() :]
+        m = re.search(r"\bgroup\s+by\b", text)
+        if m:
+            return text[: m.start()] + f"where {cond}\n        " + text[m.start() :]
+        return text + f"\n        where {cond}"
 
     def _inline_with(
         self,

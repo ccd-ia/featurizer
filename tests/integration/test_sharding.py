@@ -490,18 +490,6 @@ def _materialized_featurizer(config: dict):
     return Featurizer(path, validate=False, materialize_threshold=1)
 
 
-_AOF_CORRELATION_XFAIL = (
-    "Materialized temp tables drop the as-of correlation: the agg CTEs filter "
-    "`where <temporal> <= aod.as_of_date`, but `aod` is only bound in the outer "
-    "lateral wrapper, so a standalone CREATE TEMP TABLE AS raises 'missing "
-    "FROM-clause entry for table aod'. The temp tables must become "
-    "(as_of_date x entity)-keyed feature tables (cross join as_of_dates, keep the "
-    "causal filter, group by as_of_date) — the triage feature-table shape. "
-    "Tracked as the next Phase-1 fix."
-)
-
-
-@pytest.mark.xfail(reason=_AOF_CORRELATION_XFAIL, strict=True)
 def test_materialized_chain_rejoin_equals_single_query(pg_conn):
     """Forcing the child chain into TEMP-table shards, then running the preamble +
     group queries on one connection and re-joining, reproduces the single
@@ -538,7 +526,6 @@ def test_materialized_chain_rejoin_equals_single_query(pg_conn):
             assert srow[col] == jrow[col], f"{col} differs for store {sid}"
 
 
-@pytest.mark.xfail(reason=_AOF_CORRELATION_XFAIL, strict=True)
 def test_to_arrow_runs_materialization_preamble(pg_conn):
     """``to_arrow`` runs the TEMP-table preamble on its connection, so a config
     whose child chain must be materialized executes end-to-end and the values

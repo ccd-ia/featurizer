@@ -580,11 +580,15 @@ def test_orders_synth_ddl_joins_items_aggs_temp_shards():
 
 
 def test_orders_transform_ddl_rejoins_synth_shards():
-    """``orders_transform`` reads its synth from the re-joined synth shards."""
+    """``orders_transform`` reads its synth from the re-joined synth shards.
+
+    The chain is as-of-keyed (``items`` has a temporal index, so the agg carries a
+    causal filter), so the shards re-join on ``(as_of_date, order_id)`` and the
+    transform carries ``as_of_date`` through."""
     _, _, plan = _materialization_plan()
     tf_ddl = "\n".join(s.create_sql for s in plan.shards_by_cte["orders_transform"])
     assert "__fz_orders_synth__s000" in tf_ddl
-    assert "using (order_id)" in tf_ddl
+    assert "using (as_of_date, order_id)" in tf_ddl
 
 
 def test_materialization_threshold_knob_forces_small_config():
