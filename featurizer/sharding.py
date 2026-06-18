@@ -169,8 +169,14 @@ class ColumnGroupSharder:
     # ------------------------------------------------------------------ #
 
     @property
+    def key_columns(self) -> List[str]:
+        """The leading columns every group projects and re-joins on
+        (``["as_of_date", <target id>, …]``)."""
+        return list(self._key_columns)
+
+    @property
     def fits_single_group(self) -> bool:
-        """True when the unsharded query is valid on PostgreSQL.
+        """True when the unsharded query is valid and needs no materialization.
 
         This is the test ``Featurizer.query`` uses, judged against the *hard*
         PostgreSQL limit (``PG_MAX_TARGET_LIST``), independent of the (smaller,
@@ -178,13 +184,19 @@ class ColumnGroupSharder:
         valid query requires the target transform tuple **and** every
         intermediate CTE tuple to be ≤ the limit. A 1500-column matrix is one
         valid query even though it would shard into two groups for output.
+
+        A config with any child CTE over ``materialize_threshold`` does **not**
+        fit a single query — it needs the TEMP-table preamble (issue #7) — so it
+        is reported as not-single here too. With the default threshold (the hard
+        1664 limit) this matches the old behaviour exactly; a lower threshold
+        (advanced / testing) forces the materialized path.
         """
         target_width = len(self.transform_spec.key_columns) + len(
             self.transform_spec.columns
         )
         return (
             target_width <= PG_MAX_TARGET_LIST
-            and not self._oversized_intermediate_ctes()
+            and not self._materializer.oversized_ctes()
         )
 
     @property
@@ -465,15 +477,23 @@ class ColumnGroupSharder:
         return oversized
 
     def warn_oversized(self) -> None:
-        """Log a clear warning for any intermediate CTE still over the limit."""
+        """Log a clear warning for any oversized intermediate CTE that **cannot**
+        be materialized into temp-table shards (issue #7).
+
+        An oversized child CTE with a recorded join key is handled by the
+        materialization path (``MaterializationPlanner``), so it no longer warns.
+        Only a CTE with no materialization key — an id-less entity's synth that
+        cannot be re-joined — remains an un-fixable bound worth surfacing.
+        """
         for name, width in self._oversized_intermediate_ctes().items():
+            if name in self.plan.materialization_keys:
+                continue  # handled by temp-table materialization
             logger.warning(
                 "Sharding bound: intermediate CTE {!r} projects {} columns, over "
-                "PostgreSQL's {}-entry target-list limit. Column-group sharding "
-                "splits the *target* output but reuses this CTE whole, so groups "
-                "referencing it may still be rejected. Reduce the child entity's "
-                "primitive/interval breadth, or raise the relationship that "
-                "produces it to the target so its columns can be grouped.",
+                "PostgreSQL's {}-entry target-list limit, and cannot be "
+                "materialized (no join key — its entity has no id to re-join on). "
+                "Reduce the child entity's primitive/interval breadth, give it an "
+                "id, or raise the relationship that produces it to the target.",
                 name,
                 width,
                 PG_MAX_TARGET_LIST,

@@ -471,8 +471,10 @@ def test_materialization_key_recorded_for_agg_cte():
     assert "order_id" in mk.join_statement
 
 
-def test_oversized_child_warn_oversized_emits_named_bound():
-    """``warn_oversized`` logs a bound naming each offending CTE without raising.
+def test_oversized_child_warn_oversized_silent_when_materializable():
+    """``warn_oversized`` no longer warns for an oversized child CTE that has a
+    join key: it is handled by temp-table materialization (issue #7). The warning
+    is reserved for CTEs that cannot be materialized (no id to re-join on).
 
     loguru holds the import-time ``sys.stderr`` reference, so ``capsys`` cannot
     see its output; add a temporary loguru sink to capture the warnings instead.
@@ -481,6 +483,9 @@ def test_oversized_child_warn_oversized_emits_named_bound():
 
     f = _featurizer(_oversized_child_config())
     sharder = ColumnGroupSharder(f._plan)
+    # The whole chain is materializable (every entity has an id), so no warning.
+    assert set(sharder._oversized_intermediate_ctes()) & _CHAIN
+    assert all(name in f._plan.materialization_keys for name in _CHAIN)
 
     messages: list[str] = []
     sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
@@ -489,9 +494,7 @@ def test_oversized_child_warn_oversized_emits_named_bound():
     finally:
         logger.remove(sink_id)
 
-    joined = "".join(messages)
-    assert "items_aggs_for_orders" in joined
-    assert "1664" in joined
+    assert messages == [], "materializable CTEs should not warn"
 
 
 # ------------------------------------------------------------------ #

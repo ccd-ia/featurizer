@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections import OrderedDict
 
+    from .sharding import ColumnGroupSharder, GroupedQueries
+
 import pandas as pd
 import yaml
 from icecream import ic
@@ -68,7 +70,12 @@ class Featurizer:
     """
 
     def __init__(
-        self, config_file: str, *, debug: bool = False, validate: bool = True
+        self,
+        config_file: str,
+        *,
+        debug: bool = False,
+        validate: bool = True,
+        materialize_threshold: int | None = None,
     ) -> None:
         """Initialize Featurizer from a YAML configuration file.
 
@@ -76,12 +83,17 @@ class Featurizer:
             config_file: Path to YAML configuration file
             debug: Enable debug logging with icecream. Can also be set via FEATURIZER_DEBUG env var.
             validate: Run enhanced validation checks (default: True)
+            materialize_threshold: Column width above which an oversized
+                non-target child CTE is materialized into TEMP-table shards
+                (issue #7). Defaults to PostgreSQL's hard 1664-entry limit; lower
+                it to materialize earlier (advanced / testing).
 
         Raises:
             FileNotFoundError: If config file doesn't exist
             ValueError: If config is missing required keys or has invalid values
         """
         config = self._load_config(config_file, validate=validate)
+        self._materialize_threshold = materialize_threshold
 
         self._debug_enabled: bool = debug or self._env_debug_enabled()
         if self._debug_enabled:
@@ -160,9 +172,7 @@ class Featurizer:
                 (column-group sharding, issue #7) instead. The matrix is never
                 silently truncated.
         """
-        from .sharding import ColumnGroupSharder
-
-        sharder = ColumnGroupSharder(self._plan)
+        sharder = self._sharder()
         if not sharder.fits_single_group:
             n_groups = sharder.n_groups
             raise ValueError(
@@ -171,9 +181,46 @@ class Featurizer:
                 f"and partitions into {n_groups} column groups. Use "
                 "`.query_groups` (group_id -> SQL), `.to_parquet(dir)` (one Parquet "
                 "per group), or `.to_arrow()` (list of tables); all groups re-join "
-                "on (as_of_date, id). See docs/adr/0005-column-group-sharding.md."
+                "on (as_of_date, id). `.to_arrow`/`.to_parquet`/`.to_dataframe` also "
+                "materialize any oversized child CTE automatically (issue #7). See "
+                "docs/adr/0005-column-group-sharding.md."
             )
         return self._renderer.render(self._plan)
+
+    def _sharder(self) -> "ColumnGroupSharder":
+        """A ColumnGroupSharder for this plan honouring ``materialize_threshold``."""
+        from .sharding import PG_MAX_TARGET_LIST, ColumnGroupSharder
+
+        threshold = (
+            self._materialize_threshold
+            if self._materialize_threshold is not None
+            else PG_MAX_TARGET_LIST
+        )
+        return ColumnGroupSharder(self._plan, materialize_threshold=threshold)
+
+    def _grouped(self) -> "GroupedQueries":
+        """The grouped queries + any temp-table materialization preamble.
+
+        A config that fits one valid query short-circuits to a single
+        ``group_000`` equal to :attr:`query` (no preamble). A wide or
+        oversized-child config returns the partitioned/rewritten group queries
+        and, when a child CTE had to be materialized, the preamble on
+        ``GroupedQueries.materialization`` (issue #7).
+        """
+        from collections import OrderedDict
+
+        from .sharding import GroupedQueries
+
+        sharder = self._sharder()
+        sharder.warn_oversized()
+        if sharder.fits_single_group:
+            return GroupedQueries(
+                queries=OrderedDict([("group_000", self._renderer.render(self._plan))]),
+                key_columns=sharder.key_columns,
+                fits_single=True,
+                materialization=None,
+            )
+        return sharder.build()
 
     @property
     def query_groups(self) -> "OrderedDict[str, str]":
@@ -184,20 +231,26 @@ class Featurizer:
         1664-entry limit (issue #7). A config that fits in one query returns a
         single ``group_000`` entry equal to :attr:`query`. Every group leads
         with ``(as_of_date, <target id>)`` so the groups re-join into the full
-        matrix. Logs a bound when an intermediate (child) CTE is itself too
-        wide to fit — that case is not silently truncated.
+        matrix.
+
+        When an oversized non-target child CTE had to be materialized, these
+        queries reference TEMP-table shards and **presuppose**
+        :attr:`materialization_ddl` was executed first on the same session;
+        :meth:`to_arrow` / :meth:`to_parquet` do that automatically.
         """
-        from collections import OrderedDict
+        return self._grouped().queries
 
-        from .sharding import ColumnGroupSharder
+    @property
+    def materialization_ddl(self) -> List[str]:
+        """The ``CREATE TEMP TABLE`` preamble (issue #7) that :attr:`query_groups`
+        presupposes, or ``[]`` when no oversized child CTE needs materializing.
 
-        sharder = ColumnGroupSharder(self._plan)
-        sharder.warn_oversized()
-        if sharder.fits_single_group:
-            # Reproduce ``.query`` exactly (byte-for-byte) for a config that
-            # needs no sharding, so callers can use ``query_groups`` uniformly.
-            return OrderedDict([("group_000", self._renderer.render(self._plan))])
-        return sharder.group_queries()
+        Run these statements on the same connection/session before executing the
+        grouped queries. :meth:`to_arrow` / :meth:`to_parquet` / :meth:`to_dataframe`
+        run them for you.
+        """
+        mplan = self._grouped().materialization
+        return list(mplan.ddl) if mplan is not None else []
 
     def to_dataframe(
         self, *, impute: bool = False, **impute_kwargs: Any
@@ -389,7 +442,12 @@ class Featurizer:
                 caller="to_arrow",
             )
 
-        group_sql = self.query_groups  # single-group short-circuit + warn lives here
+        # Grouped queries + any TEMP-table materialization preamble (issue #7).
+        # The single-group short-circuit + oversized warning live in _grouped().
+        grouped = self._grouped()
+        preamble = (
+            grouped.materialization.ddl if grouped.materialization is not None else []
+        )
 
         exporter = ArrowExporter()
         own_connection = connection is None
@@ -397,8 +455,17 @@ class Featurizer:
         try:
             from collections import OrderedDict as _OrderedDict
 
+            # Run the CREATE TEMP TABLE preamble first, on the *same* connection,
+            # so the group queries' shard references resolve. The connection is
+            # non-autocommit (default_connection / the harness), so ON COMMIT DROP
+            # shards live for the whole transaction and drop when it closes.
+            if preamble:
+                with conn.cursor() as cur:
+                    for ddl in preamble:
+                        cur.execute(ddl)
+
             tables: "OrderedDict[str, Any]" = _OrderedDict()
-            for gid, sql in group_sql.items():
+            for gid, sql in grouped.queries.items():
                 table = exporter.to_arrow(
                     sql, connection=conn, numeric_as_float=numeric_as_float
                 )

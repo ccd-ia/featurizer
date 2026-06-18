@@ -24,14 +24,13 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from featurizer import Featurizer
 from featurizer.sharding import (
     PG_MAX_TABLE_COLUMNS,
     PG_MAX_TARGET_LIST,
     ColumnGroupSharder,
 )
-
-from featurizer import Featurizer
-from featurizer.featurizer import DEFAULT_AGGREGATIONS, DEFAULT_TRANSFORMATIONS
 from featurizer.sql import SQLRenderer
 
 pa = pytest.importorskip("pyarrow")
@@ -436,3 +435,127 @@ def test_to_parquet_writes_single_file_for_narrow_config(pg_conn, tmp_path: Path
     f.to_parquet(str(out), connection=pg_conn)
     assert out.exists() and out.is_file()
     assert pq.read_table(out).num_rows == 2
+
+
+# ------------------------------------------------------------------ #
+# Temp-table materialization of an oversized non-target child chain (issue #7).
+# Forced on a small depth-3 config via ``materialize_threshold=1`` so the whole
+# child chain (items_aggs_for_orders -> orders_synth -> orders_transform) is
+# materialized into TEMP shards, without needing a genuinely 1664-wide CTE.
+# ------------------------------------------------------------------ #
+
+
+def _seed_depth3(conn) -> None:
+    """stores <- orders <- items, with one store that has orders/items and one
+    that has none (so the LEFT JOINs must preserve NULLs)."""
+    create_temp_table(conn, "stores", [("store_id", "int")], [(1,), (2,)])
+    create_temp_table(
+        conn,
+        "orders",
+        [
+            ("order_id", "int"),
+            ("store_id", "int"),
+            ("ordered_at", "date"),
+            ("total", "numeric"),
+        ],
+        [
+            (10, 1, datetime.date(2023, 5, 1), 100.0),
+            (11, 1, datetime.date(2023, 5, 2), 50.0),
+        ],
+    )
+    create_temp_table(
+        conn,
+        "items",
+        [
+            ("item_id", "int"),
+            ("order_id", "int"),
+            ("added_at", "date"),
+            ("price", "numeric"),
+        ],
+        [
+            (100, 10, datetime.date(2023, 5, 1), 20.0),
+            (101, 10, datetime.date(2023, 5, 1), 30.0),
+            (102, 11, datetime.date(2023, 5, 2), 5.0),
+        ],
+    )
+    create_temp_table(
+        conn, "as_of_dates", [("as_of_date", "date")], [(datetime.date(2023, 7, 1),)]
+    )
+
+
+def _materialized_featurizer(config: dict):
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(config, handle)
+        path = handle.name
+    return Featurizer(path, validate=False, materialize_threshold=1)
+
+
+_AOF_CORRELATION_XFAIL = (
+    "Materialized temp tables drop the as-of correlation: the agg CTEs filter "
+    "`where <temporal> <= aod.as_of_date`, but `aod` is only bound in the outer "
+    "lateral wrapper, so a standalone CREATE TEMP TABLE AS raises 'missing "
+    "FROM-clause entry for table aod'. The temp tables must become "
+    "(as_of_date x entity)-keyed feature tables (cross join as_of_dates, keep the "
+    "causal filter, group by as_of_date) — the triage feature-table shape. "
+    "Tracked as the next Phase-1 fix."
+)
+
+
+@pytest.mark.xfail(reason=_AOF_CORRELATION_XFAIL, strict=True)
+def test_materialized_chain_rejoin_equals_single_query(pg_conn):
+    """Forcing the child chain into TEMP-table shards, then running the preamble +
+    group queries on one connection and re-joining, reproduces the single
+    (non-materialized) query's matrix exactly — same keys, columns, values, NULLs."""
+    _seed_depth3(pg_conn)
+
+    # Baseline: the ordinary single query (no materialization).
+    single = _run(pg_conn, _featurizer(_depth3_config()).query)
+    single_by_id = {r["store_id"]: r for r in single}
+    feature_cols = set(single[0]) - {"as_of_date", "store_id"}
+
+    # Materialized: tiny threshold pushes the whole non-target chain to temp tables.
+    f = _materialized_featurizer(_depth3_config())
+    grouped = f._grouped()
+    assert grouped.materialization is not None, "expected a materialization preamble"
+    assert grouped.materialization.ddl
+
+    with pg_conn.cursor() as cur:
+        for ddl in grouped.materialization.ddl:
+            cur.execute(ddl)
+
+    joined: dict = {}
+    for sql in grouped.queries.values():
+        for row in _run(pg_conn, sql):
+            joined.setdefault((row["as_of_date"], row["store_id"]), {}).update(row)
+
+    # Same (as_of_date, store_id) keys.
+    assert set(joined) == {(r["as_of_date"], r["store_id"]) for r in single}
+    # Same columns and values, NULLs included.
+    for sid, srow in single_by_id.items():
+        jrow = next(v for (a, s), v in joined.items() if s == sid)
+        assert set(jrow) - {"as_of_date", "store_id"} == feature_cols
+        for col in feature_cols:
+            assert srow[col] == jrow[col], f"{col} differs for store {sid}"
+
+
+@pytest.mark.xfail(reason=_AOF_CORRELATION_XFAIL, strict=True)
+def test_to_arrow_runs_materialization_preamble(pg_conn):
+    """``to_arrow`` runs the TEMP-table preamble on its connection, so a config
+    whose child chain must be materialized executes end-to-end and the values
+    match the single-query baseline."""
+    _seed_depth3(pg_conn)
+    single = _run(pg_conn, _featurizer(_depth3_config()).query)
+    single_by_id = {r["store_id"]: r for r in single}
+
+    f = _materialized_featurizer(_depth3_config())
+    out = f.to_arrow(connection=pg_conn)
+
+    # The small target fits one group, so a single table comes back.
+    table = out if not isinstance(out, dict) else next(iter(out.values()))
+    rows = table.to_pylist()
+    by_id = {r["store_id"]: r for r in rows}
+    assert set(by_id) == set(single_by_id)
+    for sid, srow in single_by_id.items():
+        arow = by_id[sid]
+        for col in set(single[0]) - {"as_of_date", "store_id"}:
+            assert arow[col] == srow[col], f"{col} differs for store {sid}"
