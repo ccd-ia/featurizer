@@ -691,3 +691,59 @@ def test_branching_chain_materialized_equals_single_query(pg_conn):
         assert set(jrow) - {"as_of_date", "store_id"} == feature_cols
         for col in feature_cols:
             assert srow[col] == jrow[col], f"{col} differs for store {sid}"
+
+
+# ------------------------------------------------------------------ #
+# Persist mode: to_tables writes triage-style feature-group tables.
+# (Verified inside the rolled-back test transaction; the persistent tables and
+# schema are created but discarded at teardown, so the DB stays clean.)
+# ------------------------------------------------------------------ #
+
+
+def test_to_tables_persists_feature_group_tables(pg_conn):
+    """``to_tables`` writes ``<schema>.<target>_group_<NNN>`` tables keyed on
+    (as_of_date, id); re-joining them reproduces the single query, and the #7
+    child chain is materialized behind the scenes."""
+    _seed_depth3(pg_conn)
+    single = _run(pg_conn, _featurizer(_depth3_config()).query)
+    single_by_id = {r["store_id"]: r for r in single}
+    feature_cols = set(single[0]) - {"as_of_date", "store_id"}
+
+    f = _materialized_featurizer(_depth3_config())
+    manifest = f.to_tables("fztest", connection=pg_conn)
+
+    assert manifest
+    assert manifest[0].name == '"fztest"."stores_group_000"'
+    assert all(m.key_columns == ["as_of_date", "store_id"] for m in manifest)
+
+    joined: dict = {}
+    for m in manifest:
+        for row in _run(pg_conn, f"select * from {m.name}"):
+            joined.setdefault((row["as_of_date"], row["store_id"]), {}).update(row)
+    assert set(joined) == {(r["as_of_date"], r["store_id"]) for r in single}
+    for sid, srow in single_by_id.items():
+        jrow = next(v for (a, s), v in joined.items() if s == sid)
+        assert set(jrow) - {"as_of_date", "store_id"} == feature_cols
+        for col in feature_cols:
+            assert srow[col] == jrow[col], f"{col} differs for store {sid}"
+
+
+def test_to_tables_idempotent_replace(pg_conn):
+    """A second ``to_tables`` run replaces cleanly (the temp preamble drops-if-exists
+    and the target tables are dropped+recreated) — no 'already exists' error."""
+    _seed_depth3(pg_conn)
+    f = _materialized_featurizer(_depth3_config())
+    first = f.to_tables("fztest", connection=pg_conn)
+    second = f.to_tables("fztest", connection=pg_conn)
+    assert [m.name for m in first] == [m.name for m in second]
+    rows = _run(pg_conn, f"select * from {second[0].name}")
+    assert len(rows) == 2  # two stores, one as-of date
+
+
+def test_to_tables_fits_single_writes_one_table(pg_conn):
+    """A config that fits one query writes a single ``<target>_group_000`` table."""
+    _seed(pg_conn, n_vars=1)
+    f = _featurizer(_narrow_config())  # target = customers
+    manifest = f.to_tables("fztest", connection=pg_conn, table_prefix="cust")
+    assert [m.name for m in manifest] == ['"fztest"."cust_group_000"']
+    assert len(_run(pg_conn, f"select * from {manifest[0].name}")) == 2

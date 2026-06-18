@@ -73,6 +73,22 @@ class GroupedQueries:
     materialization: "MaterializationPlan | None" = None
 
 
+@dataclass(frozen=True)
+class FeatureGroupTable:
+    """A persisted feature-group table written by ``Featurizer.to_tables`` (issue
+    #7 persist mode).
+
+    ``name`` is the schema-qualified, quoted table name
+    (``"<schema>"."<stem>_group_<NNN>"``); ``group`` is the source column-group id
+    (``group_000`` …); ``key_columns`` are the keys every group table shares and
+    on which they re-join into the full matrix (``["as_of_date", <target id>]``).
+    """
+
+    name: str
+    group: str
+    key_columns: List[str]
+
+
 def _cte_name_scanner(names: List[str]) -> "re.Pattern[str]":
     """Compile one regex that finds any of ``names`` on word boundaries.
 
@@ -739,7 +755,12 @@ class MaterializationPlanner:
             is_asof = ("aod.as_of_date" in body) or upstream_asof
             shards = self._shards_for(cte_name, shards_by_cte, is_asof)
             shards_by_cte[cte_name] = shards
-            ddl.extend(shard.create_sql for shard in shards)
+            for shard in shards:
+                # ``drop … if exists`` first so the preamble is idempotent on a
+                # reused open transaction (the prior run's ON COMMIT DROP shards
+                # have not yet dropped); a fresh connection makes it a no-op.
+                ddl.append(f"drop table if exists {shard.table_name}")
+                ddl.append(shard.create_sql)
             materialized.add(cte_name)
             if is_asof:
                 asof_ctes.add(cte_name)

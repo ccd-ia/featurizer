@@ -535,8 +535,12 @@ def test_materialization_ddl_are_temp_tables():
     _, _, plan = _materialization_plan()
     assert plan.materialized_ctes == _CHAIN
     assert plan.ddl, "expected a non-empty preamble"
-    for ddl in plan.ddl:
-        assert ddl.startswith("create temp table __fz_")
+    # The preamble pairs an idempotent `drop … if exists` with each create.
+    creates = [d for d in plan.ddl if d.startswith("create temp table __fz_")]
+    drops = [d for d in plan.ddl if d.startswith("drop table if exists __fz_")]
+    assert creates
+    assert len(drops) == len(creates)
+    for ddl in creates:
         assert "on commit drop as" in ddl
 
 

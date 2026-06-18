@@ -70,7 +70,12 @@ Public surface:
   proven in `tests/integration/test_sharding.py` for the depth-3 chain, the
   branching chain (two grandchildren), and through `to_arrow` / `to_dataframe`.
 - The intermediate temp tables are exactly the triage as-of feature-table shape,
-  which directly feeds the planned `materialize_schema=` persist mode.
+  which `Featurizer.to_tables(schema)` persists as feature-group tables
+  `"<schema>"."<stem>_group_<NNN>"` keyed on `(as_of_date, id)` (idempotent
+  drop+replace; the #7 intermediate shards stay ephemeral). Returns a manifest of
+  `FeatureGroupTable`s — the contract triage-pg consumes. The preamble is made
+  idempotent on a reused connection by a `drop … if exists` before each
+  `create temp table`.
 - **Residual limitations (fail loud, never silently wrong):**
   - An oversized synth containing an **as-of LATERAL** join (a forward temporal
     relationship pulling the most recent child) is **not yet** materializable —

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections import OrderedDict
 
-    from .sharding import ColumnGroupSharder, GroupedQueries
+    from .sharding import ColumnGroupSharder, FeatureGroupTable, GroupedQueries
 
 import pandas as pd
 import yaml
@@ -440,6 +440,88 @@ class Featurizer:
             path,
             ("as_of_date", self.target.id.name) if self.target.id else "(as_of_date,)",
         )
+
+    def to_tables(
+        self,
+        schema: str,
+        *,
+        connection: Any = None,
+        table_prefix: str | None = None,
+        create_schema: bool = True,
+    ) -> List["FeatureGroupTable"]:
+        """Persist the feature matrix as triage-style feature-group tables.
+
+        Writes each column group as a persistent table
+        ``"<schema>"."<stem>_group_<NNN>"`` keyed on ``(as_of_date, <target id>)``,
+        the feature-group contract triage-pg consumes (issue #7). A config that
+        fits one query writes a single ``<stem>_group_000``; a wide or
+        oversized-child config writes one table per column group, all re-joinable
+        on the keys. The issue-#7 intermediate shards stay ephemeral ``TEMP``
+        tables — only the final groups are persisted.
+
+        Idempotent: each target table is ``DROP TABLE IF EXISTS`` + ``CREATE TABLE
+        … AS`` so a re-run replaces it cleanly.
+
+        Args:
+            schema: Destination schema (created if absent unless
+                ``create_schema=False``).
+            connection: An open psycopg connection to write on. When supplied the
+                caller owns the transaction (nothing is committed here — the
+                integration harness verifies within its rolled-back transaction);
+                when ``None`` a connection is built from the environment, committed
+                so the tables persist, and closed.
+            table_prefix: Table-name stem; defaults to the target alias
+                (``stores`` -> ``stores_group_000``).
+            create_schema: Run ``CREATE SCHEMA IF NOT EXISTS`` first.
+
+        Returns:
+            The ordered manifest of created :class:`FeatureGroupTable`s.
+
+        Raises:
+            ValueError: If the target entity does not define a primary id.
+        """
+        if self.target.id is None:
+            raise ValueError(
+                f"Target entity '{self.target.alias}' does not define a primary id."
+            )
+        from .arrow import default_connection
+        from .sharding import FeatureGroupTable
+
+        grouped = self._grouped()
+        preamble = (
+            grouped.materialization.ddl if grouped.materialization is not None else []
+        )
+        stem = table_prefix or self.target.alias
+        keys = list(grouped.key_columns)
+
+        own_connection = connection is None
+        conn = connection if connection is not None else default_connection()
+        tables: List["FeatureGroupTable"] = []
+        try:
+            with conn.cursor() as cur:
+                if create_schema:
+                    cur.execute(f'create schema if not exists "{schema}"')
+                for ddl in preamble:
+                    cur.execute(ddl)
+                for gid, sql in grouped.queries.items():
+                    name = f'"{schema}"."{stem}_{gid}"'
+                    cur.execute(f"drop table if exists {name}")
+                    cur.execute(f"create table {name} as\n{sql}")
+                    tables.append(
+                        FeatureGroupTable(name=name, group=gid, key_columns=list(keys))
+                    )
+            if own_connection:
+                conn.commit()
+        finally:
+            if own_connection:
+                conn.close()
+        logger.info(
+            "Persisted {} feature-group table(s) to schema {!r} (re-join on {}).",
+            len(tables),
+            schema,
+            tuple(keys),
+        )
+        return tables
 
     def _arrow_groups(
         self,
