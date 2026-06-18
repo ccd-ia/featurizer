@@ -867,6 +867,17 @@ class MaterializationPlanner:
         keys = self._shard_keys(spec, idx, join_key)
         entity = self._entity_of(spec)
         joins = self.plan.joins.get(entity, [])
+        if any("lateral" in j.lower() for j in joins):
+            # An as-of LATERAL (a forward temporal relationship pulling the most
+            # recent child) re-scans <source>_transform correlated to each row;
+            # materializing it into a flat shard is not yet supported. Fail loud
+            # rather than emit subtly-wrong SQL (Phase-2 residual, issue #7).
+            raise NotImplementedError(
+                f"Cannot yet materialize the oversized synth {spec.name!r}: it "
+                "contains an as-of LATERAL join (a forward temporal relationship). "
+                "Narrow this entity's primitive/interval breadth so its synth stays "
+                "under the limit, or raise the relationship to the target."
+            )
         joins_sql = "".join(
             "\n        left join " + j for j in self._rewrite_joins(joins, done)
         )
