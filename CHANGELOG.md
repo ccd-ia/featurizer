@@ -6,6 +6,57 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-19
+
+### Added
+
+- **Temp-table materialization of oversized non-target child CTEs (issue #7).**
+  Column-group sharding (0.2.0) splits the *target's* output but reuses every child
+  CTE whole, so a single non-target child CTE wider than PostgreSQL's 1664-entry
+  limit could not be made to fit — the cascade is inherent (an oversized child agg
+  forces its consumer `synth`/`transform` over the limit too). Such a chain is now
+  materialized bottom-up into keyed `TEMP`-table shards via a
+  `CREATE TEMP TABLE … ON COMMIT DROP AS …` preamble run on one (non-autocommit)
+  connection before the column-group queries, which are rewritten to read the
+  shards. The temp tables are **`(as_of_date × entity)`-keyed feature tables** (the
+  triage as-of feature-table shape): the causal `aod.as_of_date` filter, bound only
+  in the outer lateral, is reintroduced via `cross join as_of_dates` once and
+  carried/correlated downstream. `to_arrow` / `to_parquet` / `to_dataframe` run the
+  preamble transparently; the rejoined matrix is value-identical to the
+  (smaller) single query. See [ADR-0006](docs/adr/0006-temp-table-materialization.md).
+- **`Featurizer.to_tables(schema)` — persist mode.** Writes the feature matrix as
+  triage-style feature-group tables `"<schema>"."<stem>_group_<NNN>"` keyed on
+  `(as_of_date, <target id>)`, idempotently (drop-if-exists + create), and returns a
+  manifest of `FeatureGroupTable`s — the contract triage-pg consumes. The issue-#7
+  intermediate shards stay ephemeral; only the final groups are persisted.
+- **`Featurizer.to_dataframe` now handles wide / oversized-child configs.** A new
+  one-connection `QueryExecutor.to_dataframe_materialized` runs the preamble + every
+  column-group query on a single connection and re-joins them on
+  `(as_of_date, <target id>)`; the fast `records` path is kept for configs that fit
+  one query. `to_dataframe` gains a `connection=` kwarg (parity with `to_arrow`) so
+  it can see session `TEMP` tables.
+- **`Featurizer.materialization_ddl`** exposes the `CREATE TEMP TABLE` preamble for
+  SQL-only callers, and **`Featurizer(..., materialize_threshold=N)`** lowers the
+  1664 trigger (advanced / testing).
+
+### Changed
+
+- **pyarrow is now a type-check-time dev dependency.** Added to
+  `[dependency-groups] dev` so `basedpyright` resolves the Arrow signatures (and is
+  clean) without the runtime `[parquet]` extra — guarding the imports under
+  `TYPE_CHECKING` alone was insufficient. End users still gate Arrow features behind
+  `featurizer[parquet]`.
+- **`warn_oversized`** now warns only for oversized intermediate CTEs that *cannot*
+  be materialized (no join key — an id-less entity); materializable ones are handled
+  silently.
+
+### Known limitations
+
+- An oversized child `synth` containing an as-of `LATERAL` join (a forward temporal
+  relationship) is not yet materializable and raises `NotImplementedError` with
+  guidance rather than emitting incorrect SQL. Peer-group / spatial / graph
+  (`verbatim`) CTEs and id-less entities also remain `warn_oversized` bounds.
+
 ## [0.2.0] - 2026-06-17
 
 ### Added

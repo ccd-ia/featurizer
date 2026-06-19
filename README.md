@@ -111,6 +111,47 @@ When the query references session `TEMP` tables, pass an open psycopg connection
 via `to_arrow(connection=conn)` so the references resolve.
 
 
+## Wide & oversized matrices
+
+PostgreSQL caps a result/CTE target list at **1664 entries**, so a wide config
+(variables x aggregations x intervals x transformers) can exceed it. Featurizer
+handles this transparently; `to_dataframe` / `to_arrow` / `to_parquet` /
+`to_tables` all "just work" and `.query` raises a clear error (never silent
+truncation) when a single query is impossible.
+
+-   **Wide target -> column groups.** When the target's feature tuple is too wide,
+    the matrix is partitioned into ordered column groups, each a self-contained
+    query leading with `(as_of_date, <target id>)` so they re-join into the full
+    matrix. `Featurizer.query_groups` returns `OrderedDict[str, str]`; `to_arrow`
+    returns one `pyarrow.Table` when it fits else an `OrderedDict` of group tables;
+    `to_parquet(dir)` writes one file per group. See
+    [ADR-0005](docs/adr/0005-column-group-sharding.md).
+
+-   **Oversized child entity -> temp-table materialization.** When a *non-target
+    child* CTE alone exceeds the limit (its consumer `synth`/`transform` cascade
+    over it too), that chain is materialized bottom-up into `(as_of_date x entity)`
+    keyed `TEMP`-table feature tables via a `CREATE TEMP TABLE … ON COMMIT DROP`
+    preamble run on one connection before the group queries. This is automatic on
+    every output path; the rejoined matrix is value-identical to the single query.
+    `Featurizer.materialization_ddl` exposes the preamble for SQL-only callers, and
+    `Featurizer(..., materialize_threshold=N)` lowers the 1664 trigger. See
+    [ADR-0006](docs/adr/0006-temp-table-materialization.md).
+
+To **persist** the matrix as triage-style feature-group tables, use `to_tables`:
+
+    f = Featurizer("config.yaml")
+    manifest = f.to_tables("features")
+    # -> [FeatureGroupTable(name='"features"."customers_group_000"',
+    #        group='group_000', key_columns=['as_of_date', 'customer_id']), ...]
+
+It writes each column group as a persistent
+`"<schema>"."<stem>_group_<NNN>"` table keyed on `(as_of_date, <target id>)`,
+idempotently (drop-if-exists + create), and returns the manifest. The intermediate
+materialization shards stay ephemeral; only the final groups persist. Pass
+`connection=` to write on an existing session, `table_prefix=` to override the
+table stem.
+
+
 ## Imputation contract
 
 Featurizer never imputes inside the generated SQL&#x2014;missingness is signal.
