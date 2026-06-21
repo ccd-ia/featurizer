@@ -42,6 +42,13 @@ Plus transformations:
 - Absolute value of order metrics
 - Cumulative sums
 
+Plus a **direct categorical**: `customers.country` declares `role: categorical`
+with a fixed `vocabulary`, so it is one-hot encoded into deterministic 0/1
+columns (`customers.country=US`, `customers.country=UK`, …) instead of passing
+through as a raw string. The vocabulary is fixed (declared here, or a column's
+PostgreSQL `ENUM`) — featurizer never learns it from the data. See the
+"Direct categorical variables" section of the top-level README.
+
 ## Files
 
 - `config.yaml` - Featurizer configuration

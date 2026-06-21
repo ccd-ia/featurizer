@@ -28,8 +28,15 @@ entities:
     table: customers
     temporal_ix: signup_date
     variables:
+      # role: categorical one-hot encodes a direct categorical against a FIXED
+      # vocabulary (declared here, or a column's PostgreSQL ENUM) — split-blind
+      # and fit-free. Each value becomes a "customers.country=<value>" 0/1
+      # column. Without a role, a raw text/categorical column passes through
+      # unencoded (and warns), which a downstream encoder usually can't take.
       country:
         type: categorical
+        role: categorical
+        vocabulary: [AU, CA, DE, FR, UK, US]
       age:
         type: numeric
 

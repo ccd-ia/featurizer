@@ -1,12 +1,22 @@
 """End-to-end direct-categorical one-hot encoding against a real PostgreSQL.
 
-A small, deterministic "DirtyDuck" food-inspections fixture (the same dataset
-shape triage-pg validates against) is seeded inline on the rolled-back
-``pg_conn`` transaction — no network, no ``just seed``. It carries a target
-``facilities`` entity with ``facility_type`` typed as a PostgreSQL ``ENUM`` and a
-``name`` identifier column, plus an ``inspections`` child with ``result`` / ``risk``
-enums. The test drives the ENUM-introspection vocabulary path (no declared
-vocabulary) all the way through ``to_arrow``.
+The fixture mirrors the **updated DirtyDuck food-inspections schema** that triage
+ships (``~/projects/triage/dirtyduck/food_db``, the raw/clean/ontology rework that
+added PostgreSQL ENUMs "to give featurizer a fixed one-hot vocabulary for free").
+It is seeded inline on the rolled-back ``pg_conn`` transaction — no network, no
+``just seed`` — and is faithful to triage's real types:
+
+- Low-cardinality categoricals are PostgreSQL ENUMs: ``risk_t`` (low/medium/high)
+  and ``result_t`` (7 labels), exactly as triage defines them in
+  ``02_create_cleaned_inspections_table.sql``. These are featurizer's fixed,
+  ENUM-introspected one-hot vocabulary.
+- ``facility_type`` stays **text** (287 distinct in the real data) — high
+  cardinality, deliberately *not* an ENUM; the consumer's train-fit encoder owns
+  it, so featurizer excludes it (``role: identifier``) or fails loud if asked to
+  one-hot it without a declared vocabulary.
+
+The target is ``events`` (one row per inspection, ``ontology.events`` shape):
+``risk`` / ``result`` are its direct ENUM categoricals.
 """
 
 from __future__ import annotations
@@ -25,7 +35,7 @@ pytestmark = pytest.mark.integration
 
 
 def _seed_dirtyduck(conn: Any) -> None:
-    """Create the ``dirtyduck`` schema (enums + tables + rows) on ``conn``.
+    """Create the ``dirtyduck`` schema (triage's ENUMs + events) on ``conn``.
 
     Everything lives inside the caller's transaction, so the ``pg_conn``
     rollback discards it; the target database is left untouched.
@@ -33,97 +43,86 @@ def _seed_dirtyduck(conn: Any) -> None:
     with conn.cursor() as cur:
         cur.execute("drop schema if exists dirtyduck cascade")
         cur.execute("create schema dirtyduck")
+        # Triage's real clean-layer ENUMs (verbatim labels + order).
+        cur.execute("create type dirtyduck.risk_t as enum ('low', 'medium', 'high')")
         cur.execute(
-            "create type dirtyduck.facility_type_enum as enum "
-            "('Restaurant', 'Grocery Store', 'School', 'Bakery')"
+            "create type dirtyduck.result_t as enum "
+            "('pass', 'pass w/ conditions', 'fail', 'no entry', 'not ready', "
+            "'out of business', 'business not located')"
         )
         cur.execute(
-            "create type dirtyduck.inspection_result as enum "
-            "('Pass', 'Fail', 'Pass w/ Conditions')"
-        )
-        cur.execute(
-            "create type dirtyduck.risk_level as enum "
-            "('Risk 1 (High)', 'Risk 2 (Medium)', 'Risk 3 (Low)')"
+            "create type dirtyduck.inspection_type_t as enum "
+            "('canvass', 'task force', 'complaint', 'food poisoning', "
+            "'consultation', 'license', 'tag removal')"
         )
         cur.execute("""
-            create table dirtyduck.facilities (
-                license_no    bigint primary key,
-                name          text,
-                facility_type dirtyduck.facility_type_enum,
-                risk          dirtyduck.risk_level,
-                first_seen    date
-            )
-            """)
-        cur.execute("""
-            create table dirtyduck.inspections (
-                inspection_id   bigint primary key,
-                license_no      bigint,
-                inspection_date date,
-                result          dirtyduck.inspection_result,
-                risk            dirtyduck.risk_level
+            create table dirtyduck.events (
+                event_id      integer primary key,
+                entity_id     bigint,
+                date          date,
+                type          dirtyduck.inspection_type_t,
+                risk          dirtyduck.risk_t,
+                result        dirtyduck.result_t,
+                -- denormalized point-in-time state; high-cardinality TEXT (not an ENUM)
+                facility_type text
             )
             """)
         cur.executemany(
-            "insert into dirtyduck.facilities "
-            "(license_no, name, facility_type, risk, first_seen) "
-            "values (%s, %s, %s, %s, %s)",
+            "insert into dirtyduck.events "
+            "(event_id, entity_id, date, type, risk, result, facility_type) "
+            "values (%s, %s, %s, %s, %s, %s, %s)",
             [
-                (1, "Alpha Cafe", "Restaurant", "Risk 1 (High)", "2014-01-05"),
-                (2, "Beta Mart", "Grocery Store", "Risk 2 (Medium)", "2014-02-10"),
-                (3, "Gamma School", "School", "Risk 3 (Low)", "2014-03-15"),
-                (4, "Delta Diner", "Restaurant", "Risk 1 (High)", "2014-04-20"),
-                (5, "Epsilon Bakehouse", "Bakery", "Risk 2 (Medium)", "2014-05-25"),
-                # NULL facility_type -> must yield an all-zero one-hot row.
-                (6, "Zeta Unknown", None, "Risk 3 (Low)", "2014-06-30"),
-            ],
-        )
-        cur.executemany(
-            "insert into dirtyduck.inspections "
-            "(inspection_id, license_no, inspection_date, result, risk) "
-            "values (%s, %s, %s, %s, %s)",
-            [
-                (101, 1, "2014-07-01", "Pass", "Risk 1 (High)"),
-                (102, 1, "2014-08-01", "Fail", "Risk 1 (High)"),
-                (103, 2, "2014-07-15", "Pass", "Risk 2 (Medium)"),
-                (104, 6, "2014-07-20", "Pass w/ Conditions", "Risk 3 (Low)"),
+                (1, 10, "2015-01-05", "canvass", "high", "fail", "restaurant"),
+                (2, 10, "2015-02-10", "complaint", "high", "pass", "restaurant"),
+                (3, 11, "2015-03-15", "canvass", "low", "pass", "grocery store"),
+                (
+                    4,
+                    12,
+                    "2015-04-20",
+                    "license",
+                    "medium",
+                    "pass w/ conditions",
+                    "school",
+                ),
+                (5, 13, "2015-05-25", "canvass", "high", "fail", "bakery"),
+                (
+                    6,
+                    14,
+                    "2015-06-30",
+                    "complaint",
+                    "medium",
+                    "no entry",
+                    "mobile food dispenser",
+                ),
+                # NULL risk -> an all-zero risk one-hot row (never a crash).
+                (7, 15, "2015-07-04", "canvass", None, "out of business", "restaurant"),
             ],
         )
 
 
 def _config() -> dict:
     return {
-        "target": "facilities",
-        "max_depth": 2,
-        "intervals": ["P1Y"],
-        "aggregations": ["count"],
+        "target": "events",
+        "max_depth": 1,
+        "intervals": [],
+        "aggregations": [],
         "transformations": ["identity"],
         "entities": [
             {
-                "alias": "facilities",
-                "id": "license_no",
-                "table": "dirtyduck.facilities",
-                "temporal_ix": "first_seen",
+                "alias": "events",
+                "id": "event_id",
+                "table": "dirtyduck.events",
+                "temporal_ix": "date",
                 "variables": {
-                    # identifier -> excluded from output
-                    "name": {"type": "text", "role": "identifier"},
-                    # categorical, NO declared vocabulary -> read from the ENUM
-                    "facility_type": {"type": "categorical", "role": "categorical"},
+                    # ENUM-typed -> introspected vocabulary, no declared list
+                    "risk": {"type": "categorical", "role": "categorical"},
+                    "result": {"type": "categorical", "role": "categorical"},
+                    # high-cardinality TEXT -> excluded (the consumer's encoder owns it)
+                    "facility_type": {"type": "text", "role": "identifier"},
                 },
-            },
-            {
-                "alias": "inspections",
-                "id": "inspection_id",
-                "table": "dirtyduck.inspections",
-                "temporal_ix": "inspection_date",
-                "variables": {"license_no": {"type": "index"}},
-            },
-        ],
-        "relationships": [
-            {
-                "parent": {"entity": "facilities", "key": "license_no"},
-                "child": {"entity": "inspections", "key": "license_no"},
             }
         ],
+        "relationships": [],
     }
 
 
@@ -134,64 +133,95 @@ def _write(config: dict) -> str:
 
 
 # Sorted ENUM labels -> deterministic one-hot column order.
-_ONE_HOT_COLUMNS = [
-    "facilities.facility_type=Bakery",
-    "facilities.facility_type=Grocery Store",
-    "facilities.facility_type=Restaurant",
-    "facilities.facility_type=School",
+_RISK_COLUMNS = [
+    "events.risk=high",
+    "events.risk=low",
+    "events.risk=medium",
+]
+_RESULT_COLUMNS = [
+    "events.result=business not located",
+    "events.result=fail",
+    "events.result=no entry",
+    "events.result=not ready",
+    "events.result=out of business",
+    "events.result=pass",
+    "events.result=pass w/ conditions",
 ]
 
 
 def test_enum_sourced_one_hot_end_to_end(pg_conn) -> None:
     pytest.importorskip("pyarrow")
     _seed_dirtyduck(pg_conn)
-    make_as_of_dates(pg_conn, ["2015-01-01"])
+    make_as_of_dates(pg_conn, ["2016-01-01"])
 
     featurizer = Featurizer(_write(_config()), connection=pg_conn)
 
-    # Vocabulary is read from the column's PostgreSQL ENUM (no declared list),
-    # sorted for a deterministic one-hot column order.
+    # Vocabulary is read from each column's PostgreSQL ENUM (no declared list).
+    # The exact set is the two ENUMs' labels; column order is deterministic
+    # (features sort by their quoted identifier — covered in the DB-free unit
+    # test; here membership is what matters).
     one_hot_cols = [
         e.column for e in featurizer.feature_manifest if e.kind == "one_hot"
     ]
-    assert one_hot_cols == _ONE_HOT_COLUMNS
+    assert set(one_hot_cols) == set(_RISK_COLUMNS + _RESULT_COLUMNS)
 
     table = featurizer.to_arrow(connection=pg_conn)
     names = table.column_names
 
-    # The identifier column never reaches the output.
-    assert "name" not in names
-    for col in _ONE_HOT_COLUMNS:
+    # The high-cardinality text column never reaches the output.
+    assert "facility_type" not in names
+    for col in _RISK_COLUMNS + _RESULT_COLUMNS:
         assert col in names
 
     rows: Dict[int, Dict[str, Any]] = {
-        row["license_no"]: row for row in table.to_pylist()
+        row["event_id"]: row for row in table.to_pylist()
     }
 
-    # A Restaurant facility -> exactly its indicator is 1, the rest 0.
-    assert rows[1]["facilities.facility_type=Restaurant"] == 1
-    assert rows[1]["facilities.facility_type=Bakery"] == 0
-    assert rows[1]["facilities.facility_type=School"] == 0
-    assert rows[5]["facilities.facility_type=Bakery"] == 1
+    # event 1: risk=high, result=fail -> exactly those indicators are 1.
+    assert rows[1]["events.risk=high"] == 1
+    assert rows[1]["events.risk=low"] == 0
+    assert rows[1]["events.risk=medium"] == 0
+    assert rows[1]["events.result=fail"] == 1
+    assert rows[1]["events.result=pass"] == 0
+    # event 4: result with a space/special label resolves cleanly.
+    assert rows[4]["events.result=pass w/ conditions"] == 1
 
-    # A NULL facility_type -> an all-zero one-hot row (never a crash).
-    assert all(rows[6][col] == 0 for col in _ONE_HOT_COLUMNS)
-
-    # The child event stream still aggregates to a numeric feature.
-    count_cols = [n for n in names if n.startswith("COUNT(")]
-    assert count_cols, "expected a COUNT aggregate over inspections"
+    # NULL risk -> an all-zero risk one-hot row (never a crash).
+    assert all(rows[7][col] == 0 for col in _RISK_COLUMNS)
+    # ...but its (non-null) result is still encoded.
+    assert rows[7]["events.result=out of business"] == 1
 
 
 def test_one_hot_columns_survive_impute(pg_conn) -> None:
     pytest.importorskip("pyarrow")
     _seed_dirtyduck(pg_conn)
-    make_as_of_dates(pg_conn, ["2015-01-01"])
+    make_as_of_dates(pg_conn, ["2016-01-01"])
 
     featurizer = Featurizer(_write(_config()), connection=pg_conn)
     imputed = featurizer.to_arrow(connection=pg_conn, impute=True)
     names = imputed.column_names
 
     # One-hots are never NULL, so imputation emits no ``__missing`` flag for them.
-    for col in _ONE_HOT_COLUMNS:
+    for col in _RISK_COLUMNS + _RESULT_COLUMNS:
         assert col in names
         assert f"{col}__missing" not in names
+
+
+def test_high_cardinality_text_categorical_without_vocabulary_fails_loud(
+    pg_conn,
+) -> None:
+    """A text (non-ENUM) column asked to one-hot without a vocabulary fails loud.
+
+    This is the boundary triage relies on: ``facility_type`` is deliberately text
+    (high cardinality), so featurizer refuses to invent a vocabulary for it — the
+    consumer's train-fit encoder owns it. Introspection finds no ENUM and the
+    error tells the user to declare a vocabulary or type the column as an ENUM.
+    """
+    _seed_dirtyduck(pg_conn)
+    config = _config()
+    config["entities"][0]["variables"]["facility_type"] = {
+        "type": "text",
+        "role": "categorical",  # ask to one-hot a text column with no vocabulary
+    }
+    with pytest.raises(ValueError, match="vocabulary|ENUM"):
+        Featurizer(_write(config), connection=pg_conn)

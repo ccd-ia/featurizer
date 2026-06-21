@@ -171,6 +171,77 @@ unless you also pass `allow_full_matrix_fit=True`, and even then it emits a
 runtime warning. Fit imputers on your training split instead.
 
 
+## Direct categorical variables (roles & one-hot)
+
+A direct variable on the **target** entity can declare a `role` that controls how
+it reaches the matrix, independent of its storage `type`:
+
+    entities:
+      - alias: facilities
+        id: license_no
+        table: dirtyduck.facilities
+        temporal_ix: first_seen
+        variables:
+          name:          { type: text, role: identifier }
+          facility_type: { type: categorical, role: categorical }   # vocabulary from the ENUM
+          risk_band:     { type: categorical, role: categorical,
+                           vocabulary: [low, medium, high] }         # declared vocabulary
+          risk_score:    { type: numeric }
+
+-   **`identifier`** — excluded from the output (a name, license number, exact
+    address), with a loud log line. Featurizer is exhaustive, so the omission is
+    explicit, never silent.
+-   **`categorical`** — one-hot encoded into deterministic 0/1 columns (below).
+-   **`numeric`** (and the no-role default) — passthrough. A raw `text` /
+    `categorical` variable left with no role still passes through, but warns first:
+    a raw string column is the usual cause of a crash in a downstream encoder.
+
+**Fixed, fit-free vocabulary.** Encoding a categorical needs a vocabulary, and
+where it comes from is a leakage boundary. Featurizer is split-blind, so it will
+**only** use a vocabulary that is *declared* — a `vocabulary: [...]` list, or the
+column's PostgreSQL `ENUM` labels — and **never** learns one by scanning the data
+(that fitted, train-only transform belongs to the consumer). A `role: categorical`
+variable with neither a declared vocabulary nor an introspectable `ENUM` **fails
+loud**.
+
+A declared vocabulary keeps `.query` / `--show-sql` fully DB-free. Reading `ENUM`
+labels needs a connection: pass one as `Featurizer("config.yaml", connection=conn)`,
+else one is opened from `DATABASE_URL` / `PG*`.
+
+**One-hot columns.** Each value becomes a numeric column named
+`"<entity>.<column>=<value>"` — e.g. `"facilities.facility_type=Restaurant"` — a
+quoted PostgreSQL identifier capped at 63 bytes (the standard hash-truncation). The
+expression is `case when <col>::text = '<value>' then 1 else 0 end`, so a **NULL or
+out-of-vocabulary** value is an all-zero row, never a crash. The vocabulary is
+sorted for a stable column order across runs. These are ordinary numeric feature
+columns on every output path (`to_arrow(impute=True)` included); a consumer strips
+the key columns + `*__missing` and treats the rest as features.
+
+Child-event categoricals are unchanged — they are reduced to numeric via
+aggregation, not one-hot. See
+[ADR-0007](docs/adr/0007-direct-categorical-fixed-vocabulary.md).
+
+
+## Feature manifest
+
+A generated feature name longer than PostgreSQL's 63-byte identifier limit is
+hash-truncated, which erases the readable tail. `Featurizer.feature_manifest`
+(and `.manifest_dataframe()`) map every output `column` back to its full,
+untruncated `label`, so humans, plots, and partner-facing tables can recover the
+intended name:
+
+    f = Featurizer("config.yaml")
+    for e in f.feature_manifest:
+        print(e.column, "<-", e.label, e.kind)
+    # facilities.facility_type=Restaurant <- facilities.facility_type=Restaurant  one_hot
+
+Each entry carries `column`, the full `label`, a `truncated` flag, `kind`
+(`one_hot` | `variable` | `derived`), the owning `entity`, and — for one-hot
+columns — the `source_column` and `value` they encode. `manifest_dataframe()`
+returns the same as a pandas `DataFrame` you can join onto the matrix for readable
+plot legends.
+
+
 <a id="org9b66329"></a>
 
 ## Selecting primitives
