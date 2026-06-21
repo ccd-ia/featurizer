@@ -158,6 +158,8 @@ class Entity:
                     type=description["type"],
                     entity=self,
                     predicates=description.get("predicates"),
+                    role=description.get("role"),
+                    vocabulary=description.get("vocabulary"),
                 )
                 for var, description in variables.items()
             ]
@@ -330,10 +332,17 @@ class Feature:
         description: str = "a feature",
         stack_depth: int = 0,
         predicates: Optional[Dict[str, str]] = None,
+        label: Optional[str] = None,
     ) -> None:
         self.name: str = name
         self.type: str = type
         self.definition: Optional[str] = definition
+        # Full, untruncated, human-readable intended name. ``name`` may be a
+        # quoted + 63-byte-capped ``pg_identifier`` (the hash suffix erases the
+        # tail of long generated names); ``label`` preserves what truncation
+        # throws away so the feature manifest can map column -> intended name.
+        # Defaults to ``name`` for plain columns (name == intended).
+        self.label: str = label if label is not None else name
         self.stack_depth: int = stack_depth
         self.entity: Optional[Entity] = entity
         self.parents: Optional[List[Feature]] = (
@@ -384,7 +393,23 @@ class Feature:
 
 
 class Variable(Feature):
-    """Represents a column in a table."""
+    """Represents a column in a table.
+
+    ``role`` (optional) declares how a *direct* variable on an entity should be
+    treated by the planner, independent of its storage ``type``:
+
+    - ``identifier`` -- excluded from feature output (e.g. a name, exact
+      address, license number); featurizer is automatic and exhaustive, so the
+      omission is loud, not silent.
+    - ``categorical`` -- one-hot encoded against a fixed, declared vocabulary
+      (``vocabulary``) or the column's PostgreSQL ``ENUM`` labels. Featurizer is
+      split-blind and never learns a vocabulary by scanning data.
+    - ``numeric`` -- passed through unchanged (today's default behaviour).
+
+    ``vocabulary`` is the declared, fixed set of category values for a
+    ``categorical`` role. When absent, the value is resolved from the column's
+    PostgreSQL ``ENUM`` at construction time (see ``featurizer.categoricals``).
+    """
 
     def __init__(
         self,
@@ -392,6 +417,8 @@ class Variable(Feature):
         type: str,
         entity: Entity,
         predicates: Optional[Dict[str, str]] = None,
+        role: Optional[str] = None,
+        vocabulary: Optional[List[str]] = None,
     ) -> None:
         super().__init__(
             name=name,
@@ -401,6 +428,11 @@ class Variable(Feature):
             stack_depth=0,
             predicates=predicates,
         )
+        self.role: Optional[str] = role
+        # Resolved at construction (declared list or introspected ENUM labels),
+        # always sorted for deterministic one-hot column order. None until
+        # resolved / not applicable.
+        self.vocabulary: Optional[List[str]] = list(vocabulary) if vocabulary else None
 
 
 class Id(Feature):

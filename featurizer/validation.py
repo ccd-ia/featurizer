@@ -90,6 +90,10 @@ class ConfigValidator:
         "vector",
     }
 
+    #: Optional per-variable ``role`` controlling direct-variable handling
+    #: (see ``featurizer.primitives.abstractions.Variable``).
+    VALID_VARIABLE_ROLES = {"identifier", "categorical", "numeric"}
+
     VALID_AS_OF_BOUNDARIES = {"inclusive", "exclusive"}
 
     ISO8601_DURATION_PATTERN = re.compile(
@@ -341,6 +345,59 @@ class ConfigValidator:
                                     ),
                                 )
                             )
+
+                        # Optional per-variable ``role`` (identifier/categorical/
+                        # numeric) and, for categoricals, a declared ``vocabulary``.
+                        role = var_def.get("role")
+                        if role is not None and role not in self.VALID_VARIABLE_ROLES:
+                            role_suggestion = self._suggest_similar(
+                                role, self.VALID_VARIABLE_ROLES
+                            )
+                            self.errors.append(
+                                ValidationError(
+                                    message=f"Invalid variable role: '{role}'",
+                                    location=f"entities[{i}].variables.{var_name}.role",
+                                    suggestion=f"Valid roles: {', '.join(sorted(self.VALID_VARIABLE_ROLES))}"
+                                    + (
+                                        f"\n  Did you mean '{role_suggestion}'?"
+                                        if role_suggestion
+                                        else ""
+                                    ),
+                                )
+                            )
+
+                        vocabulary = var_def.get("vocabulary")
+                        if vocabulary is not None:
+                            if role != "categorical":
+                                self.errors.append(
+                                    ValidationError(
+                                        message="'vocabulary' is only valid on a "
+                                        "variable with role: categorical",
+                                        location=f"entities[{i}].variables.{var_name}.vocabulary",
+                                        suggestion="Set role: categorical, or remove "
+                                        "the vocabulary list.",
+                                    )
+                                )
+                            elif not isinstance(vocabulary, list) or not vocabulary:
+                                self.errors.append(
+                                    ValidationError(
+                                        message="'vocabulary' must be a non-empty list "
+                                        f"of category values (got: {type(vocabulary).__name__})",
+                                        location=f"entities[{i}].variables.{var_name}.vocabulary",
+                                        suggestion="Example: vocabulary: "
+                                        "[Restaurant, Grocery Store, School]",
+                                    )
+                                )
+                            elif any(
+                                not isinstance(v, (str, int, bool)) for v in vocabulary
+                            ):
+                                self.errors.append(
+                                    ValidationError(
+                                        message="'vocabulary' values must be scalars "
+                                        "(string / int / bool)",
+                                        location=f"entities[{i}].variables.{var_name}.vocabulary",
+                                    )
+                                )
 
                 # Validate the optional edge-table block.
                 edge = entity.get("edge")

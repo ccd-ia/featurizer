@@ -19,6 +19,11 @@ from .boundary import (
     causal_predicate,
     use_boundary,
 )
+from .categoricals import (
+    ROLE_CATEGORICAL,
+    ROLE_IDENTIFIER,
+    build_one_hot_features,
+)
 from .primitives import (
     EdgeSpec,
     Entity,
@@ -28,6 +33,7 @@ from .primitives import (
     Relationship,
     SpatialIx,
     SpatialRelationshipSpec,
+    Variable,
     pg_identifier,
 )
 from .primitives.aggregations import haversine_m
@@ -116,6 +122,11 @@ class PlannerResult:
     features: Dict[str, Set[Feature]]
     joins: Dict[str, List[str]]
     ctes: List[str]
+    # The target's output feature columns in deterministic order (exactly the
+    # columns the <target>_transform CTE projects). Drives the feature manifest
+    # (column <-> full intended label); excludes the raw categorical columns
+    # kept only as synth helpers for one-hot expansion.
+    target_output_features: List[Feature] = field(default_factory=list)
     # Sharding metadata (issue #7). ``cte_specs`` maps CTE name -> structured
     # column metadata for the CTEs that can exceed the 1664-column limit; CTEs
     # absent from this map are emitted whole (their width is bounded), kept in
@@ -169,6 +180,9 @@ class FeaturePlanner:
         # CTE reads from synth, so any feature already materialized there must
         # be referenced by name rather than re-rendering its definition.
         self._synth_columns: Dict[str, Set[str]] = {}
+        # The target's output feature columns (the <target>_transform select
+        # list), in deterministic order, for the feature manifest.
+        self._output_features: List[Feature] = []
 
         # Sharding metadata (issue #7), populated alongside the rendered CTE
         # strings. See ``ShardableCTE`` / ``PlannerResult``.
@@ -206,6 +220,7 @@ class FeaturePlanner:
         self._ctes = []
         self._path = []
         self._synth_columns = {}
+        self._output_features = []
         self._cte_specs = {}
         self._cte_order = []
         self._verbatim_ctes = {}
@@ -230,6 +245,7 @@ class FeaturePlanner:
                 self._synth_column_source.get(self._target.alias, {})
             ),
             materialization_keys=dict(self._materialization_keys),
+            target_output_features=list(self._output_features),
         )
 
     # ------------------------------------------------------------------ #
@@ -856,7 +872,7 @@ class FeaturePlanner:
         {rendered}
         from {table} e
         join ( {grp_subquery} ) g on g.grp = e.{by}
-        {' '.join(ego_joins)}
+        {" ".join(ego_joins)}
         )
         """
         join = f" {cte_name} on {cte_name}.node_id = {table}.{id_col} "
@@ -1058,10 +1074,25 @@ class FeaturePlanner:
             self._build_direct_cte(target, source, relationship, directs)
 
     def _build_transformations(self, target: Entity) -> None:
+        # Direct-variable role handling applies to the target entity only (the
+        # entity whose own categoricals/identifiers reach the output as direct
+        # columns). Identifiers are dropped *before* synth; categoricals stay as
+        # synth helper columns and become one-hot output columns below.
+        categoricals = (
+            self._apply_direct_roles(target)
+            if self._target is not None and target.alias == self._target.alias
+            else []
+        )
+        categorical_set = set(categoricals)
+
         self._build_synth_cte(target)
 
         transformed: List[Feature | Iterable[Feature]] = []
         for feature in self._features[target.alias]:
+            if feature in categorical_set:
+                # The raw categorical stays a synth column (its one-hot CASE
+                # expressions reference it) but is never itself an output column.
+                continue
             if feature.type != "index":
                 for transformer in self.transformations.values():
                     new_feature = transformer(target, feature)
@@ -1077,6 +1108,12 @@ class FeaturePlanner:
             elif isinstance(candidate, (list, tuple, set)):
                 flattened.update(candidate)
 
+        # Fixed-vocabulary one-hot expansion (split-blind, fit-free): each
+        # role: categorical direct variable becomes N deterministic 0/1 columns
+        # over its resolved (declared or ENUM-introspected) vocabulary.
+        for variable in categoricals:
+            flattened.update(build_one_hot_features(target, variable))
+
         self._debug(
             "transformations",
             target=target.alias,
@@ -1086,6 +1123,45 @@ class FeaturePlanner:
         self._features[target.alias].update(flattened)
         sorted_flattened = self._sort_features(flattened)
         self._build_transform_cte(target, sorted_flattened)
+
+    def _apply_direct_roles(self, target: Entity) -> List[Variable]:
+        """Apply per-variable ``role`` to the target's own direct variables.
+
+        - ``identifier`` -> dropped from the feature set (before synth), loudly,
+          so its omission from the otherwise-exhaustive output is explicit.
+        - ``categorical`` -> returned for one-hot expansion; left in the feature
+          set so synth still projects the raw column its CASE expressions read.
+        - no role + a raw ``text``/``categorical`` passthrough -> warned (the
+          footgun that crashes a downstream encoder), then left as today's behaviour.
+
+        Returns the target's ``role: categorical`` variables.
+        """
+        categoricals: List[Variable] = []
+        for feature in list(self._features[target.alias]):
+            if not isinstance(feature, Variable):
+                continue
+            role = feature.role
+            if role == ROLE_IDENTIFIER:
+                logger.warning(
+                    "Excluding identifier variable '{}.{}' from feature output "
+                    "(role: identifier).",
+                    target.alias,
+                    feature.name,
+                )
+                self._features[target.alias].discard(feature)
+            elif role == ROLE_CATEGORICAL:
+                categoricals.append(feature)
+            elif role is None and feature.type in {"text", "categorical"}:
+                logger.warning(
+                    "Direct variable '{}.{}' (type: {}) will pass through as a raw "
+                    "string column and is likely to crash a downstream encoder. Set "
+                    "role: categorical (with a declared vocabulary or a PostgreSQL "
+                    "ENUM) to one-hot encode it, or role: identifier to exclude it.",
+                    target.alias,
+                    feature.name,
+                    feature.type,
+                )
+        return categoricals
 
     # ------------------------------------------------------------------ #
     # CTE builders + emission helpers (sharding metadata is issue #7)
@@ -1366,6 +1442,15 @@ class FeaturePlanner:
 
     def _build_transform_cte(self, target: Entity, features: Iterable[Feature]) -> None:
         cte_table = f"{target.alias}_transform"
+
+        features = list(features)
+        if self._target is not None and target.alias == self._target.alias:
+            # The target's transform select list *is* the output matrix; record
+            # it (in deterministic order, index/key columns excluded) for the
+            # feature manifest.
+            self._output_features = [
+                feature for feature in features if feature.type not in ["index", "key"]
+            ]
 
         id_columns = self._identifier_columns(target)
         synth_columns = self._synth_columns.get(target.alias, set())

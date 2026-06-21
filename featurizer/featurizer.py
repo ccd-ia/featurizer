@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections import OrderedDict
 
+    from .manifest import ManifestEntry
     from .sharding import ColumnGroupSharder, FeatureGroupTable, GroupedQueries
 
 import pandas as pd
@@ -16,9 +17,10 @@ from icecream import ic
 from loguru import logger
 
 from .boundary import DEFAULT_BOUNDARY, AsOfBoundary
+from .categoricals import ROLE_CATEGORICAL, resolve_vocabulary
 from .executor import QueryExecutor
 from .planner import FeaturePlanner, PlannerResult
-from .primitives import Entity, ERGraph, Feature
+from .primitives import Entity, ERGraph, Feature, Variable
 from .primitives.utils import (
     AggregationRegistry,
     TransformationRegistry,
@@ -76,6 +78,7 @@ class Featurizer:
         debug: bool = False,
         validate: bool = True,
         materialize_threshold: int | None = None,
+        connection: Any = None,
     ) -> None:
         """Initialize Featurizer from a YAML configuration file.
 
@@ -87,10 +90,19 @@ class Featurizer:
                 non-target child CTE is materialized into TEMP-table shards
                 (issue #7). Defaults to PostgreSQL's hard 1664-entry limit; lower
                 it to materialize earlier (advanced / testing).
+            connection: Optional psycopg connection used only to resolve a
+                ``role: categorical`` direct variable's vocabulary from its
+                PostgreSQL ``ENUM`` labels when no ``vocabulary`` is declared in
+                the config. When omitted, one is opened from ``DATABASE_URL`` /
+                ``PG*`` if any categorical actually needs it; a declared
+                vocabulary needs no database (``query`` / ``--show-sql`` stay
+                DB-free). The connection is never used to scan data.
 
         Raises:
             FileNotFoundError: If config file doesn't exist
-            ValueError: If config is missing required keys or has invalid values
+            ValueError: If config is missing required keys or has invalid values,
+                or a ``role: categorical`` variable has neither a declared
+                ``vocabulary`` nor an introspectable PostgreSQL ``ENUM``.
         """
         config = self._load_config(config_file, validate=validate)
         self._materialize_threshold = materialize_threshold
@@ -114,6 +126,11 @@ class Featurizer:
             config.get("spatial_relationships"),
         )
         self.target: Entity = self._get_entity(config["target"])
+
+        # Resolve fixed vocabularies for the target's role: categorical direct
+        # variables (declared list, else introspected ENUM) before planning so
+        # the planner stays DB-free. Fails loud if a categorical can be neither.
+        self._resolve_categorical_vocabularies(connection)
 
         # Primitive selection: config may override the active set; otherwise the
         # curated module defaults apply. Unknown names raise in get_* (and are
@@ -146,6 +163,51 @@ class Featurizer:
         self._renderer: SQLRenderer = SQLRenderer()
         self._executor: QueryExecutor = QueryExecutor()
 
+    def _resolve_categorical_vocabularies(self, connection: Any) -> None:
+        """Bake a fixed vocabulary onto each target ``role: categorical`` variable.
+
+        Declared vocabularies need no database. If any categorical lacks one, a
+        connection is required to read its PostgreSQL ``ENUM`` labels: the passed
+        ``connection`` is used, else one is opened from ``DATABASE_URL`` / ``PG*``;
+        if neither resolves, :func:`resolve_vocabulary` raises a loud, actionable
+        error. The data is never scanned for distinct values (split-blind).
+        """
+        pending = [
+            feature
+            for feature in self.target.features
+            if isinstance(feature, Variable) and feature.role == ROLE_CATEGORICAL
+        ]
+        if not pending:
+            return
+
+        needs_db = any(not var.vocabulary for var in pending)
+        conn = connection
+        own_connection: Any = None
+        if needs_db and conn is None:
+            own_connection = conn = self._maybe_env_connection()
+        try:
+            for var in pending:
+                var.vocabulary = resolve_vocabulary(var, self.target, conn)
+        finally:
+            if own_connection is not None:
+                own_connection.close()
+
+    @staticmethod
+    def _maybe_env_connection() -> Any:
+        """A psycopg connection from the environment, or ``None`` if unconfigured.
+
+        Mirrors the connection sourcing used by the Arrow/Parquet output paths
+        (``DATABASE_URL`` / ``PG*``). Returns ``None`` rather than raising when no
+        database is configured, so the caller can produce the precise
+        declare-vocabulary-or-ENUM error instead of a generic connection error.
+        """
+        from .arrow import default_connection
+
+        try:
+            return default_connection()
+        except RuntimeError:
+            return None
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -159,6 +221,28 @@ class Featurizer:
     def relationships(self) -> List[Any]:
         """Return all relationships in the graph."""
         return self.graph.relationships
+
+    @property
+    def feature_manifest(self) -> "List[ManifestEntry]":
+        """Map every output column to its full, untruncated intended name.
+
+        One row per output feature column (in output order), each carrying the
+        rendered ``column`` name, the human-readable ``label`` (recovered even
+        when the 63-byte identifier cap truncated the column name), a
+        ``truncated`` flag, the ``kind`` (``one_hot`` | ``variable`` |
+        ``derived``), the owning ``entity``, and — for one-hot columns — the
+        ``source_column`` and ``value`` they encode. Useful for human/partner
+        labels, plot legends, and joining readable names back onto the matrix.
+        """
+        from .manifest import build_feature_manifest
+
+        return build_feature_manifest(self._plan.target_output_features)
+
+    def manifest_dataframe(self) -> "pd.DataFrame":
+        """The feature manifest as a pandas DataFrame (table / plots / joins)."""
+        from .manifest import manifest_dataframe
+
+        return manifest_dataframe(self.feature_manifest)
 
     @property
     def query(self) -> str:

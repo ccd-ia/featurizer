@@ -6,6 +6,44 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-21
+
+### Added
+
+- **Fixed-vocabulary one-hot encoding for direct (target-entity) categoricals.**
+  A direct variable may now declare a `role` (`identifier` | `categorical` |
+  `numeric`). A `role: categorical` variable is expanded into deterministic 0/1
+  one-hot columns over a **fixed** vocabulary; a `role: identifier` variable is
+  excluded from the output (loudly); `role: numeric` (and the no-role default)
+  pass through as today — but a raw `text`/`categorical` direct variable left
+  unencoded now emits a warning (the footgun that crashes a downstream encoder).
+  Featurizer is **split-blind and fit-free**: the vocabulary is resolved from a
+  declared `vocabulary: [...]` list or, failing that, the column's PostgreSQL
+  `ENUM` labels — it is **never** learned by scanning the data (that fitted,
+  split-sensitive transform belongs to the consumer, not to featurizer). A
+  variable with neither a declared vocabulary nor an introspectable `ENUM` fails
+  loud. New module `featurizer/categoricals.py`; new ADR-0007.
+  - **Column-naming contract** (stable, for downstream consumers): each one-hot
+    column is named `"<entity_alias>.<column>=<value>"` (e.g.
+    `"facilities.facility_type=Restaurant"`), a quoted PostgreSQL identifier
+    capped at 63 bytes by the existing `pg_identifier` hash-truncation. A NULL or
+    out-of-vocabulary value yields an all-zero row (never a crash). The columns
+    are additional numeric feature columns on the existing `query` / `to_arrow` /
+    `to_parquet` / `to_dataframe` / `to_tables` paths; the consumer strips key
+    columns + `*__missing` and treats the rest as features.
+  - `Featurizer.__init__` gains an optional `connection=` used **only** to read
+    `ENUM` labels when no `vocabulary` is declared (else one is opened from
+    `DATABASE_URL` / `PG*`); a declared vocabulary keeps `query` / `--show-sql`
+    fully DB-free.
+- **Feature manifest.** `Featurizer.feature_manifest` (and
+  `Featurizer.manifest_dataframe()`) map every output column to its full,
+  untruncated intended `label` — recovering the human-readable name that the
+  63-byte identifier cap erases — with a `truncated` flag, `kind`
+  (`one_hot` | `variable` | `derived`), owning `entity`, and, for one-hot
+  columns, the `source_column` and `value` they encode. Useful for human/partner
+  labels, plot legends, and joining readable names back onto the matrix. New
+  module `featurizer/manifest.py`.
+
 ## [0.3.0] - 2026-06-19
 
 ### Added
