@@ -1,0 +1,54 @@
+# Direct categoricals, output formats, and imputation.
+#
+# A facilities target carrying a direct categorical (facility_type) and an
+# identifier (name), with an inspections child for count-vs-measure imputation.
+
+target: facilities
+max_depth: 2
+
+intervals:
+  - P1Y
+
+aggregations:
+  - count   # count-like  -> imputes to 0
+  - mean    # a measure   -> stays NULL, gets a __missing flag
+transformations:
+  - identity
+
+entities:
+  - alias: facilities
+    id: license_no
+    table: facilities
+    temporal_ix: first_seen
+    variables:
+      # identifier: excluded from the feature output (loudly). A name / license
+      # number / exact address is an identifier, not a feature.
+      name:
+        type: text
+        role: identifier
+      # categorical: one-hot encoded against a FIXED vocabulary. Featurizer is
+      # split-blind and fit-free — it never learns the set from the data. The
+      # vocabulary is declared here; alternatively, type the column as a
+      # PostgreSQL ENUM and featurizer reads the labels (pass connection=).
+      facility_type:
+        type: categorical
+        role: categorical
+        vocabulary: [Bakery, Grocery Store, Restaurant, School]
+
+  - alias: inspections
+    id: inspection_id
+    table: inspections
+    temporal_ix: inspection_date
+    variables:
+      license_no:
+        type: index
+      score:
+        type: numeric
+
+relationships:
+  - parent:
+      entity: facilities
+      key: license_no
+    child:
+      entity: inspections
+      key: license_no

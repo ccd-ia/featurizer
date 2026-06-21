@@ -310,6 +310,12 @@ SQLite databases:
 <td class="org-left">Finance (Accounts → Transactions)</td>
 <td class="org-left">Custom aggregations and transformations</td>
 </tr>
+
+<tr>
+<td class="org-left"><a href="examples/05-categoricals-output/">05-categoricals-output</a></td>
+<td class="org-left">Food Inspections (Facilities → Inspections)</td>
+<td class="org-left">Categorical one-hot, manifest, output &amp; imputation (executes on PostgreSQL)</td>
+</tr>
 </tbody>
 </table>
 

@@ -58,12 +58,13 @@ example NAME:
     DATABASE_URL={{pg_url}} uv run python "$dir/create_data.py"; \
     DATABASE_URL={{pg_url}} uv run python "$dir/run_example.py" --execute
 
-# Seed + run ALL FOUR examples end to end (requires `just db-up`).
+# Seed + run ALL examples end to end (requires `just db-up`).
 examples:
     just example 01
     just example 02
     just example 03
     just example 04
+    just example 05
 
 typecheck:
     uv run basedpyright

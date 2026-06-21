@@ -50,6 +50,15 @@ Creating and registering custom aggregations (`range`, `p95`) and
 transformations (`log1p`, `zscore`, `bin`) against the current primitive API,
 then selecting them in `config.yaml`.
 
+### [05-categoricals-output](./05-categoricals-output/)
+**Difficulty:** Advanced — Food Inspections (Facilities → Inspections)
+
+Direct-categorical one-hot encoding (`role: categorical` / `role: identifier`)
+against a fixed vocabulary, the feature manifest, the output formats
+(`to_dataframe` / `to_arrow`), and the imputation contract (`__missing`,
+count-vs-measure). Unlike examples 1–4, this one **executes** against
+PostgreSQL, so it shows the actual feature matrix.
+
 ## Quick Start
 
 ```bash
@@ -57,8 +66,8 @@ then selecting them in `config.yaml`.
 just db-up
 
 # Seed + run a single example end to end (NAME is a prefix):
-just example 01            # or 02, 03, 04
-# ...or run all four:
+just example 01            # or 02, 03, 04, 05
+# ...or run all of them:
 just examples
 
 # Tear the database down when done (the container is ephemeral):
@@ -85,6 +94,7 @@ uv run python examples/01-basic-aggregations/run_example.py --show-sql
 2. **Example 2** — temporal joins (+ rolling stats)
 3. **Example 3** — deep nesting
 4. **Example 4** — custom primitives
+5. **Example 5** — direct categoricals, output formats & imputation (executes on PostgreSQL)
 
 ## Common Patterns
 
