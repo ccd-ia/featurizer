@@ -6,6 +6,43 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-21
+
+Documentation, examples, and test-fixture follow-up to 0.4.0 (no API or behaviour
+changes).
+
+### Added
+
+- **Example 05 — direct categoricals, output formats & imputation** (`examples/05-categoricals-output/`).
+  The first DB-executing tutorial (examples 1–4 are inspection-only): a food-inspections
+  scenario that shows the 0.4.0 consumer-facing features end to end — `role: categorical`
+  one-hot encoding over a fixed declared vocabulary, `role: identifier` exclusion, an
+  out-of-vocabulary value and a NULL (both → an all-zero one-hot row), the
+  `feature_manifest`, `to_dataframe` / `to_arrow` output, and `impute=True` with
+  count-vs-measure fills and `__missing` flags. Wired into `just example 05` / `just examples`.
+
+### Changed
+
+- **Realigned the DirtyDuck integration fixture to triage's actual schema.** The inline
+  `dirtyduck` fixture in `tests/integration/test_direct_categoricals.py` now mirrors triage's
+  updated raw/clean/ontology rework: the real clean-layer ENUMs (`risk_t`, `result_t`,
+  `inspection_type_t`) drive the ENUM-introspected one-hot, while `facility_type` stays
+  high-cardinality TEXT (excluded as an identifier) — with a fail-loud test for one-hot-ing a
+  text column that has no vocabulary. Replaces the earlier invented `facility_type` ENUM.
+
+### Fixed
+
+- **Repaired the example tutorial notebooks.** Every `tutorial.ipynb` setup cell tried to seed
+  via `exec(open("create_data.py").read())` gated on a `data.db` (SQLite) that no longer
+  exists; under `exec` the script's `__file__` is undefined, so the cell raised on every run.
+  The notebooks are database-free, so the seeding cell was both broken and pointless — replaced
+  with a DB-free setup cell (example 04 keeps its custom-primitive registration) and re-executed.
+
+### Documentation
+
+- README: new "Direct categorical variables (roles & one-hot)" and "Feature manifest" sections;
+  example 01 now demonstrates `role: categorical`.
+
 ## [0.4.0] - 2026-06-21
 
 ### Added
