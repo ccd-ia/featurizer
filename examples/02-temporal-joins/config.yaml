@@ -58,4 +58,4 @@ relationships:
     temporal:
       mode: as_of
       grace: P7D  # Allow matching plans up to 7 days in the future
-      child_time: plan_date
+      child_timestamp: plan_date

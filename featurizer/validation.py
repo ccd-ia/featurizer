@@ -670,6 +670,36 @@ class ConfigValidator:
 
                 # Validate temporal join requirements
                 if "temporal" in rel and isinstance(rel["temporal"], dict):
+                    # The parser only reads mode/grace/child_timestamp; any
+                    # other key is silently ignored, so a misspelled key means
+                    # a silently wrong join.
+                    valid_temporal_keys = {"mode", "grace", "child_timestamp"}
+                    for key in rel["temporal"]:
+                        if key in valid_temporal_keys:
+                            continue
+                        suggestion = self._suggest_similar(
+                            str(key), valid_temporal_keys
+                        ) or next(
+                            (
+                                k
+                                for k in sorted(valid_temporal_keys)
+                                if k.startswith(str(key)) or str(key).startswith(k)
+                            ),
+                            None,
+                        )
+                        self.warnings.append(
+                            ValidationWarning(
+                                message=f"Unknown key '{key}' in temporal block is ignored. "
+                                f"Valid keys: {', '.join(sorted(valid_temporal_keys))}"
+                                + (
+                                    f". Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else ""
+                                ),
+                                location=f"relationships[{i}].temporal.{key}",
+                            )
+                        )
+
                     temporal_mode = rel["temporal"].get("mode")
                     if temporal_mode == "as_of":
                         parent_entity = (

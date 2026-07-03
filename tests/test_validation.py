@@ -392,6 +392,85 @@ class TestSemanticValidation:
         assert len(result.warnings) > 0
         assert any("temporal" in warning.message.lower() for warning in result.warnings)
 
+    def test_unknown_temporal_key_warns_with_suggestion(self):
+        """Unknown temporal-block keys warn; child_time suggests child_timestamp."""
+        config = {
+            "target": "patients",
+            "max_depth": 2,
+            "intervals": [],
+            "entities": [
+                {
+                    "alias": "patients",
+                    "table": "patients",
+                    "id": "patient_id",
+                    "temporal_ix": "admission_date",
+                },
+                {
+                    "alias": "care_plans",
+                    "table": "care_plans",
+                    "id": "plan_id",
+                    "temporal_ix": "plan_date",
+                },
+            ],
+            "relationships": [
+                {
+                    "parent": {"entity": "care_plans", "key": "patient_id"},
+                    "child": {"entity": "patients", "key": "patient_id"},
+                    "temporal": {"mode": "as_of", "child_time": "plan_date"},
+                }
+            ],
+        }
+
+        validator = ConfigValidator()
+        result = validator.validate(config)
+
+        assert result.is_valid  # warning, not error
+        unknown = [
+            w for w in result.warnings if "Unknown key 'child_time'" in w.message
+        ]
+        assert len(unknown) == 1
+        assert "Did you mean 'child_timestamp'?" in unknown[0].message
+        assert unknown[0].location == "relationships[0].temporal.child_time"
+
+    def test_known_temporal_keys_do_not_warn(self):
+        """mode/grace/child_timestamp are the parsed keys; no unknown-key warning."""
+        config = {
+            "target": "patients",
+            "max_depth": 2,
+            "intervals": [],
+            "entities": [
+                {
+                    "alias": "patients",
+                    "table": "patients",
+                    "id": "patient_id",
+                    "temporal_ix": "admission_date",
+                },
+                {
+                    "alias": "care_plans",
+                    "table": "care_plans",
+                    "id": "plan_id",
+                    "temporal_ix": "plan_date",
+                },
+            ],
+            "relationships": [
+                {
+                    "parent": {"entity": "care_plans", "key": "patient_id"},
+                    "child": {"entity": "patients", "key": "patient_id"},
+                    "temporal": {
+                        "mode": "as_of",
+                        "grace": "P7D",
+                        "child_timestamp": "plan_date",
+                    },
+                }
+            ],
+        }
+
+        validator = ConfigValidator()
+        result = validator.validate(config)
+
+        assert result.is_valid
+        assert not any("Unknown key" in w.message for w in result.warnings)
+
 
 class TestCircularRelationshipDetection:
     """Tests for circular relationship detection."""

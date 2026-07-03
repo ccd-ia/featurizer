@@ -6,6 +6,23 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-03
+
+### Added
+
+- **Validation warns on unknown keys in a relationship's `temporal:` block.** The parser
+  only reads `mode` / `grace` / `child_timestamp`; anything else was silently ignored,
+  so a misspelled key meant a silently wrong join. The validator now emits a warning
+  with the exact location (`relationships[i].temporal.<key>`) and a "Did you mean?"
+  suggestion (Levenshtein plus prefix match, so `child_time` suggests `child_timestamp`).
+
+### Fixed
+
+- **Example 02 wrote `child_time:` instead of `child_timestamp:`** in its as-of temporal
+  block. The key was silently ignored; the example only behaved correctly because the
+  planner's fallback picked the child entity's declared `temporal_ix` — the same column.
+  Generated SQL is unchanged; the config now says what it does.
+
 ## [0.4.1] - 2026-06-21
 
 Documentation, examples, and test-fixture follow-up to 0.4.0 (no API or behaviour
