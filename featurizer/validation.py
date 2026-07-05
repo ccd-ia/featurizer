@@ -625,6 +625,7 @@ class ConfigValidator:
 
         # Validate relationships reference valid entities
         if isinstance(relationships, list):
+            self._check_relationship_names(relationships, entity_aliases)
             for i, rel in enumerate(relationships):
                 if not isinstance(rel, dict):
                     continue
@@ -911,6 +912,105 @@ class ConfigValidator:
         if not duration or duration == "P":
             return False
         return ConfigValidator.ISO8601_DURATION_PATTERN.match(duration) is not None
+
+    def _check_relationship_names(
+        self, relationships: List[Any], entity_aliases: Set[str]
+    ) -> None:
+        """Relationship ``name`` rules and the parallel-relationship guard.
+
+        The planner names aggregation CTEs and features by the relationship's
+        naming alias (``name`` or the child alias). Two relationships between
+        the same (parent, child) entity pair therefore collide unless each
+        carries a distinct ``name:`` — and before v0.5.0 that collision was a
+        *silent* collapse (the second relationship's features vanished). Make
+        it loud: ambiguous pairs without distinct names are an ERROR.
+        """
+        seen_names: Dict[str, int] = {}
+        pair_indexes: Dict[tuple[str, str], List[int]] = {}
+
+        for i, rel in enumerate(relationships):
+            if not isinstance(rel, dict):
+                continue
+            name = rel.get("name")
+            if name is not None:
+                if not isinstance(name, str) or not name:
+                    self.errors.append(
+                        ValidationError(
+                            message="Relationship 'name' must be a non-empty string",
+                            location=f"relationships[{i}].name",
+                        )
+                    )
+                    continue
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Relationship name '{name}' is not a valid "
+                            "identifier (letters, digits, underscores; must not "
+                            "start with a digit) — it becomes part of CTE and "
+                            "feature names",
+                            location=f"relationships[{i}].name",
+                        )
+                    )
+                if name in entity_aliases:
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Relationship name '{name}' collides with an "
+                            "entity alias; CTE names derived from it would be "
+                            "ambiguous",
+                            location=f"relationships[{i}].name",
+                            suggestion="Pick a name distinct from every entity alias",
+                        )
+                    )
+                if name in seen_names:
+                    self.errors.append(
+                        ValidationError(
+                            message=f"Duplicate relationship name '{name}' "
+                            f"(first used by relationships[{seen_names[name]}])",
+                            location=f"relationships[{i}].name",
+                        )
+                    )
+                else:
+                    seen_names[name] = i
+
+            parent = rel.get("parent", {})
+            child = rel.get("child", {})
+            parent_entity = parent.get("entity") if isinstance(parent, dict) else None
+            child_entity = child.get("entity") if isinstance(child, dict) else None
+            if parent_entity and child_entity:
+                pair_indexes.setdefault((parent_entity, child_entity), []).append(i)
+
+        for (parent_entity, child_entity), indexes in pair_indexes.items():
+            if len(indexes) < 2:
+                continue
+            unnamed = [
+                idx
+                for idx in indexes
+                if not isinstance(relationships[idx], dict)
+                or not relationships[idx].get("name")
+            ]
+            if unnamed:
+                self.errors.append(
+                    ValidationError(
+                        message=(
+                            f"{len(indexes)} relationships between "
+                            f"'{parent_entity}' and '{child_entity}' "
+                            f"(relationships[{', '.join(str(x) for x in indexes)}]) "
+                            "— parallel relationships between one entity pair "
+                            "must each declare a distinct 'name:' or their "
+                            "features would silently collide"
+                        ),
+                        location=(
+                            f"relationships[{unnamed[0]}] "
+                            f"({parent_entity} -> {child_entity})"
+                        ),
+                        suggestion=(
+                            "Add a name to each, e.g.\n"
+                            f"  - name: {child_entity}_as_role_a\n"
+                            f"    parent: {{entity: {parent_entity}, ...}}\n"
+                            f"    child:  {{entity: {child_entity}, ...}}"
+                        ),
+                    )
+                )
 
     @staticmethod
     def _suggest_similar(

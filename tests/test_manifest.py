@@ -95,14 +95,21 @@ def test_manifest_dataframe_shape() -> None:
         _config({"type": "categorical", "role": "categorical", "vocabulary": ["A"]})
     )
     frame = featurizer.manifest_dataframe()
+    # v0.5.0: lineage columns (source_alias, depth, parents, interval) and the
+    # generated description joined the frame.
     assert list(frame.columns) == [
         "column",
         "label",
         "truncated",
         "kind",
         "entity",
+        "source_alias",
+        "depth",
+        "parents",
+        "interval",
         "source_column",
         "value",
+        "description",
         "definition",
     ]
     row = frame[frame["column"] == "facilities.facility_type=A"].iloc[0]

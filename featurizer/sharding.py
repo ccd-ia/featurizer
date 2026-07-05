@@ -228,6 +228,20 @@ class ColumnGroupSharder:
         """Render every column group to a self-contained SQL string."""
         return self.build().queries
 
+    def column_groups(self) -> "OrderedDict[str, List[str]]":
+        """Map ``group_<NNN>`` -> the feature column names that group carries.
+
+        Mirrors :meth:`_partition_columns` exactly (same order, same chunking),
+        so the mapping matches what :meth:`build` renders. Key columns
+        (``as_of_date`` + the target id) are carried by *every* group and are
+        not listed. Used by ``Featurizer.to_tables`` to record, per manifest
+        row, which feature-group table the column landed in.
+        """
+        mapping: "OrderedDict[str, List[str]]" = OrderedDict()
+        for idx, group_columns in enumerate(self._partition_columns()):
+            mapping[f"group_{idx:03d}"] = [c.name for c in group_columns]
+        return mapping
+
     def build(self) -> GroupedQueries:
         """Partition + render. Returns the ordered group queries and join keys.
 

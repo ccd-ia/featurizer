@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Relationship Identity &amp; Manifest Persistence (Featurizer v0.5.0)</title>
+<style>
+:root {
+  --bg: #fafaf8;
+  --surface: #ffffff;
+  --fg: #1a2332;
+  --muted: #5b6472;
+  --accent: #0f766e;        /* teal — primary */
+  --accent-soft: #ccfbf1;
+  --accent-2: #b45309;      /* amber — secondary */
+  --accent-2-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --ok: #15803d;
+  --border: #e2e4e0;
+  --code-bg: #f1f3f0;
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0 1.25rem 5rem;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--sans); line-height: 1.55; font-size: 16px;
+}
+main { max-width: 900px; margin: 0 auto; }
+header { padding: 2.5rem 0 0.5rem; border-bottom: 3px solid var(--accent); margin-bottom: 1.5rem; }
+h1 { font-size: 1.7rem; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
+h1::before { content: "◆ "; color: var(--accent); }
+h2 { font-size: 1.25rem; margin-top: 2.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); letter-spacing: -0.01em; }
+h2::before { content: "§ "; color: var(--accent); font-weight: 400; }
+h3 { font-size: 1.05rem; margin-top: 1.6rem; }
+h4 { font-size: 0.95rem; margin: 1.2rem 0 0.4rem; color: var(--fg); }
+p { margin: 0.6rem 0; }
+code {
+  font-family: var(--mono); font-size: 0.85em;
+  background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+figure { margin: 1.5rem 0; text-align: center; }
+figure svg { max-width: 100%; height: auto; }
+figcaption { font-size: 0.82rem; color: var(--muted); margin-top: 0.5rem; font-style: italic; }
+details.meta { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; }
+details.meta summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+details.meta dl { display: grid; grid-template-columns: 9rem 1fr; gap: 0.25rem 1rem; margin: 0.75rem 0 0.5rem; }
+details.meta dt { font-weight: 600; color: var(--muted); }
+details.meta dd { margin: 0; font-family: var(--mono); font-size: 0.8rem; word-break: break-all; }
+.tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.1em 0.55em; border-radius: 10px; vertical-align: middle; margin-right: 0.4em; text-transform: uppercase; letter-spacing: 0.04em; }
+.tag.existing { background: var(--accent-soft); color: var(--accent); }
+.tag.new { background: var(--accent-2-soft); color: var(--accent-2); }
+.files ul { list-style: none; padding-left: 0; }
+.files li { padding: 0.3rem 0; border-bottom: 1px dashed var(--border); font-size: 0.9rem; }
+.phase {
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: 8px; padding: 1rem 1.4rem 1.2rem; margin: 1.5rem 0;
+}
+.phase h3 { margin-top: 0.3rem; }
+code.status { background: var(--accent-2-soft); color: var(--accent-2); font-weight: 700; min-width: 2.2em; display: inline-block; text-align: center; }
+ul.checklist { list-style: none; padding-left: 0.5rem; }
+ul.checklist li { padding: 0.25rem 0; font-size: 0.92rem; }
+.loop {
+  background: var(--accent-soft); border-radius: 6px; padding: 0.7rem 1rem;
+  font-size: 0.88rem; margin-top: 1rem;
+}
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; margin: 1rem 0; }
+th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); font-weight: 600; }
+.callout {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent-2);
+  background: var(--surface); border-radius: 6px; padding: 0.8rem 1.1rem; margin: 1rem 0; font-size: 0.92rem;
+}
+.callout.danger { border-left-color: var(--danger); }
+section#amendments details, section#questionables details {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 0.5rem 1rem; margin: 0.6rem 0;
+}
+section#amendments summary, section#questionables summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; }
+.qa-answer { font-size: 0.9rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: Relationship Identity &amp; Manifest Persistence (Featurizer v0.5.0)</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-05T09:15:00-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-05T09:15:00-06:00, 2026-07-05T10:05:00-06:00 (amendment: CI/CD phase)</dd>
+        <dt>commits</dt>      <dd>base: 7c05ae6 (v0.4.2)</dd>
+        <dt>agent name</dt>   <dd>claude-fable-5</dd>
+        <dt>session id</dt>   <dd>2bb47d3c-9efd-4d94-87fb-b0e740ade6ab</dd>
+        <dt>back refs</dt>    <dd>docs/adr/0005 (column-group sharding), docs/adr/0006 (oversized-child materialization), docs/adr/0007 (one-hot naming contract), TODO.org §2026-07-03</dd>
+        <dt>forward refs</dt> <dd>—</dd>
+      </dl>
+    </details>
+  </header>
+
+  <!-- Hero image -->
+  <figure>
+    <svg viewBox="0 0 880 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline: entity graph to planner to SQL to matrix plus manifest">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+        </marker>
+      </defs>
+      <rect x="0" y="0" width="880" height="200" fill="#fafaf8"/>
+      <!-- entity graph node -->
+      <g>
+        <rect x="30" y="55" width="150" height="90" rx="10" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+        <circle cx="75" cy="85" r="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+        <circle cx="135" cy="85" r="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+        <circle cx="105" cy="120" r="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+        <line x1="83" y1="90" x2="99" y2="114" stroke="#0f766e" stroke-width="2"/>
+        <line x1="127" y1="90" x2="111" y2="114" stroke="#0f766e" stroke-width="2"/>
+        <!-- doubled edge highlighted -->
+        <line x1="85" y1="82" x2="125" y2="82" stroke="#b45309" stroke-width="2"/>
+        <line x1="85" y1="89" x2="125" y2="89" stroke="#b45309" stroke-width="2"/>
+        <text x="105" y="170" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">entity graph</text>
+      </g>
+      <line x1="190" y1="100" x2="245" y2="100" stroke="#0f766e" stroke-width="2" marker-end="url(#arr)"/>
+      <!-- planner -->
+      <rect x="255" y="65" width="130" height="70" rx="10" fill="#0f766e"/>
+      <text x="320" y="105" font-family="monospace" font-size="14" fill="#ffffff" text-anchor="middle">planner</text>
+      <line x1="395" y1="100" x2="450" y2="100" stroke="#0f766e" stroke-width="2" marker-end="url(#arr)"/>
+      <!-- SQL CTEs -->
+      <g>
+        <rect x="460" y="45" width="130" height="26" rx="5" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+        <rect x="460" y="79" width="130" height="26" rx="5" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+        <rect x="460" y="113" width="130" height="26" rx="5" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="525" y="62"  font-family="monospace" font-size="11" fill="#5b6472" text-anchor="middle">cte</text>
+        <text x="525" y="96"  font-family="monospace" font-size="11" fill="#5b6472" text-anchor="middle">cte</text>
+        <text x="525" y="130" font-family="monospace" font-size="11" fill="#5b6472" text-anchor="middle">cte</text>
+        <text x="525" y="170" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">SQL</text>
+      </g>
+      <line x1="600" y1="100" x2="655" y2="100" stroke="#0f766e" stroke-width="2" marker-end="url(#arr)"/>
+      <!-- matrix + manifest -->
+      <g>
+        <rect x="665" y="45" width="185" height="70" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+        <line x1="665" y1="68" x2="850" y2="68" stroke="#e2e4e0" stroke-width="1.5"/>
+        <line x1="665" y1="91" x2="850" y2="91" stroke="#e2e4e0" stroke-width="1.5"/>
+        <line x1="727" y1="45" x2="727" y2="115" stroke="#e2e4e0" stroke-width="1.5"/>
+        <line x1="789" y1="45" x2="789" y2="115" stroke="#e2e4e0" stroke-width="1.5"/>
+        <text x="757" y="140" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">matrix</text>
+        <rect x="665" y="150" width="185" height="26" rx="6" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+        <text x="757" y="167" font-family="monospace" font-size="12" fill="#b45309" text-anchor="middle">+ manifest</text>
+      </g>
+    </svg>
+    <figcaption>The DFS pipeline this plan hardens: relationship identity in the planner (amber doubled edge), a manifest persisted next to the matrix.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Fix the two relationship-topology bugs discovered in the 2026-07-03 session — (1) aggregation relationships whose <code>parent_key ≠ child_key</code> render <strong>invalid SQL</strong>, and (2) parallel relationships between the same entity pair <strong>silently collapse</strong> into one feature set — and finish the feature-manifest story: persist the manifest as a table next to the feature-group tables, export the lineage the planner already tracks in memory (<code>Feature.parents</code>, <code>stack_depth</code>), and generate human-readable descriptions from existing primitive metadata. Ships as <strong>v0.5.0</strong> (new config surface + new persisted artifact).</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Both bugs were verified empirically against v0.4.2 (rendered SQL inspected; probe configs in the 2026-07-03 session):</p>
+    <p><strong>Bug 1 — key-name mismatch renders invalid SQL.</strong> <code>_build_aggregations_cte</code> (planner.py:1216–1226) projects and groups by <code>{source}_transform.{parent_key}</code> — a column that only exists on the <em>parent</em> — while the join it emits (planner.py:1199–1201) references <code>cte.{child_key}</code>, a column the CTE never outputs. With <code>parent: customers.customer_id / child: orders.buyer_id</code>, the CTE says <code>select orders_transform.customer_id … group by customer_id</code> (no such column) and the synth joins on <code>orders_aggs_for_customers.buyer_id</code> (not projected). Two sites, mutually inconsistent, both wrong. <code>_build_direct_cte</code> (planner.py:1283–1300) has the same disease in the forward direction: it projects <code>source.id.name</code> but joins <code>cte.{child_key}</code>. Every shipped example and fixture happens to use <code>parent_key == child_key == id</code>, which is the only reason CI is green.</p>
+    <p><strong>Bug 2 — parallel relationships silently collapse.</strong> Feature names are built from <code>feature.entity.alias</code> only (aggregations.py:96–101 <code>_build_name</code>) and the aggregation CTE is named by entity pair (<code>{source}_aggs_for_{target}</code>, planner.py:1198). Declaring <code>customers→orders</code> twice (buyer role, seller role) produced <strong>5 features instead of 10</strong>, one CTE, and one join — the seller-side features vanish with no warning. Identity-collapse sites: <code>Feature.__eq__</code> is name-based, <code>aggregation_set = set(...)</code> (planner.py:1042), <code>_synth_column_source</code> keyed by feature name (planner.py:1257–1259), and the traversal guard <code>if child in self._path: continue</code> (planner.py:348).</p>
+    <p><strong>Gap 3 — manifest is in-memory only and lineage is discarded.</strong> <code>feature_manifest</code> (v0.4.0) maps column ↔ label ↔ definition, but <code>to_tables()</code> persists feature-group tables with no manifest table beside them; <code>Feature.parents</code> and <code>stack_depth</code> (the derivation chain) never reach the manifest; <code>Feature.description</code> defaults to <code>"a feature"</code> even though <code>cli.py</code> carries per-primitive documentation dicts (<code>AGGREGATION_DOCS</code> / <code>TRANSFORMATION_DOCS</code>).</p>
+    <figure>
+      <svg viewBox="0 0 880 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two bugs: parallel edges collapse; key name mismatch breaks SQL">
+        <rect x="0" y="0" width="880" height="290" fill="#fafaf8"/>
+        <defs>
+          <marker id="arrD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6472"/>
+          </marker>
+        </defs>
+        <!-- Left panel: collapse -->
+        <text x="220" y="32" font-family="monospace" font-size="14" fill="#b91c1c" text-anchor="middle" font-weight="bold">bug 2: silent collapse</text>
+        <rect x="40" y="60" width="150" height="44" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="115" y="87" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">customers</text>
+        <rect x="40" y="190" width="150" height="44" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="115" y="217" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">orders</text>
+        <line x1="95"  y1="190" x2="95"  y2="108" stroke="#5b6472" stroke-width="2" marker-end="url(#arrD)"/>
+        <line x1="140" y1="190" x2="140" y2="108" stroke="#5b6472" stroke-width="2" marker-end="url(#arrD)"/>
+        <text x="62"  y="152" font-family="monospace" font-size="11" fill="#5b6472" text-anchor="middle">buyer</text>
+        <text x="178" y="152" font-family="monospace" font-size="11" fill="#5b6472" text-anchor="middle">seller</text>
+        <line x1="205" y1="147" x2="260" y2="147" stroke="#b91c1c" stroke-width="2" marker-end="url(#arrD)"/>
+        <rect x="270" y="120" width="140" height="54" rx="8" fill="#fee2e2" stroke="#b91c1c" stroke-width="2"/>
+        <text x="340" y="143" font-family="monospace" font-size="12" fill="#b91c1c" text-anchor="middle">1 CTE</text>
+        <text x="340" y="162" font-family="monospace" font-size="12" fill="#b91c1c" text-anchor="middle">5 of 10 features</text>
+        <!-- divider -->
+        <line x1="450" y1="20" x2="450" y2="270" stroke="#e2e4e0" stroke-width="2" stroke-dasharray="6 5"/>
+        <!-- Right panel: key mismatch -->
+        <text x="665" y="32" font-family="monospace" font-size="14" fill="#b91c1c" text-anchor="middle" font-weight="bold">bug 1: invalid SQL</text>
+        <rect x="490" y="70" width="180" height="60" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="580" y="95" font-family="monospace" font-size="12" fill="#1a2332" text-anchor="middle">aggs CTE</text>
+        <text x="580" y="115" font-family="monospace" font-size="12" fill="#b91c1c" text-anchor="middle">group by customer_id</text>
+        <rect x="490" y="180" width="180" height="60" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="580" y="205" font-family="monospace" font-size="12" fill="#1a2332" text-anchor="middle">orders</text>
+        <text x="580" y="225" font-family="monospace" font-size="12" fill="#0f766e" text-anchor="middle">buyer_id</text>
+        <line x1="580" y1="180" x2="580" y2="138" stroke="#b91c1c" stroke-width="2"/>
+        <g stroke="#b91c1c" stroke-width="3.5" stroke-linecap="round">
+          <line x1="568" y1="147" x2="592" y2="171"/>
+          <line x1="592" y1="147" x2="568" y2="171"/>
+        </g>
+        <text x="740" y="160" font-family="monospace" font-size="12" fill="#b91c1c">no such</text>
+        <text x="740" y="178" font-family="monospace" font-size="12" fill="#b91c1c">column</text>
+      </svg>
+      <figcaption>Left: two relationships between the same pair collapse to one CTE and half the features. Right: the aggs CTE groups by a parent-side key name that doesn't exist on the child.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Three coordinated changes, ordered so each ships green:</p>
+    <p><strong>1. Key-name correctness.</strong> The aggs CTE reads the <em>child</em> table, so it must project and group by <code>relationship.child_key</code>; the existing join (<code>cte.{child_key} = parent.{parent_key}</code>) is then already correct. Propagate the same fix through the sharding metadata (<code>key_columns</code>, prefix/suffix) and the issue-#7 <code>MaterializationKey</code>. In the forward direction, <code>_build_direct_cte</code> projects <code>relationship.parent_key</code> from the parent's transform and joins <code>cte.{parent_key} = child.{child_key}</code>. Audit <code>_build_direct_asof</code> and the synth builder for the same implicit <code>parent_key == child_key</code> assumption.</p>
+    <p><strong>2. Relationship identity.</strong> Relationships gain an optional config key <code>name:</code>. The planner derives a <em>naming alias</em> per relationship: the explicit <code>name</code>, else the child alias. <strong>Only-when-ambiguous rule:</strong> when one (parent, child) entity pair appears once — every config valid under v0.4.2 — the default alias equals today's alias, so every existing feature name, CTE name, Parquet column, and persisted feature-importance key is byte-identical (the ADR-0007 stability contract). When the pair repeats, validation <strong>errors</strong> unless every such relationship carries a distinct <code>name:</code> — loud, not silent. The alias flows into <code>_build_name</code> (via the <code>relationship=</code> kwarg aggregators already receive) and into both CTE-name templates.</p>
+    <p><strong>3. Manifest persistence + lineage + descriptions.</strong> <code>ManifestEntry</code> gains <code>depth</code>, <code>parents</code> (immediate parent labels), <code>relationship</code> (naming alias, when aggregated), and a generated <code>description</code> templated from <code>AGGREGATION_DOCS</code>/<code>TRANSFORMATION_DOCS</code>. <code>to_tables()</code> additionally writes <code>"&lt;schema&gt;"."&lt;stem&gt;_manifest"</code> — one row per output column, including which feature-group table the column landed in — with the same idempotent DROP+CREATE and caller-owned-transaction contract as the group tables.</p>
+    <figure>
+      <svg viewBox="0 0 880 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Named relationships produce distinct CTEs; manifest table beside feature groups">
+        <rect x="0" y="0" width="880" height="290" fill="#fafaf8"/>
+        <defs>
+          <marker id="arrS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+          </marker>
+        </defs>
+        <!-- Left: named relationships -->
+        <text x="220" y="32" font-family="monospace" font-size="14" fill="#15803d" text-anchor="middle" font-weight="bold">named relationships</text>
+        <rect x="40" y="60" width="150" height="44" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="115" y="87" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">customers</text>
+        <rect x="40" y="190" width="150" height="44" rx="8" fill="#ffffff" stroke="#1a2332" stroke-width="1.5"/>
+        <text x="115" y="217" font-family="monospace" font-size="13" fill="#1a2332" text-anchor="middle">orders</text>
+        <line x1="95"  y1="190" x2="95"  y2="108" stroke="#0f766e" stroke-width="2" marker-end="url(#arrS)"/>
+        <line x1="140" y1="190" x2="140" y2="108" stroke="#b45309" stroke-width="2" marker-end="url(#arrS)"/>
+        <rect x="230" y="78" width="185" height="38" rx="6" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="322" y="102" font-family="monospace" font-size="11.5" fill="#0f766e" text-anchor="middle">purchases_aggs_for_…</text>
+        <rect x="230" y="176" width="185" height="38" rx="6" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+        <text x="322" y="200" font-family="monospace" font-size="11.5" fill="#b45309" text-anchor="middle">sales_aggs_for_…</text>
+        <line x1="196" y1="120" x2="228" y2="102" stroke="#0f766e" stroke-width="1.5" marker-end="url(#arrS)"/>
+        <line x1="196" y1="178" x2="228" y2="192" stroke="#b45309" stroke-width="1.5"/>
+        <!-- divider -->
+        <line x1="450" y1="20" x2="450" y2="270" stroke="#e2e4e0" stroke-width="2" stroke-dasharray="6 5"/>
+        <!-- Right: manifest beside groups -->
+        <text x="665" y="32" font-family="monospace" font-size="14" fill="#0f766e" text-anchor="middle" font-weight="bold">persisted manifest</text>
+        <rect x="500" y="60" width="150" height="34" rx="6" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="575" y="82" font-family="monospace" font-size="11.5" fill="#1a2332" text-anchor="middle">t_group_000</text>
+        <rect x="500" y="104" width="150" height="34" rx="6" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="575" y="126" font-family="monospace" font-size="11.5" fill="#1a2332" text-anchor="middle">t_group_001</text>
+        <rect x="500" y="170" width="150" height="34" rx="6" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+        <text x="575" y="192" font-family="monospace" font-size="11.5" fill="#b45309" text-anchor="middle">t_manifest</text>
+        <line x1="660" y1="187" x2="720" y2="187" stroke="#b45309" stroke-width="1.5" marker-end="url(#arrS)"/>
+        <g font-family="monospace" font-size="11" fill="#5b6472">
+          <text x="730" y="168">column</text>
+          <text x="730" y="186">label · lineage</text>
+          <text x="730" y="204">description</text>
+        </g>
+      </svg>
+      <figcaption>Left: an explicit <code>name:</code> per parallel relationship yields distinct features and CTEs. Right: <code>to_tables</code> writes the manifest beside the feature-group tables.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> — bug 1 sites: <code>_build_aggregations_cte</code> (1191–1267: projection line 1220, GROUP BY 1224, join 1199–1201, sharding prefix/suffix 1234–1242, key_columns 1249, MaterializationKey 1264–1267), <code>_build_direct_cte</code> (1269–1305), <code>_build_direct_asof</code> (1308+, audit); bug 2 sites: CTE name template 1198, traversal guard 344–351, <code>_synth_column_source</code> writes 1257–1259</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/abstractions.py</code> — <code>Relationship</code> (259–310): add <code>name</code> field + <code>naming_alias</code> property, extend <code>__eq__</code>/<code>__hash__</code>/<code>__repr__</code>; <code>ERGraph</code> relationship parsing (70–84): read <code>r.get("name")</code>; <code>Feature.parents</code>/<code>stack_depth</code>/<code>description</code> (330–361)</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code> — <code>Aggregator._build_name</code> (95–101) + <code>__call__</code> (120–135): thread the relationship naming alias; <code>SubqueryAggregator</code> subclasses that embed <code>child table alias / join key</code> in generated SQL (audit for both bugs)</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/validation.py</code> — relationship semantic checks (626–733): add duplicate-(parent,child)-pair rule requiring distinct <code>name:</code>; structural check for <code>name</code> type/uniqueness</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/manifest.py</code> — <code>ManifestEntry</code> (29–50), <code>build_feature_manifest</code> (65–90), <code>manifest_dataframe</code> (93–107): new lineage + description fields</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/featurizer.py</code> — <code>feature_manifest</code> (226–245), <code>to_tables</code> (528–610): write the manifest table inside the same cursor block</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> — <code>ShardableCTE</code>/<code>FeatureGroupTable</code>; column→group membership needed for the manifest's <code>feature_group</code> column</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/cli.py</code> — <code>AGGREGATION_DOCS</code> (25), <code>TRANSFORMATION_DOCS</code> (526): source text for generated descriptions (consider relocating the dicts into the primitive modules to avoid a cli→ import inversion)</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_planner_sql_validity.py</code> — the DB-free SQL-shape guard pattern the new regression tests follow</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/</code> — PG execution harness (<code>@pytest.mark.integration</code>) for end-to-end proofs</li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/</code> — ADR-0007 naming-stability contract constrains this design; new ADR-0008 lands here</li>
+      <li><span class="tag existing">existing</span> <code>CHANGELOG.md</code>, <code>pyproject.toml</code>, <code>README.md</code>, <code>.claude/skills/featurizer-dfs/SKILL.md</code> — release + docs surface</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/test.yml</code> — CI to harden (concurrency, timeouts, packaging gate, config validation, coverage floor)</li>
+      <li><span class="tag existing">existing</span> <code>CONTRIBUTING.md</code> — release-process section updated for the automated pipeline</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/test_relationship_keys.py</code> — DB-free SQL-shape regressions for bug 1 (differing parent/child key names; aggregation, direct, as-of directions)</li>
+      <li><span class="tag new">new</span> <code>tests/test_parallel_relationships.py</code> — bug 2: collapse characterization, naming-alias behavior, self-relationship case, name-stability snapshot for unambiguous configs</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_relationship_topologies.py</code> — executes differing-key and parallel-relationship configs on real PG, including a forced-low <code>materialize_threshold</code> run (issue-#7 path with the new join key)</li>
+      <li><span class="tag new">new</span> <code>tests/test_manifest_lineage.py</code> — lineage fields, generated descriptions, DataFrame column contract</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_manifest_table.py</code> — <code>to_tables</code> writes <code>&lt;stem&gt;_manifest</code>; row-per-column; idempotent re-run; caller-owned-transaction contract</li>
+      <li><span class="tag new">new</span> <code>docs/adr/0008-relationship-naming-and-ambiguity.md</code> — the only-when-ambiguous naming decision (hard-to-reverse: downstream column names; surprising: default ≠ always-qualified; real trade-off: stability vs uniformity)</li>
+      <li><span class="tag new">new</span> <code>.github/workflows/release.yml</code> — tag-triggered CD: version/CHANGELOG guard → verify → build → GitHub release with sdist/wheel assets</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <!-- ===================== PHASE 1 ===================== -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Key-name correctness (bug 1)</h3>
+      <p>Make every relationship-emitting CTE reference the key column that actually exists on the table it reads. Small, local, and independently shippable; unblocks any schema where the FK column name differs from the parent PK name.</p>
+
+      <h4>1. Failing regressions first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Add <code>tests/test_relationship_keys.py</code> with a fixture config where <code>parent: customers.customer_id</code> / <code>child: orders.buyer_id</code> (keys differ); assert the rendered aggs CTE projects <code>orders_transform.buyer_id</code>, groups by <code>buyer_id</code>, and the synth join references a column the CTE outputs — currently FAILS</li>
+        <li><code class="status">[x]</code> Same fixture, forward direction: a child target pulling parent directs where <code>parent_key ≠ child_key ≠ parent.id</code>; assert the direct-transfer CTE projects the parent-side join column and the join pairs <code>cte.{parent_key} = child.{child_key}</code> — currently FAILS</li>
+        <li><code class="status">[x]</code> As-of direction: differing-key as-of config; assert the LATERAL join's key references are consistent (bug #4's carried-index projection may already cover it — the test decides whether a fix is needed)</li>
+      </ul>
+
+      <h4>2. Fix the three builders</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>_build_aggregations_cte</code>: project <code>{source}_transform.{relationship.child_key}</code> and <code>group by {relationship.child_key}</code> (planner.py:1220, 1224); join at 1199–1201 is then already consistent — leave it</li>
+        <li><code class="status">[x]</code> Propagate to sharding metadata: <code>prefix</code>/<code>suffix</code> (1234–1242) and <code>key_columns</code> (1249) use <code>child_key</code>; <code>MaterializationKey.join_key</code> (1264–1267) becomes <code>child_key</code> so materialized shards project + join the column they actually carry</li>
+        <li><code class="status">[x]</code> <code>_build_direct_cte</code>: project <code>{relationship.parent_key}</code> (not <code>source.id.name</code>) from the parent transform; emit join <code>cte.{parent_key} = {child.table}.{child_key}</code> (planner.py:1292, 1297–1300)</li>
+        <li><code class="status">[x]</code> Audit <code>_build_direct_asof</code> + <code>_build_synth_cte</code> for remaining <code>parent_key == child_key</code> assumptions; fix any the Phase-1 tests expose</li>
+        <li><code class="status">[x]</code> Audit <code>SubqueryAggregator</code> SQL (gap/entropy/gini/sequence families receive <code>relationship=</code> and embed the join key): confirm they use the correct side's key name</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>DB-free SQL-shape assertions prove the rendered text is consistent; the integration tier proves PostgreSQL accepts and executes it. Edge cases: differing keys at depth ≥ 2 (the aggregated child is itself a parent), differing keys under forced materialization, and the unchanged-behavior guard (all existing fixtures render byte-identical SQL — keys equal ⇒ no diff).</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_relationship_keys.py -v</code> — new regressions green</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — no regression in the 518-test fast tier (existing SQL byte-identical where keys match)</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_relationship_topologies.py -v -m integration</code> — differing-key config executes end-to-end on PG, including the forced-low <code>materialize_threshold</code> run</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — basedpyright 0 errors</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ===================== PHASE 2 ===================== -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Relationship identity (bug 2)</h3>
+      <p>Give relationships a name so parallel relationships between one entity pair produce distinct, complete feature sets — with byte-stable names for every config that was unambiguous before.</p>
+
+      <figure>
+        <svg viewBox="0 0 880 170" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Naming rule: unique pair keeps child alias; repeated pair requires explicit names">
+          <rect x="0" y="0" width="880" height="170" fill="#fafaf8"/>
+          <g font-family="monospace">
+            <rect x="40" y="35" width="380" height="100" rx="8" fill="#ffffff" stroke="#15803d" stroke-width="2"/>
+            <text x="230" y="62" font-size="13" fill="#15803d" text-anchor="middle" font-weight="bold">pair unique → alias = child</text>
+            <text x="230" y="92" font-size="12.5" fill="#1a2332" text-anchor="middle">SUM(orders.amount|interval=P1M)</text>
+            <text x="230" y="115" font-size="11.5" fill="#5b6472" text-anchor="middle">byte-identical to v0.4.2</text>
+            <rect x="460" y="35" width="380" height="100" rx="8" fill="#ffffff" stroke="#b45309" stroke-width="2"/>
+            <text x="650" y="62" font-size="13" fill="#b45309" text-anchor="middle" font-weight="bold">pair repeated → name: required</text>
+            <text x="650" y="92" font-size="12.5" fill="#1a2332" text-anchor="middle">SUM(purchases.amount|interval=P1M)</text>
+            <text x="650" y="115" font-size="11.5" fill="#5b6472" text-anchor="middle">missing names → validation ERROR</text>
+          </g>
+        </svg>
+        <figcaption>The only-when-ambiguous rule: stability for every previously-valid config, loud failure where v0.4.2 was silently wrong.</figcaption>
+      </figure>
+
+      <h4>1. Characterize the collapse (trace test before touching code)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Planner trace test pinning the exact mechanism: does the second parallel relationship get skipped by the <code>_path</code> guard (planner.py:348), or processed and then name-collapsed by <code>set()</code>/<code>_synth_column_source</code>/duplicate CTE name? The answer decides whether the traversal loop needs changes beyond naming</li>
+        <li><code class="status">[x]</code> Same trace for a self-relationship (entity related to itself, e.g. an edge/referral table) — document current behavior as the baseline</li>
+      </ul>
+
+      <h4>2. Config + model surface</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>Relationship</code> gains <code>name: Optional[str]</code>; add <code>naming_alias</code> property (<code>name or child.alias</code>); include <code>name</code> in <code>__eq__</code>/<code>__hash__</code>/<code>__repr__</code> (abstractions.py:259–310)</li>
+        <li><code class="status">[x]</code> <code>ERGraph</code> parses <code>r.get("name")</code> (abstractions.py:70–84)</li>
+        <li><code class="status">[x]</code> Validation: ERROR when a (parent.entity, child.entity) pair appears in ≥ 2 relationships and any of them lacks a distinct <code>name:</code> — message lists the colliding relationships and shows a fix example; structural check that <code>name</code> is a string and globally unique among relationship names + entity aliases (it becomes a CTE-name segment)</li>
+      </ul>
+
+      <h4>3. Thread the alias through naming</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>Aggregator.__call__</code> passes the alias to <code>_build_name</code>: features render as <code>SUM({alias}.{feature}|…)</code> where alias = <code>relationship.naming_alias</code> when a relationship is provided, else <code>feature.entity.alias</code> (aggregations.py:95–135); audit SubqueryAggregator name templates for the same substitution</li>
+        <li><code class="status">[x]</code> CTE names: <code>{alias}_aggs_for_{target}</code> (planner.py:1198) and <code>{alias}_direct_transfers_for_{target}</code> (planner.py:1283); the CTE body still reads <code>from {source.alias}_transform</code> — two named CTEs may share one transform source</li>
+        <li><code class="status">[x]</code> Traversal: ensure <code>_get_backward_features</code>/<code>_get_direct_features</code> process every relationship (dedupe entity <em>builds</em>, not relationship <em>consumptions</em>) per the Phase-2.1 findings</li>
+        <li><code class="status">[x]</code> Bookkeeping correctness under distinct names: <code>_features</code> updates, <code>_synth_column_source</code>, <code>_joins</code>, sharding specs, materialization keys — one entry per relationship, no overwrites</li>
+      </ul>
+
+      <h4>4. Stability + docs</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Name-stability snapshot test: a representative unambiguous config's full feature-name list is byte-identical before/after this phase (protects the ADR-0007 / triage-pg contract)</li>
+        <li><code class="status">[x]</code> ADR-0008: only-when-ambiguous naming — alternatives (always-qualify: breaks every downstream name; auto-suffix <code>orders[buyer_id]</code>: silent churn when a second relationship is added later) and why explicit-name-on-ambiguity won</li>
+        <li><code class="status">[x]</code> README + <code>featurizer-dfs</code> SKILL.md: document <code>relationships[].name</code> and the ambiguity rule (new gotcha)</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>DB-free tests assert feature-count doubling, distinct CTE/join emission, and name stability; integration proves two parallel relationships execute and produce different values per role. Edge cases: self-relationships, parallel relationships where one leg is <code>as_of</code>, three-way parallel, and named-relationship configs at depth 3.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_parallel_relationships.py -v</code> — buyer/seller config yields 2× features with distinct names, two CTEs, two joins; unnamed ambiguity raises the validation error</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — full fast tier green, including the stability snapshot</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_relationship_topologies.py -v -m integration</code> — buyer-total ≠ seller-total on seeded data proves the two legs aggregate independently</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — 0 errors</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ===================== PHASE 3 ===================== -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Manifest persistence, lineage &amp; descriptions</h3>
+      <p>Finish the manifest: export the lineage the planner already tracks, generate mechanical human descriptions, and persist the whole thing as a table beside the feature groups (the triage idiom — metadata joinable by column name).</p>
+
+      <h4>1. Lineage export</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Normalize <code>Feature.parents</code> access (it is assigned both a single Feature and lists across call sites — aggregations.py:131 passes a bare Feature); add a small <code>iter_parents(feature)</code> helper in manifest.py</li>
+        <li><code class="status">[x]</code> <code>ManifestEntry</code> gains: <code>depth</code> (= <code>stack_depth</code>), <code>parents</code> (immediate parent <em>labels</em>, list), <code>relationship</code> (naming alias for aggregated features, else None), <code>interval</code> (parsed from the name where present)</li>
+        <li><code class="status">[x]</code> <code>manifest_dataframe</code> adds the new columns (lists rendered as comma-joined strings for the DataFrame)</li>
+      </ul>
+
+      <h4>2. Generated descriptions</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Move/mirror <code>AGGREGATION_DOCS</code>/<code>TRANSFORMATION_DOCS</code> summaries so manifest.py can use them without importing cli.py (relocate the dicts to the primitive modules; cli.py re-imports — no behavior change to the CLI)</li>
+        <li><code class="status">[x]</code> Template: aggregations → “Sum of orders.amount over the last P1M, per customers row”; transformers → “7-day rolling mean of X”; one-hots → “1 when facilities.facility_type = 'Bakery'”; direct variables → the config-declared text or the column name. Pure metadata, no DB, deterministic</li>
+        <li><code class="status">[x]</code> <code>Feature.description</code> stays untouched (legacy default <code>"a feature"</code>); the generated text lives on the manifest entry — single source of truth, no planner churn</li>
+      </ul>
+
+      <h4>3. Persist the manifest table</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>to_tables()</code> writes <code>"&lt;schema&gt;"."&lt;stem&gt;_manifest"</code> in the same cursor block: columns <code>(column_name, label, truncated, kind, entity, relationship, depth, parents, interval, source_column, value, description, definition, feature_group)</code>; <code>feature_group</code> maps each column to its group table via the sharding group membership</li>
+        <li><code class="status">[x]</code> Same contracts as group tables: DROP IF EXISTS + CREATE (idempotent), caller-owned transaction when <code>connection=</code> is passed, commit+close when built from env; parameterized INSERTs (definitions/labels contain quotes)</li>
+        <li><code class="status">[x]</code> Return value: include the manifest table in the returned list (as a <code>FeatureGroupTable</code> with <code>group="manifest"</code>) or a named field — pick one, document it, and keep <code>to_tables</code>'s existing consumers (triage-pg adapter) compiling</li>
+        <li><code class="status">[x]</code> Docs: README manifest section + example 05 shows the persisted manifest; SKILL.md quick-reference row updated</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>DB-free tests cover lineage fields and description generation across every kind (variable, derived, one_hot, aggregated at depth ≥ 2); integration covers the persisted table. Edge cases: truncated (&gt;63-byte) names keep full labels in the manifest; parallel-relationship features carry their relationship alias; re-run idempotency; quotes in definitions survive round-trip.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_lineage.py -v</code> — lineage + description contract green</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_manifest_table.py -v -m integration</code> — manifest table exists, one row per output column, joins to its group table by column name, re-run idempotent</li>
+        <li><code class="status">[x]</code> <code>just test-fast &amp;&amp; just typecheck</code> — full fast tier + basedpyright green</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ===================== PHASE 4 (added by amendment 2026-07-05) ===================== -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4: CI/CD on GitHub (harden CI, automate releases)</h3>
+      <p>Today <code>.github/workflows/test.yml</code> runs fast tests + basedpyright and the no-seed integration tier against a PostgreSQL 16 service container — but there is <strong>no CD at all</strong>: tags are pushed by hand and releases created manually with <code>gh release create</code>. This phase hardens CI and adds tag-triggered release automation so v0.5.0 (and everything after) ships through the pipeline.</p>
+
+      <h4>1. Harden CI (<code>test.yml</code>)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a <code>concurrency</code> group (cancel superseded runs per ref) and <code>timeout-minutes</code> on every job</li>
+        <li><code class="status">[]</code> New <code>package</code> job: <code>uv build</code> + <code>uvx twine check dist/*</code> — the packaging gate that previously only ran by hand at release time</li>
+        <li><code class="status">[]</code> New config-validation step: <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — shipped examples must validate with zero errors on every push</li>
+        <li><code class="status">[]</code> Coverage on the fast job: <code>--cov=featurizer --cov-report=term --cov-fail-under=70</code> — a floor, not vanity reporting (fast tier measures 72.13%; the plan's 85 guess predated measuring — DB-execution paths only run in the integration tier)</li>
+      </ul>
+
+      <h4>2. Release automation (<code>release.yml</code>, new)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Trigger: <code>push: tags: ['v*']</code>; <code>permissions: contents: write</code></li>
+        <li><code class="status">[]</code> Guard job: tag must equal <code>pyproject.toml</code> version (fail loud on mismatch) and the <code>CHANGELOG.md</code> must contain a matching <code>## [X.Y.Z]</code> section</li>
+        <li><code class="status">[]</code> Verify job: re-run fast tier + basedpyright + no-seed integration tier on the tagged commit (reuse the service-container recipe)</li>
+        <li><code class="status">[]</code> Publish job: <code>uv build</code>, extract the tag's CHANGELOG section as release notes, <code>gh release create "$TAG" dist/* --title "Featurizer X.Y.Z" --notes-file …</code> using <code>GITHUB_TOKEN</code> (runs in-repo on the fork — no <code>--repo</code> pitfall). No PyPI (deliberate: fork of dssg, generic name)</li>
+        <li><code class="status">[]</code> Update CONTRIBUTING.md release-process section: release = bump version + CHANGELOG, push, wait CI green, push annotated tag — the workflow does the rest</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Workflow YAML can't be executed locally, so validate in three layers: static lint, a dry-run of the note-extraction script, and the real proof — the workflows running green on GitHub (CI on the push in this phase; CD observed in Phase 5 when the v0.5.0 tag lands).</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uvx --from actionlint-py actionlint .github/workflows/*.yml</code> (or <code>brew install actionlint</code>) — workflow lint clean</li>
+        <li><code class="status">[]</code> Local dry-run of the CHANGELOG-section extraction against <code>[0.4.2]</code> — produces exactly that section's body</li>
+        <li><code class="status">[]</code> <code>gh run watch</code> on the push that lands this phase — hardened <code>test.yml</code> green end-to-end (including the new package + validate steps)</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ===================== PHASE 5 (was Phase 4; renumbered by amendment 2026-07-05) ===================== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Release v0.5.0</h3>
+      <p>Minor bump: new config surface (<code>relationships[].name</code>), new persisted artifact (<code>&lt;stem&gt;_manifest</code>), new manifest fields, and two bug-fix behavior changes (invalid SQL → valid; silent collapse → validation error). With Phase 4 in place the release rides the pipeline: push master, wait for CI, push the tag, and <code>release.yml</code> builds + publishes the GitHub release with assets.</p>
+
+      <h4>1. Release mechanics</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> CHANGELOG <code>[0.5.0]</code>: Added (relationship <code>name:</code>, manifest table, lineage/description fields, CI/CD pipeline), Fixed (bug 1 invalid SQL, bug 2 silent collapse → loud error), Changed (MaterializationKey join key), Migration note: configs with parallel unnamed relationships must add <code>name:</code></li>
+        <li><code class="status">[]</code> <code>pyproject.toml</code> 0.4.2 → 0.5.0; <code>uv lock</code></li>
+        <li><code class="status">[]</code> README primitive/feature docs current; <code>.claude/skills/featurizer-dfs/SKILL.md</code> restamped v0.5.0 (H1 + new gotchas + manifest rows)</li>
+        <li><code class="status">[]</code> Commit, push master, wait for hardened CI green; push annotated tag <code>v0.5.0</code>; <code>release.yml</code> creates the GitHub release with sdist/wheel assets and CHANGELOG notes</li>
+        <li><code class="status">[]</code> TODO.org: close this effort; note the optional triage-pg pin bump (v0.4.1 → v0.5.0 brings the manifest table its adapter can consume)</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>The full pre-release gauntlet on the release commit — every tier, examples, and packaging — plus the CD run itself as the final proof.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just test-fast</code> — full fast tier</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just examples &amp;&amp; just db-down</code> — integration tier + all five examples execute</li>
+        <li><code class="status">[]</code> <code>just typecheck</code> — 0 errors</li>
+        <li><code class="status">[]</code> <code>uv build</code> — sdist/wheel build clean on the release commit</li>
+        <li><code class="status">[]</code> <code>gh run watch</code> — release.yml run for tag v0.5.0 green</li>
+        <li><code class="status">[]</code> <code>gh release view v0.5.0 --repo nanounanue/featurizer</code> — release present, Latest, with dist assets attached</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>just test-fast</code> — entire DB-free tier green (≥ 518 existing + all new regressions)</li>
+      <li><code class="status">[]</code> <code>just typecheck</code> — basedpyright 0 errors, 0 new warnings</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — integration tier green including the new topology + manifest tests</li>
+      <li><code class="status">[]</code> <code>uv run pytest tests/test_parallel_relationships.py tests/test_relationship_keys.py tests/test_manifest_lineage.py -v</code> — the three new suites individually green</li>
+      <li><code class="status">[]</code> <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — all shipped examples still validate with zero warnings</li>
+      <li><code class="status">[]</code> <code>gh run list --limit 3</code> — hardened test.yml and release.yml runs green on GitHub</li>
+      <li><code class="status">[]</code> <code>git tag -l v0.5.0 &amp;&amp; gh release view v0.5.0 --repo nanounanue/featurizer --json tagName,assets</code> — release shipped with dist assets</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Decisions locked into this plan</h3>
+    <table>
+      <tr><th>Decision</th><th>Choice</th><th>Rejected alternative &amp; why</th></tr>
+      <tr>
+        <td>Naming default</td>
+        <td>Only-when-ambiguous: unique (parent, child) pair keeps <code>child.alias</code>; repeated pair <em>requires</em> explicit <code>name:</code></td>
+        <td>Always-qualify (<code>orders[buyer_id]</code> everywhere) — renames every existing feature, breaking Parquet columns and persisted feature-importance keys (ADR-0007 contract). Auto-suffix only-on-collision — still silently renames leg 1 the day leg 2 is added; explicit names make the churn visible in the config diff.</td>
+      </tr>
+      <tr>
+        <td>Ambiguity handling</td>
+        <td>Validation <strong>ERROR</strong>, not warning</td>
+        <td>Warning + auto-dedupe — v0.4.2 already fails silently here; half-loud is still a silent wrong matrix for anyone not reading logs.</td>
+      </tr>
+      <tr>
+        <td>Bug-1 fix orientation</td>
+        <td>CTE projects/groups by <code>child_key</code> (the column that exists on the table it reads); join untouched</td>
+        <td>Aliasing <code>child_key AS parent_key</code> in the CTE — makes the join read naturally but re-introduces the name conflation the bug came from, and breaks when one child has two FKs to the same parent (exactly bug 2's topology).</td>
+      </tr>
+      <tr>
+        <td>Description storage</td>
+        <td>Generated at manifest-build time; <code>Feature.description</code> untouched</td>
+        <td>Populating <code>Feature.description</code> at construction — touches every primitive call site for zero additional information; manifest is the single consumer.</td>
+      </tr>
+      <tr>
+        <td>Version</td>
+        <td>0.5.0 (minor)</td>
+        <td>0.4.3 (patch) — new config key, new persisted table, and a formerly-accepted (silently broken) config now errors: that's minor-worthy surface change under the project's semver intent.</td>
+      </tr>
+    </table>
+
+    <h3>Risks &amp; open threads</h3>
+    <ul>
+      <li><strong>The collapse mechanism is partially unconfirmed.</strong> Empirically: 5 of 10 features, one CTE, one join. Whether the second relationship is skipped by the <code>_path</code> guard or processed-then-collapsed determines if the traversal loop needs surgery. Phase 2.1's trace test answers this <em>before</em> any naming code is written — do not skip it.</li>
+      <li><strong>Name-stability is the contract.</strong> triage-pg pins featurizer by tag and consumes <code>"&lt;entity&gt;.&lt;col&gt;=&lt;value&gt;"</code> one-hot names (ADR-0007) plus feature-group tables keyed by column name. The Phase-2 snapshot test is the tripwire; if it ever fails, the design is wrong, not the test.</li>
+      <li><strong><code>relationship.name</code> enters CTE identifiers</strong> — it must satisfy PostgreSQL identifier rules after composition (<code>{name}_aggs_for_{target}</code> ≤ 63 bytes or routed through <code>pg_identifier</code>). Validation should reject names that can't survive composition rather than truncating silently.</li>
+      <li><strong>SubqueryAggregator families</strong> (gap/entropy/gini/ngram/streak) embed the child alias and join key inside correlated subqueries — they are exposed to <em>both</em> bugs and are easy to miss; the Phase 1/2 audits explicitly include them.</li>
+      <li><strong>Manifest table write uses INSERTs, not CREATE TABLE AS</strong> — definitions and labels contain single quotes and arbitrary SQL text; parameterized executemany, never string-formatted VALUES.</li>
+      <li><strong>No new dependencies.</strong> Everything here is stdlib + existing deps; no <code>uv add</code> required.</li>
+    </ul>
+
+    <h3>Explicitly out of scope</h3>
+    <ul>
+      <li>Parent-entity direct categoricals (tracked separately in TODO.org since v0.4.1).</li>
+      <li>Upstream dssg PR decision (recurring deferred item).</li>
+      <li>Any change to one-hot naming or the imputation contract.</li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 880 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Manifest table schema row">
+        <rect x="0" y="0" width="880" height="150" fill="#fafaf8"/>
+        <text x="440" y="30" font-family="monospace" font-size="14" fill="#0f766e" text-anchor="middle" font-weight="bold">&lt;stem&gt;_manifest</text>
+        <g font-family="monospace" font-size="11.5">
+          <rect x="30"  y="50" width="110" height="34" rx="5" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+          <text x="85"  y="71" fill="#0f766e" text-anchor="middle">column</text>
+          <rect x="150" y="50" width="110" height="34" rx="5" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+          <text x="205" y="71" fill="#1a2332" text-anchor="middle">label</text>
+          <rect x="270" y="50" width="110" height="34" rx="5" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+          <text x="325" y="71" fill="#1a2332" text-anchor="middle">kind</text>
+          <rect x="390" y="50" width="130" height="34" rx="5" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+          <text x="455" y="71" fill="#b45309" text-anchor="middle">relationship</text>
+          <rect x="530" y="50" width="130" height="34" rx="5" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+          <text x="595" y="71" fill="#b45309" text-anchor="middle">depth·parents</text>
+          <rect x="670" y="50" width="180" height="34" rx="5" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+          <text x="760" y="71" fill="#b45309" text-anchor="middle">description</text>
+          <rect x="30" y="96" width="330" height="34" rx="5" fill="#ffffff" stroke="#5b6472" stroke-width="1.2"/>
+          <text x="195" y="117" fill="#5b6472" text-anchor="middle">definition · source_column · value</text>
+          <rect x="390" y="96" width="230" height="34" rx="5" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+          <text x="505" y="117" fill="#0f766e" text-anchor="middle">feature_group → t_group_NNN</text>
+        </g>
+      </svg>
+      <figcaption>Manifest schema: existing fields (white/teal) plus the new lineage columns (amber) and the group-table pointer.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details>
+      <summary>2026-07-05T10:05:00-06:00 — Added Phase 4: CI/CD on GitHub; renumbered Release to Phase 5</summary>
+      <p>User request mid-build: "include a proper ci/cd setup on github". Audit of the existing <code>.github/workflows/test.yml</code> found solid CI (fast + typecheck + service-container integration) but zero CD — tags and releases were manual <code>gh</code> invocations. New Phase 4 hardens CI (concurrency, timeouts, packaging gate, example-config validation, coverage floor) and adds <code>release.yml</code>: tag push → version/CHANGELOG guard → verify → build → GitHub release with assets. Phase 5 (release) updated to ride the pipeline instead of hand-running <code>gh release create</code>. Phases 1–3 unchanged; Phases 1–2 were already in progress at amendment time.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

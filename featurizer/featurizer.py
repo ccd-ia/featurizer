@@ -546,6 +546,12 @@ class Featurizer:
         Idempotent: each target table is ``DROP TABLE IF EXISTS`` + ``CREATE TABLE
         … AS`` so a re-run replaces it cleanly.
 
+        Alongside the group tables, the feature manifest is persisted as
+        ``"<schema>"."<stem>_manifest"`` — one row per output column (label,
+        lineage, generated description, and the ``feature_group`` it landed
+        in), joinable to the group tables by column name. The returned list
+        contains the feature-group tables only, as before.
+
         Args:
             schema: Destination schema (created if absent unless
                 ``create_schema=False``).
@@ -594,18 +600,81 @@ class Featurizer:
                     tables.append(
                         FeatureGroupTable(name=name, group=gid, key_columns=list(keys))
                     )
+                self._write_manifest_table(cur, schema, stem)
             if own_connection:
                 conn.commit()
         finally:
             if own_connection:
                 conn.close()
         logger.info(
-            "Persisted {} feature-group table(s) to schema {!r} (re-join on {}).",
+            "Persisted {} feature-group table(s) + manifest to schema {!r} "
+            "(re-join on {}).",
             len(tables),
             schema,
             tuple(keys),
         )
         return tables
+
+    def _write_manifest_table(self, cur: Any, schema: str, stem: str) -> None:
+        """Persist the feature manifest as ``"<schema>"."<stem>_manifest"``.
+
+        One row per output feature column, including which feature-group table
+        the column landed in (``feature_group``, joinable back to the
+        ``<stem>_group_<NNN>`` tables by column name). Same contracts as the
+        group tables: idempotent DROP+CREATE, and the caller owns the
+        transaction. Values are inserted parameterized — labels and definitions
+        contain quotes and arbitrary SQL text.
+        """
+        column_to_group: Dict[str, str] = {}
+        for gid, names in self._sharder().column_groups().items():
+            for column_name in names:
+                column_to_group[column_name.replace('"', "")] = gid
+
+        name = f'"{schema}"."{stem}_manifest"'
+        cur.execute(f"drop table if exists {name}")
+        cur.execute(f"""
+            create table {name} (
+                "column_name"   text not null,
+                "label"         text not null,
+                "truncated"     boolean not null,
+                "kind"          text not null,
+                "entity"        text,
+                "source_alias"  text,
+                "depth"         integer not null,
+                "parents"       text[] not null,
+                "interval"      text,
+                "source_column" text,
+                "value"         text,
+                "description"   text not null,
+                "definition"    text,
+                "feature_group" text not null
+            )
+            """)
+        rows = [
+            (
+                entry.column,
+                entry.label,
+                entry.truncated,
+                entry.kind,
+                entry.entity,
+                entry.source_alias,
+                entry.depth,
+                entry.parents,
+                entry.interval,
+                entry.source_column,
+                entry.value,
+                entry.description,
+                entry.definition,
+                column_to_group.get(entry.column, "group_000"),
+            )
+            for entry in self.feature_manifest
+        ]
+        if rows:
+            cur.executemany(
+                f"insert into {name} values "
+                "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                rows,
+            )
 
     def _arrow_groups(
         self,

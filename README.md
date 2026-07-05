@@ -237,9 +237,19 @@ intended name:
 
 Each entry carries `column`, the full `label`, a `truncated` flag, `kind`
 (`one_hot` | `variable` | `derived`), the owning `entity`, and — for one-hot
-columns — the `source_column` and `value` they encode. `manifest_dataframe()`
-returns the same as a pandas `DataFrame` you can join onto the matrix for readable
-plot legends.
+columns — the `source_column` and `value` they encode. Since v0.5.0 entries
+also carry **lineage** — `depth` (derivation depth), `parents` (immediate
+parent labels), `source_alias` (the relationship/entity stream a derived
+feature was computed over), the outermost `interval` window — and a generated
+human `description` ("Sum of all values, applied to orders.amount, over the
+trailing P1M window"). `manifest_dataframe()` returns the same as a pandas
+`DataFrame` you can join onto the matrix for readable plot legends.
+
+`to_tables(schema)` additionally persists the manifest as
+`"<schema>"."<stem>_manifest"` next to the feature-group tables — one row per
+output column, including the `feature_group` table it landed in, joinable back
+to the group tables by column name (the metadata-beside-the-features idiom
+triage-style consumers expect).
 
 
 <a id="org9b66329"></a>
@@ -383,6 +393,17 @@ interactive exploration.
 -   **Temporal joins:** relationship-level `temporal` blocks enable as-of
     lateral joins with optional grace periods, letting target rows pull
     the latest parent record as of each timestamp.
+-   **Named relationships (v0.5.0):** parallel relationships between the
+    same entity pair (e.g. `customers→orders` via `buyer_id` *and* via
+    `seller_id`) must each declare a distinct `name:` — validation errors
+    otherwise. The name replaces the child alias in feature and CTE names
+    (`SUM(purchases.amount|interval=P1M)`,
+    `purchases_aggs_for_customers`) and qualifies columns transferred by
+    named forward/as-of relationships (`"purchases.score"`). Unambiguous
+    configs need no `name:` and keep byte-identical feature names.
+    Parent/child key columns may have different names on each side
+    (`parent: customers.customer_id` / `child: orders.buyer_id`) —
+    generated SQL references each side's own column. See ADR-0008.
 
 
 <a id="org7cae9fd"></a>

@@ -5,24 +5,52 @@ on:
     branches: [master]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fast:
     name: fast tests + types
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
       - run: uv sync --extra parquet
-      - name: pytest (fast tier, no database)
-        run: uv run pytest -q -m "not integration"
+      - name: pytest (fast tier, no database) + coverage floor
+        run: uv run pytest -q -m "not integration" --cov=featurizer --cov-report=term --cov-fail-under=70
       - name: basedpyright
         run: uv run basedpyright
+      - name: validate shipped example configs
+        # 04-custom-primitives is excluded by design: its config references
+        # custom primitives (log1p, zscore, bin) that run_example.py registers
+        # at runtime, so the standalone CLI validator cannot know them.
+        run: |
+          for cfg in examples/0*/config.yaml; do
+            case "$cfg" in *04-custom-primitives*) continue ;; esac
+            echo "== $cfg"
+            uv run python -m featurizer validate "$cfg"
+          done
+
+  package:
+    name: packaging (build + twine check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv build
+      - run: uvx twine check dist/*
 
   integration:
     name: integration (ephemeral PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16

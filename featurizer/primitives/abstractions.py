@@ -79,6 +79,7 @@ class ERGraph:
                     temporal_child_field=(r.get("temporal") or {}).get(
                         "child_timestamp"
                     ),
+                    name=r.get("name"),
                 )
                 for r in relationships
             ]
@@ -87,6 +88,14 @@ class ERGraph:
 
         for r in self.relationships:
             self.entities[r.child.alias].add_key(Key(name=r.child_key, entity=r.child))
+            # The parent side must carry its join column too: the direct and
+            # as-of builders read <parent>_transform.<parent_key>, which is only
+            # projected when the column is an index/key. When parent_key is the
+            # entity id (the common case) the by-name dedupe in
+            # _identifier_columns keeps projections unchanged.
+            self.entities[r.parent.alias].add_key(
+                Key(name=r.parent_key, entity=r.parent)
+            )
 
         # Edge-table entities contribute graph features to their node entity.
         self.edges: List[EdgeSpec] = [
@@ -266,6 +275,7 @@ class Relationship:
         temporal_mode: Optional[str] = None,
         temporal_grace: Optional[str] = None,
         temporal_child_field: Optional[str] = None,
+        name: Optional[str] = None,
     ) -> None:
         self.parent: Entity = parent
         self.parent_key: str = parent_key
@@ -274,9 +284,30 @@ class Relationship:
         self.temporal_mode: Optional[str] = temporal_mode
         self.temporal_grace: Optional[str] = temporal_grace
         self.temporal_child_field: Optional[str] = temporal_child_field
+        # Optional relationship name (config ``relationships[].name``). Gives
+        # parallel relationships between one entity pair distinct identities:
+        # it replaces the child alias in aggregation feature/CTE names and
+        # qualifies direct/as-of transferred columns. When unset (every config
+        # that was unambiguous before v0.5.0), naming falls back to the entity
+        # aliases so existing feature names stay byte-identical.
+        self.name: Optional[str] = name
+
+    @property
+    def naming_alias(self) -> str:
+        """Alias used in aggregation feature names and the aggs CTE name."""
+        return self.name or self.child.alias
+
+    @property
+    def parent_naming_alias(self) -> str:
+        """Alias used in the direct-transfer / as-of CTE names."""
+        return self.name or self.parent.alias
 
     def __repr__(self) -> str:
-        return f"""{self.parent}.{self.parent_key} -> {self.child}.{self.child_key}"""
+        label = f" [{self.name}]" if self.name else ""
+        return (
+            f"{self.parent}.{self.parent_key} -> "
+            f"{self.child}.{self.child_key}{label}"
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Relationship):
@@ -289,6 +320,7 @@ class Relationship:
             and self.temporal_mode == other.temporal_mode
             and self.temporal_grace == other.temporal_grace
             and self.temporal_child_field == other.temporal_child_field
+            and self.name == other.name
         )
 
     def __hash__(self) -> int:
@@ -301,6 +333,7 @@ class Relationship:
                 self.temporal_mode,
                 self.temporal_grace,
                 self.temporal_child_field,
+                self.name,
             )
         )
 
@@ -343,6 +376,10 @@ class Feature:
         # throws away so the feature manifest can map column -> intended name.
         # Defaults to ``name`` for plain columns (name == intended).
         self.label: str = label if label is not None else name
+        # For direct-transfer features renamed by a *named* relationship
+        # (``"<rel>.<column>"``): the original source-side column name the
+        # transfer CTE must read. None for every other feature.
+        self.direct_source: Optional[str] = None
         self.stack_depth: int = stack_depth
         self.entity: Optional[Entity] = entity
         self.parents: Optional[List[Feature]] = (

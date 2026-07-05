@@ -176,6 +176,15 @@ class FeaturePlanner:
         self._joins: Dict[str, List[str]] = {}
         self._ctes: List[str] = []
         self._path: List[Entity] = []
+        # Snapshot of each entity's feature set the moment its build completed
+        # (i.e. exactly what its transform CTE projects). Relationship consumers
+        # (_build_aggregations / _build_direct) must read this snapshot, not the
+        # live ``_features`` set: after the first consuming relationship,
+        # ``_features[source]`` accumulates parent-bound aggregate features that
+        # the source's transform does NOT project — a second (parallel or
+        # diamond) relationship iterating the live set would render references
+        # to columns that don't exist.
+        self._built_features: Dict[str, List[Feature]] = {}
         # Names of the columns each <alias>_synth CTE projects. The transform
         # CTE reads from synth, so any feature already materialized there must
         # be referenced by name rather than re-rendering its definition.
@@ -219,6 +228,7 @@ class FeaturePlanner:
         self._joins = {entity.alias: [] for entity in self.graph.entities.values()}
         self._ctes = []
         self._path = []
+        self._built_features = {}
         self._synth_columns = {}
         self._output_features = []
         self._cte_specs = {}
@@ -284,6 +294,12 @@ class FeaturePlanner:
         self._build_peer_group_features(target_entity)
         self._build_spatial_features(target_entity)
         self._build_transformations(target_entity)
+        # Snapshot what this entity's transform actually projects, in
+        # deterministic order. Later consumers (sibling/parallel relationships)
+        # read this instead of the live feature set — see ``_built_features``.
+        self._built_features[target_entity.alias] = self._sort_features(
+            self._features[target_entity.alias]
+        )
 
     @staticmethod
     def _sort_features(features: Iterable[Feature]) -> List[Feature]:
@@ -332,23 +348,58 @@ class FeaturePlanner:
                 ordered.append(name)
         return ordered
 
+    @staticmethod
+    def _relationship_order(relationship: Relationship) -> Tuple[str, str, str, str]:
+        """Deterministic iteration key (the graph getters return sets)."""
+        return (
+            relationship.child.alias,
+            relationship.child_key,
+            relationship.parent_key,
+            relationship.name or "",
+        )
+
     def _get_direct_features(self, target: Entity, depth: int) -> None:
-        forward_relationships = self.graph.get_forward_relationships(target)
+        forward_relationships = sorted(
+            self.graph.get_forward_relationships(target), key=self._relationship_order
+        )
         for relationship in forward_relationships:
             parent = relationship.parent
-            if parent in self._path:
-                continue
-            self._build_features(parent, depth)
-            self._build_direct(target, parent, relationship)
+            # Build each entity once; consume EVERY relationship. The old
+            # ``if parent in self._path: continue`` skipped the whole
+            # relationship, silently dropping the second of two parallel
+            # relationships to the same parent (and the second path of a
+            # diamond). An entity on the path but not yet snapshotted is an
+            # in-progress ancestor (a true cycle): its CTEs are not emitted
+            # yet, so the relationship cannot be consumed here.
+            if parent not in self._path:
+                self._build_features(parent, depth)
+            if parent.alias in self._built_features:
+                self._build_direct(target, parent, relationship)
+            else:
+                logger.debug(
+                    "Not consuming forward relationship {}: {} is still being "
+                    "built (cycle).",
+                    relationship,
+                    parent.alias,
+                )
 
     def _get_backward_features(self, target: Entity, depth: int) -> None:
-        backward_relationships = self.graph.get_backward_relationships(target)
+        backward_relationships = sorted(
+            self.graph.get_backward_relationships(target), key=self._relationship_order
+        )
         for relationship in backward_relationships:
             child = relationship.child
-            if child in self._path:
-                continue
-            self._build_features(child, depth)
-            self._build_aggregations(target, child, relationship)
+            if child not in self._path:
+                self._build_features(child, depth)
+            if child.alias in self._built_features:
+                self._build_aggregations(target, child, relationship)
+            else:
+                logger.debug(
+                    "Not consuming backward relationship {}: {} is still being "
+                    "built (cycle).",
+                    relationship,
+                    child.alias,
+                )
 
     # ------------------------------------------------------------------ #
     # Aggregations / transformations / CTE assembly
@@ -1014,7 +1065,7 @@ class FeaturePlanner:
         logger.debug("Processing backward relationship {}", relationship)
         aggregations: List[Feature] = []
 
-        for feature in self._features[source.alias]:
+        for feature in self._built_features[source.alias]:
             for aggregator in self.aggregations.values():
                 new_feature = aggregator(
                     target, source, feature, relationship=relationship
@@ -1054,11 +1105,44 @@ class FeaturePlanner:
 
         self._build_aggregations_cte(target, source, relationship, sorted_aggs)
 
+    @staticmethod
+    def _qualify_direct_feature(feature: Feature, rel_name: str) -> Feature:
+        """A copy of ``feature`` renamed to ``"<rel_name>.<column>"``.
+
+        Used when an explicitly named relationship transfers parent columns
+        onto the target: two parallel legs pulling the same parent would
+        otherwise project identical column names (``score`` twice). The
+        original (source-side) column name is kept on ``direct_source`` so the
+        CTE builders can render ``<source column> as "<qualified name>"``.
+        """
+        bare = feature.name.replace('"', "")
+        bare_label = (feature.label or bare).replace('"', "")
+        qualified = Feature(
+            name=pg_identifier(f"{rel_name}.{bare}"),
+            type=feature.type,
+            definition=feature.definition,
+            entity=feature.entity,
+            parents=[feature],
+            stack_depth=feature.stack_depth,
+            label=f"{rel_name}.{bare_label}",
+        )
+        qualified.direct_source = feature.name
+        return qualified
+
     def _build_direct(
         self, target: Entity, source: Entity, relationship: Relationship
     ) -> None:
         logger.debug("Processing forward relationship {}", relationship)
-        directs = self._sort_features(self._features[source.alias])
+        directs = list(self._built_features[source.alias])
+        if relationship.name:
+            directs = [
+                (
+                    self._qualify_direct_feature(feature, relationship.name)
+                    if feature.type not in {"index", "key"}
+                    else feature
+                )
+                for feature in directs
+            ]
         self._debug(
             "direct_features",
             target=target.alias,
@@ -1195,7 +1279,9 @@ class FeaturePlanner:
         relationship: Relationship,
         features: Iterable[Feature],
     ) -> None:
-        cte_name = f"{source.alias}_aggs_for_{target.alias}"
+        # Named by the relationship's naming alias (default: the child alias),
+        # so parallel relationships between one entity pair emit distinct CTEs.
+        cte_name = f"{relationship.naming_alias}_aggs_for_{target.alias}"
         join_statement = (
             f" {cte_name} on {cte_name}.{relationship.child_key} = "
             f"{relationship.parent.table}.{relationship.parent_key} "
@@ -1213,15 +1299,19 @@ class FeaturePlanner:
             else ""
         )
 
+        # The CTE reads the CHILD stream, so it must project and group by the
+        # child-side FK column — the only join column the child actually
+        # carries. Referencing ``parent_key`` here only ever worked because
+        # every config so far used identical names on both sides.
         cte_query = f"""
         -- Aggregate for {target.alias}
         {cte_name} as (
         select
-        {source.alias}_transform.{relationship.parent_key},
+        {source.alias}_transform.{relationship.child_key},
         {",".join(rendered_features)}
         from {source.alias}_transform
         {where_clause}
-        group by {relationship.parent_key}
+        group by {relationship.child_key}
         )
         """
         self._joins[target.alias].append(join_statement)
@@ -1238,7 +1328,7 @@ class FeaturePlanner:
         suffix = (
             f"\n        from {source.alias}_transform\n"
             f"        {where_clause}\n"
-            f"        group by {relationship.parent_key}\n        )\n        "
+            f"        group by {relationship.child_key}\n        )\n        "
         )
         columns = [ColumnSpec(name=f.name, projection=f.query) for f in agg_features]
         spec = ShardableCTE(
@@ -1246,7 +1336,7 @@ class FeaturePlanner:
             kind="aggs",
             prefix=prefix,
             suffix=suffix,
-            key_columns=[f"{source.alias}_transform.{relationship.parent_key}"],
+            key_columns=[f"{source.alias}_transform.{relationship.child_key}"],
             columns=columns,
             rendered=cte_query,
         )
@@ -1258,11 +1348,12 @@ class FeaturePlanner:
         for f in agg_features:
             target_sources[f.name] = (cte_name, join_statement)
         # Join geometry for the temp-table materialization fallback (issue #7):
-        # this agg CTE is grouped by ``parent_key`` and its consumer (the target's
-        # synth) joins on that key, so each materialized shard projects + joins on
-        # it. Recorded for every agg; the materializer acts only on oversized ones.
+        # this agg CTE is grouped by ``child_key`` (the column it carries) and
+        # its consumer (the target's synth) joins on that key, so each
+        # materialized shard projects + joins on it. Recorded for every agg;
+        # the materializer acts only on oversized ones.
         self._materialization_keys[cte_name] = MaterializationKey(
-            join_key=relationship.parent_key,
+            join_key=relationship.child_key,
             join_statement=join_statement,
         )
 
@@ -1280,22 +1371,42 @@ class FeaturePlanner:
             )
             return
 
-        cte_name = f"{source.alias}_direct_transfers_for_{target.alias}"
+        cte_name = (
+            f"{relationship.parent_naming_alias}_direct_transfers_for_{target.alias}"
+        )
 
-        feature_names = [
-            feature.name for feature in features if feature.type not in ["index", "key"]
+        projected = [
+            feature for feature in features if feature.type not in ["index", "key"]
         ]
+        feature_names = [feature.name for feature in projected]
+        # Qualified features (named relationship) render as
+        # ``<source column> as "<name>.<column>"``; unqualified ones project
+        # their own name, exactly as before.
+        projections = [
+            (
+                f"{source_col} as {feature.name}"
+                if (source_col := getattr(feature, "direct_source", None))
+                else feature.name
+            )
+            for feature in projected
+        ]
+        # The CTE reads the PARENT stream, so it projects the parent-side join
+        # column (which the parent's transform carries — ERGraph registers
+        # ``parent_key`` as a Key on the parent) and the join pairs it with the
+        # child-side FK on the target's base table. The old shape projected
+        # ``source.id`` and joined ``cte.child_key`` — consistent only when
+        # id == parent_key == child_key.
         cte_query = f"""
         -- direct features for {target.alias}
         {cte_name} as (
         select
-        {source.id.name},
-        {",".join(feature_names)}
+        {relationship.parent_key},
+        {",".join(projections)}
         from {source.alias}_transform
         )
         """
         join_statement = (
-            f" {cte_name} on {cte_name}.{relationship.child_key} = "
+            f" {cte_name} on {cte_name}.{relationship.parent_key} = "
             f"{relationship.child.table}.{relationship.child_key} "
         )
         self._joins[target.alias].append(join_statement)
@@ -1329,8 +1440,12 @@ class FeaturePlanner:
         # features (e.g. "ABS(care_plans.risk_score)"); wrapping it in another
         # pair of quotes yields an empty delimited identifier. It is also the
         # column name projected by <source>_transform, so reference it as-is.
+        # Qualified features (named relationship) read their original source
+        # column (``direct_source``) and re-alias it to the qualified name.
         projected = [
-            f"{source.alias}_transform.{feature.name} as {feature.name}"
+            f"{source.alias}_transform."
+            f"{getattr(feature, 'direct_source', None) or feature.name}"
+            f" as {feature.name}"
             for feature in features
             if feature.type not in {"index", "key"}
         ]
@@ -1355,7 +1470,7 @@ class FeaturePlanner:
                 f"{target.table}.{target_temporal} - interval '{relationship.temporal_grace}'"
             )
 
-        cte_name = f"{source.alias}_asof_for_{target.alias}"
+        cte_name = f"{relationship.parent_naming_alias}_asof_for_{target.alias}"
         # Convert the CTE text into a lateral join referencing the target table row.
         lateral_join = (
             " lateral (\n"

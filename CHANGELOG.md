@@ -6,6 +6,68 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-05
+
+Relationship identity + manifest persistence + CI/CD. Two long-standing
+relationship-topology bugs fixed (both silent until now because every shipped
+config used identical key names and at most one relationship per entity pair).
+
+### Added
+
+- **Named relationships** (`relationships[].name`). Parallel relationships
+  between one entity pair (orders as buyer AND as seller) must each declare a
+  distinct `name:` — validation ERROR otherwise. The name replaces the child
+  alias in aggregation feature/CTE names (`SUM(purchases.amount|interval=P1M)`,
+  `purchases_aggs_for_customers`) and qualifies columns transferred by named
+  forward/as-of relationships (`"purchases.score"`). Unambiguous configs need
+  no `name:` and keep byte-identical feature names (ADR-0008).
+- **Manifest lineage + generated descriptions.** `ManifestEntry` gains `depth`,
+  `parents` (immediate parent labels), `source_alias`, `interval`, and a
+  mechanically generated human `description` templated from the primitive
+  documentation. Aggregation features now carry full untruncated `label`s, so
+  63-byte-capped columns map back to their intended names at any nesting depth.
+- **Persisted manifest table.** `to_tables(schema)` writes
+  `"<schema>"."<stem>_manifest"` beside the feature-group tables — one row per
+  output column including the `feature_group` it landed in (idempotent
+  DROP+CREATE, parameterized inserts, caller-owned transaction).
+- **CI/CD.** `test.yml` hardened (concurrency cancellation, timeouts, packaging
+  gate `uv build` + `twine check`, shipped-example config validation, 70%
+  fast-tier coverage floor). New `release.yml`: pushing a `vX.Y.Z` tag guards
+  tag==pyproject==CHANGELOG consistency, re-verifies the tagged commit, builds
+  sdist+wheel, and publishes the GitHub release with CHANGELOG notes + assets.
+
+### Fixed
+
+- **Relationships with differing parent/child key names rendered invalid SQL.**
+  The aggregation CTE projected/grouped by the parent-side key name (absent on
+  the child stream it reads) while its join referenced the child-side name the
+  CTE never output; the direct-transfer CTE had the mirror-image bug. All
+  builders now reference each side's own column, the parent side carries its
+  join column through synth/transform, and the issue-#7 materialization key
+  follows the corrected join geometry. Configs with `parent_key == child_key`
+  (all previously working ones) render byte-identical SQL.
+- **Parallel relationships and diamond topologies silently dropped features.**
+  The traversal guard skipped every relationship after the first that reached
+  an already-built entity: the second customers→orders leg vanished (5 of 10
+  features) and in a diamond `a←b←d` / `a←c←d` the d-aggregations never flowed
+  through c. Entities now build once while EVERY relationship is consumed, from
+  a per-entity snapshot of what its transform actually projects (only true
+  cycles skip). Unnamed ambiguity is a loud validation error, never a silent
+  collapse.
+
+### Changed
+
+- `MaterializationKey.join_key` for aggregation CTEs is now the child-side key
+  (the column the CTE actually carries); identical behavior for equal-key
+  configs.
+
+### Migration
+
+- Configs declaring two or more relationships between the same entity pair now
+  fail validation until each carries a distinct `name:`. Note the previous
+  behavior was silently wrong (only one leg produced features), so any such
+  config was already broken — now it is loudly broken with a fix suggestion.
+
 ## [0.4.2] - 2026-07-03
 
 ### Added

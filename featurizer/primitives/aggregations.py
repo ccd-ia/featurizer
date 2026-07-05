@@ -93,12 +93,31 @@ class Aggregator:
         self.stackable = stackable
 
     @staticmethod
-    def _build_name(name, feature, interval):
-        name = f"{str.upper(name)}({feature.entity.alias}.{feature.name}"
+    def _build_name(name, feature, interval, alias=None):
+        # ``alias`` is the relationship's naming alias: it replaces the child
+        # entity alias so parallel relationships between one entity pair yield
+        # distinct feature names. It defaults to the entity alias, keeping
+        # every unambiguous config's names byte-identical.
+        alias = alias or feature.entity.alias
+        name = f"{str.upper(name)}({alias}.{feature.name}"
         interval = f"|interval={interval})" if interval else ")"
         # pg_identifier caps long names with a stable hash suffix so interval
         # variants cannot collide after PostgreSQL's 63-byte truncation.
         return pg_identifier(name + interval)
+
+    @staticmethod
+    def _build_label(name, feature, interval, alias=None):
+        """The full, untruncated intended name (mirrors ``_build_name``).
+
+        Uses the parent's *label* (not its possibly hash-truncated name) so the
+        readable chain survives 63-byte capping at any nesting depth; the
+        feature manifest maps column -> label.
+        """
+        alias = alias or feature.entity.alias
+        parent_label = (feature.label or feature.name).replace('"', "")
+        label = f"{str.upper(name)}({alias}.{parent_label}"
+        label += f"|interval={interval})" if interval else ")"
+        return label
 
     def _build_aggregate_expression(self, feature, interval):
         expression = feature.name
@@ -124,13 +143,19 @@ class Aggregator:
             # We don't do anything
             agg_feature = None
         else:
+            alias = relationship.naming_alias if relationship is not None else None
             agg_feature = Feature(
-                name=self._build_name(self.name, feature, interval=interval),
+                name=self._build_name(
+                    self.name, feature, interval=interval, alias=alias
+                ),
                 type=self.output_type,
                 definition=self._build_aggregate_expression(feature, interval),
                 parents=feature,
                 entity=parent,
                 stack_depth=feature.stack_depth + 1,
+                label=self._build_label(
+                    self.name, feature, interval=interval, alias=alias
+                ),
             )
         return agg_feature
 
@@ -616,12 +641,17 @@ class SubqueryAggregator(Aggregator):
         if definition is None:
             return None
         return Feature(
-            name=self._build_name(self.name, feature, interval=interval),
+            name=self._build_name(
+                self.name, feature, interval=interval, alias=relationship.naming_alias
+            ),
             type=self.output_type,
             definition=definition,
             entity=parent,
             parents=feature,
             stack_depth=feature.stack_depth + 1,
+            label=self._build_label(
+                self.name, feature, interval=interval, alias=relationship.naming_alias
+            ),
         )
 
     @staticmethod

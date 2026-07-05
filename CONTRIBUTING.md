@@ -63,3 +63,21 @@ dependency in the `[bridge]` extra — no engine change needed.
   `docs/adr/`; add domain terms to `CONTEXT.md`.
 - Database access uses `DATABASE_URL` / `PG*` env only — never hardcode
   credentials.
+
+## Release process
+
+Releases ride the CI/CD pipeline (`.github/workflows/release.yml`); nothing is
+published by hand:
+
+1. Add the `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` and bump
+   `version` in `pyproject.toml` (then `uv lock`).
+2. Commit, push `master`, and wait for the `test` workflow to go green
+   (fast + typecheck + packaging + example validation + integration).
+3. Push an annotated tag: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.
+4. `release.yml` takes over: it fails loudly if the tag doesn't match
+   `pyproject.toml` or the CHANGELOG section is missing, re-verifies the tagged
+   commit, builds sdist+wheel, and creates the GitHub release with the
+   CHANGELOG section as notes and the dist files as assets.
+
+No PyPI — deliberate (fork of dssg/featurizer; the name is generic). GitHub
+releases on `nanounanue/featurizer` are the distribution channel.
