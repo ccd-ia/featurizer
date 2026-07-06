@@ -97,8 +97,8 @@ section#amendments summary, section#questionables summary { cursor: pointer; fon
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-07-05T09:15:00-06:00</dd>
-        <dt>modified</dt>     <dd>2026-07-05T09:15:00-06:00, 2026-07-05T10:05:00-06:00 (amendment: CI/CD phase)</dd>
-        <dt>commits</dt>      <dd>base: 7c05ae6 (v0.4.2)</dd>
+        <dt>modified</dt>     <dd>2026-07-05T09:15:00-06:00, 2026-07-05T10:05:00-06:00 (amendment: CI/CD phase), 2026-07-05T22:55:00-06:00 (build complete: all phases [x], v0.5.0 released)</dd>
+        <dt>commits</dt>      <dd>base: 7c05ae6 (v0.4.2), 50a68da (v0.5.0 — phases 1–4 + release commit)</dd>
         <dt>agent name</dt>   <dd>claude-fable-5</dd>
         <dt>session id</dt>   <dd>2bb47d3c-9efd-4d94-87fb-b0e740ade6ab</dd>
         <dt>back refs</dt>    <dd>docs/adr/0005 (column-group sharding), docs/adr/0006 (oversized-child materialization), docs/adr/0007 (one-hot naming contract), TODO.org §2026-07-03</dd>
@@ -451,27 +451,27 @@ section#amendments summary, section#questionables summary { cursor: pointer; fon
 
       <h4>1. Harden CI (<code>test.yml</code>)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add a <code>concurrency</code> group (cancel superseded runs per ref) and <code>timeout-minutes</code> on every job</li>
-        <li><code class="status">[]</code> New <code>package</code> job: <code>uv build</code> + <code>uvx twine check dist/*</code> — the packaging gate that previously only ran by hand at release time</li>
-        <li><code class="status">[]</code> New config-validation step: <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — shipped examples must validate with zero errors on every push</li>
-        <li><code class="status">[]</code> Coverage on the fast job: <code>--cov=featurizer --cov-report=term --cov-fail-under=70</code> — a floor, not vanity reporting (fast tier measures 72.13%; the plan's 85 guess predated measuring — DB-execution paths only run in the integration tier)</li>
+        <li><code class="status">[x]</code> Add a <code>concurrency</code> group (cancel superseded runs per ref) and <code>timeout-minutes</code> on every job</li>
+        <li><code class="status">[x]</code> New <code>package</code> job: <code>uv build</code> + <code>uvx twine check dist/*</code> — the packaging gate that previously only ran by hand at release time</li>
+        <li><code class="status">[x]</code> New config-validation step: <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — shipped examples must validate with zero errors on every push</li>
+        <li><code class="status">[x]</code> Coverage on the fast job: <code>--cov=featurizer --cov-report=term --cov-fail-under=70</code> — a floor, not vanity reporting (fast tier measures 72.13%; the plan's 85 guess predated measuring — DB-execution paths only run in the integration tier)</li>
       </ul>
 
       <h4>2. Release automation (<code>release.yml</code>, new)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Trigger: <code>push: tags: ['v*']</code>; <code>permissions: contents: write</code></li>
-        <li><code class="status">[]</code> Guard job: tag must equal <code>pyproject.toml</code> version (fail loud on mismatch) and the <code>CHANGELOG.md</code> must contain a matching <code>## [X.Y.Z]</code> section</li>
-        <li><code class="status">[]</code> Verify job: re-run fast tier + basedpyright + no-seed integration tier on the tagged commit (reuse the service-container recipe)</li>
-        <li><code class="status">[]</code> Publish job: <code>uv build</code>, extract the tag's CHANGELOG section as release notes, <code>gh release create "$TAG" dist/* --title "Featurizer X.Y.Z" --notes-file …</code> using <code>GITHUB_TOKEN</code> (runs in-repo on the fork — no <code>--repo</code> pitfall). No PyPI (deliberate: fork of dssg, generic name)</li>
-        <li><code class="status">[]</code> Update CONTRIBUTING.md release-process section: release = bump version + CHANGELOG, push, wait CI green, push annotated tag — the workflow does the rest</li>
+        <li><code class="status">[x]</code> Trigger: <code>push: tags: ['v*']</code>; <code>permissions: contents: write</code></li>
+        <li><code class="status">[x]</code> Guard job: tag must equal <code>pyproject.toml</code> version (fail loud on mismatch) and the <code>CHANGELOG.md</code> must contain a matching <code>## [X.Y.Z]</code> section</li>
+        <li><code class="status">[x]</code> Verify job: re-run fast tier + basedpyright + no-seed integration tier on the tagged commit (reuse the service-container recipe)</li>
+        <li><code class="status">[x]</code> Publish job: <code>uv build</code>, extract the tag's CHANGELOG section as release notes, <code>gh release create "$TAG" dist/* --title "Featurizer X.Y.Z" --notes-file …</code> using <code>GITHUB_TOKEN</code> (runs in-repo on the fork — no <code>--repo</code> pitfall). No PyPI (deliberate: fork of dssg, generic name)</li>
+        <li><code class="status">[x]</code> Update CONTRIBUTING.md release-process section: release = bump version + CHANGELOG, push, wait CI green, push annotated tag — the workflow does the rest</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p>Workflow YAML can't be executed locally, so validate in three layers: static lint, a dry-run of the note-extraction script, and the real proof — the workflows running green on GitHub (CI on the push in this phase; CD observed in Phase 5 when the v0.5.0 tag lands).</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uvx --from actionlint-py actionlint .github/workflows/*.yml</code> (or <code>brew install actionlint</code>) — workflow lint clean</li>
-        <li><code class="status">[]</code> Local dry-run of the CHANGELOG-section extraction against <code>[0.4.2]</code> — produces exactly that section's body</li>
-        <li><code class="status">[]</code> <code>gh run watch</code> on the push that lands this phase — hardened <code>test.yml</code> green end-to-end (including the new package + validate steps)</li>
+        <li><code class="status">[x]</code> <code>uvx --from actionlint-py actionlint .github/workflows/*.yml</code> (or <code>brew install actionlint</code>) — workflow lint clean</li>
+        <li><code class="status">[x]</code> Local dry-run of the CHANGELOG-section extraction against <code>[0.4.2]</code> — produces exactly that section's body</li>
+        <li><code class="status">[x]</code> <code>gh run watch</code> on the push that lands this phase — hardened <code>test.yml</code> green end-to-end (including the new package + validate steps)</li>
       </ul>
       <div class="loop">
         🔁 <strong>Do not exit this phase until every box above is checked.</strong>
@@ -481,27 +481,27 @@ section#amendments summary, section#questionables summary { cursor: pointer; fon
 
     <!-- ===================== PHASE 5 (was Phase 4; renumbered by amendment 2026-07-05) ===================== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 5: Release v0.5.0</h3>
+      <h3><code class="status">[x]</code> Phase 5: Release v0.5.0</h3>
       <p>Minor bump: new config surface (<code>relationships[].name</code>), new persisted artifact (<code>&lt;stem&gt;_manifest</code>), new manifest fields, and two bug-fix behavior changes (invalid SQL → valid; silent collapse → validation error). With Phase 4 in place the release rides the pipeline: push master, wait for CI, push the tag, and <code>release.yml</code> builds + publishes the GitHub release with assets.</p>
 
       <h4>1. Release mechanics</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> CHANGELOG <code>[0.5.0]</code>: Added (relationship <code>name:</code>, manifest table, lineage/description fields, CI/CD pipeline), Fixed (bug 1 invalid SQL, bug 2 silent collapse → loud error), Changed (MaterializationKey join key), Migration note: configs with parallel unnamed relationships must add <code>name:</code></li>
-        <li><code class="status">[]</code> <code>pyproject.toml</code> 0.4.2 → 0.5.0; <code>uv lock</code></li>
-        <li><code class="status">[]</code> README primitive/feature docs current; <code>.claude/skills/featurizer-dfs/SKILL.md</code> restamped v0.5.0 (H1 + new gotchas + manifest rows)</li>
-        <li><code class="status">[]</code> Commit, push master, wait for hardened CI green; push annotated tag <code>v0.5.0</code>; <code>release.yml</code> creates the GitHub release with sdist/wheel assets and CHANGELOG notes</li>
-        <li><code class="status">[]</code> TODO.org: close this effort; note the optional triage-pg pin bump (v0.4.1 → v0.5.0 brings the manifest table its adapter can consume)</li>
+        <li><code class="status">[x]</code> CHANGELOG <code>[0.5.0]</code>: Added (relationship <code>name:</code>, manifest table, lineage/description fields, CI/CD pipeline), Fixed (bug 1 invalid SQL, bug 2 silent collapse → loud error), Changed (MaterializationKey join key), Migration note: configs with parallel unnamed relationships must add <code>name:</code></li>
+        <li><code class="status">[x]</code> <code>pyproject.toml</code> 0.4.2 → 0.5.0; <code>uv lock</code></li>
+        <li><code class="status">[x]</code> README primitive/feature docs current; <code>.claude/skills/featurizer-dfs/SKILL.md</code> restamped v0.5.0 (H1 + new gotchas + manifest rows)</li>
+        <li><code class="status">[x]</code> Commit, push master, wait for hardened CI green; push annotated tag <code>v0.5.0</code>; <code>release.yml</code> creates the GitHub release with sdist/wheel assets and CHANGELOG notes</li>
+        <li><code class="status">[x]</code> TODO.org: close this effort; note the optional triage-pg pin bump (v0.4.1 → v0.5.0 brings the manifest table its adapter can consume)</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <p>The full pre-release gauntlet on the release commit — every tier, examples, and packaging — plus the CD run itself as the final proof.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>just test-fast</code> — full fast tier</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just examples &amp;&amp; just db-down</code> — integration tier + all five examples execute</li>
-        <li><code class="status">[]</code> <code>just typecheck</code> — 0 errors</li>
-        <li><code class="status">[]</code> <code>uv build</code> — sdist/wheel build clean on the release commit</li>
-        <li><code class="status">[]</code> <code>gh run watch</code> — release.yml run for tag v0.5.0 green</li>
-        <li><code class="status">[]</code> <code>gh release view v0.5.0 --repo nanounanue/featurizer</code> — release present, Latest, with dist assets attached</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — full fast tier</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just examples &amp;&amp; just db-down</code> — integration tier + all five examples execute</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — 0 errors</li>
+        <li><code class="status">[x]</code> <code>uv build</code> — sdist/wheel build clean on the release commit</li>
+        <li><code class="status">[x]</code> <code>gh run watch</code> — release.yml run for tag v0.5.0 green</li>
+        <li><code class="status">[x]</code> <code>gh release view v0.5.0 --repo nanounanue/featurizer</code> — release present, Latest, with dist assets attached</li>
       </ul>
       <div class="loop">
         🔁 <strong>Do not exit this phase until every box above is checked.</strong>
@@ -515,13 +515,13 @@ section#amendments summary, section#questionables summary { cursor: pointer; fon
     <h2>Validation Commands</h2>
     <p>Execute these commands to validate the entire plan is complete:</p>
     <ul class="checklist">
-      <li><code class="status">[]</code> <code>just test-fast</code> — entire DB-free tier green (≥ 518 existing + all new regressions)</li>
-      <li><code class="status">[]</code> <code>just typecheck</code> — basedpyright 0 errors, 0 new warnings</li>
-      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — integration tier green including the new topology + manifest tests</li>
-      <li><code class="status">[]</code> <code>uv run pytest tests/test_parallel_relationships.py tests/test_relationship_keys.py tests/test_manifest_lineage.py -v</code> — the three new suites individually green</li>
-      <li><code class="status">[]</code> <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — all shipped examples still validate with zero warnings</li>
-      <li><code class="status">[]</code> <code>gh run list --limit 3</code> — hardened test.yml and release.yml runs green on GitHub</li>
-      <li><code class="status">[]</code> <code>git tag -l v0.5.0 &amp;&amp; gh release view v0.5.0 --repo nanounanue/featurizer --json tagName,assets</code> — release shipped with dist assets</li>
+      <li><code class="status">[x]</code> <code>just test-fast</code> — entire DB-free tier green (≥ 518 existing + all new regressions)</li>
+      <li><code class="status">[x]</code> <code>just typecheck</code> — basedpyright 0 errors, 0 new warnings</li>
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — integration tier green including the new topology + manifest tests</li>
+      <li><code class="status">[x]</code> <code>uv run pytest tests/test_parallel_relationships.py tests/test_relationship_keys.py tests/test_manifest_lineage.py -v</code> — the three new suites individually green</li>
+      <li><code class="status">[x]</code> <code>uv run python -m featurizer validate examples/0*/config.yaml</code> (each) — all shipped examples still validate with zero warnings</li>
+      <li><code class="status">[x]</code> <code>gh run list --limit 3</code> — hardened test.yml and release.yml runs green on GitHub</li>
+      <li><code class="status">[x]</code> <code>git tag -l v0.5.0 &amp;&amp; gh release view v0.5.0 --repo nanounanue/featurizer --json tagName,assets</code> — release shipped with dist assets</li>
     </ul>
     <div class="loop">
       🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
