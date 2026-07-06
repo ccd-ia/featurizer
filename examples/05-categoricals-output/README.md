@@ -25,7 +25,10 @@ tutorial **executes** against PostgreSQL so you see the actual feature matrix.
    both produce an all-zero one-hot row (never a crash).
 3. **Feature manifest** — `feature_manifest` / `manifest_dataframe()` map each
    output column to its full, untruncated label (and one-hot `source_column` /
-   `value`).
+   `value`). Since v0.5.0 entries also carry lineage (`depth`, `parents`,
+   `source_alias`, `interval`) and a generated human `description`, and
+   `to_tables(schema)` persists the manifest as `"<schema>"."<stem>_manifest"`
+   beside the feature-group tables.
 4. **Output formats** — `to_dataframe()` (pandas) and `to_arrow()` (Arrow,
    NULL-faithful, keys as columns).
 5. **Imputation** — `impute=True` fills count-like aggregates (`COUNT`) with 0,
