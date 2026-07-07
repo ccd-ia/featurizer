@@ -91,7 +91,12 @@ def test_cross_type_latency_fires_with_a_b_predicates():
     assert result is not None
     assert "a.event_type = 'order'" in result.definition
     assert "b.event_type = 'deliver'" in result.definition
-    assert "EXTRACT(EPOCH FROM MIN(b.ts) - a.ts)" in result.definition
+    # Latency in days, epoch-extracted per side so it is numeric for both date
+    # and timestamp columns (raw ``MIN(b.ts) - a.ts`` breaks on date columns).
+    assert (
+        "(EXTRACT(EPOCH FROM MIN(b.ts)) - EXTRACT(EPOCH FROM a.ts)) / 86400.0"
+        in result.definition
+    )
     # both sides causally bounded
     assert "a.ts <= aod.as_of_date" in result.definition
     assert "b.ts <= aod.as_of_date" in result.definition

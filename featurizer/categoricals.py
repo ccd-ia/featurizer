@@ -112,6 +112,38 @@ def introspect_enum_labels(
     return labels or None
 
 
+#: Above this many vocabulary values, one-hot encoding a direct categorical is
+#: warned as high-cardinality: it emits one sparse 0/1 column per value, which is
+#: wide and weak. featurizer is split-blind, so it cannot frequency- or
+#: target-encode instead (those are fitted, train-only transforms); the fix is to
+#: declare a top-N ``vocabulary:`` and let the long tail fall into the all-zero
+#: "other". Chosen above the largest vocabulary in practice (15) so it never fires
+#: on a deliberately-capped config, only on a genuinely large declared list or an
+#: un-curated ENUM.
+ONE_HOT_CARDINALITY_WARN = 25
+
+
+def _warn_if_high_cardinality(
+    vocab: List[str], entity: "Entity", variable: "Variable", source: str
+) -> List[str]:
+    if len(vocab) > ONE_HOT_CARDINALITY_WARN:
+        logger.warning(
+            "Categorical {}.{} has a {}-value {} vocabulary → {} one-hot columns "
+            '("{}.{}=<value>"). High-cardinality one-hot is sparse and wide; '
+            "declare a top-N `vocabulary:` (the long tail becomes an all-zero "
+            '"other") rather than encoding every value. featurizer is split-blind '
+            "and cannot frequency/target-encode (those are fitted, train-only).",
+            entity.alias,
+            variable.name,
+            len(vocab),
+            source,
+            len(vocab),
+            entity.alias,
+            variable.name,
+        )
+    return vocab
+
+
 def resolve_vocabulary(
     variable: "Variable", entity: "Entity", connection: Any
 ) -> List[str]:
@@ -123,7 +155,9 @@ def resolve_vocabulary(
     learned vocabulary.
     """
     if variable.vocabulary:
-        return sorted(str(v) for v in variable.vocabulary)
+        return _warn_if_high_cardinality(
+            sorted(str(v) for v in variable.vocabulary), entity, variable, "declared"
+        )
 
     if connection is not None:
         labels = introspect_enum_labels(connection, entity.table, variable.name)
@@ -134,7 +168,9 @@ def resolve_vocabulary(
                 variable.name,
                 len(labels),
             )
-            return sorted(labels)
+            return _warn_if_high_cardinality(
+                sorted(labels), entity, variable, "PostgreSQL ENUM"
+            )
 
     raise ValueError(
         f"role: categorical variable '{entity.alias}.{variable.name}' has no "

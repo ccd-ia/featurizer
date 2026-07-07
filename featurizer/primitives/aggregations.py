@@ -32,6 +32,20 @@ from .abstractions import Feature, SpatialIx, pg_identifier
 from .utils import register_aggregation
 
 
+def _epoch_day_span(hi: str, lo: str) -> str:
+    """Difference of two temporal SQL expressions, in fractional days (numeric).
+
+    Extracts epoch seconds from each side *before* subtracting, so the result is
+    numeric for both ``date`` and ``timestamp`` columns. Subtracting the raw
+    values instead is type-fragile: ``date - date`` is an ``integer`` that
+    ``EXTRACT(EPOCH FROM …)`` rejects, and ``timestamp - timestamp`` is an
+    ``interval`` that ``STDDEV`` rejects. Dividing by 86400 yields days — the
+    interpretable unit that also matches the original integer-day output on
+    ``date`` columns and featurizer's EMA transformer convention.
+    """
+    return f"(EXTRACT(EPOCH FROM {hi}) - EXTRACT(EPOCH FROM {lo})) / 86400.0"
+
+
 class Aggregator:
     """Base class for aggregation functions.
 
@@ -190,7 +204,15 @@ class Skewness(Aggregator):
         super().__init__(name="skewness")
 
     def _build_aggregate_expression(self, feature, interval=None):
-        return f"({feature.name} - avg({feature.name})) / stddev({feature.name})**3"
+        # Population skewness m3 / m2^1.5 via raw moments — pure aggregates only
+        # (the old ``(x - avg(x)) / stddev(x)**3`` referenced a bare, un-grouped
+        # column and used ``**``, which PostgreSQL rejects). m2 = var_pop.
+        col = feature.name
+        m3 = (
+            f"avg(power({col},3)) - 3*avg({col})*avg(power({col},2)) "
+            f"+ 2*power(avg({col}),3)"
+        )
+        return f"({m3}) / NULLIF(power(var_pop({col}), 1.5), 0)"
 
 
 class Kurtosis(Aggregator):
@@ -207,7 +229,15 @@ class Kurtosis(Aggregator):
         super().__init__(name="kurtosis")
 
     def _build_aggregate_expression(self, feature, interval=None):
-        return f"({feature.name} - avg({feature.name})) / stddev({feature.name})**4"
+        # Population kurtosis m4 / m2^2 via raw moments — pure aggregates only
+        # (the old form referenced a bare, un-grouped column and used ``**``).
+        # A normal distribution gives 3.
+        col = feature.name
+        m4 = (
+            f"avg(power({col},4)) - 4*avg({col})*avg(power({col},3)) "
+            f"+ 6*power(avg({col}),2)*avg(power({col},2)) - 3*power(avg({col}),4)"
+        )
+        return f"({m4}) / NULLIF(power(var_pop({col}), 2), 0)"
 
 
 class MinMaxScale(Aggregator):
@@ -277,16 +307,20 @@ class GeometricMean(Aggregator):
         super().__init__(name="geometric_mean")
 
     def _build_aggregate_expression(self, feature, interval=None):
-        return f"""(
-        case
-        when {feature.name} > 0
-        then
-        exp(avg(log({feature.name}))
-        else
-        (-1.0)^count(*)*exp(avg(log(abs({feature.name})))
-        end
-        )
-        """
+        # Geometric mean is defined only on positive values: exp(mean(ln x)).
+        # Return NULL when any value is <= 0 (undefined domain), mirroring the
+        # CumProd transformer. ``ln`` (natural log) is required — PostgreSQL's
+        # ``log`` is base-10, which would compute the wrong quantity.
+        #
+        # SQL aggregate-evaluation order: ``avg(ln(x))`` is computed over EVERY
+        # row before the outer CASE can short-circuit, so a raw ``ln(x)`` would
+        # still raise on a non-positive row. Guard ln's argument to a safe 1
+        # (ln 1 = 0) for those rows; the outer ``min(col) > 0`` guard then nulls
+        # the whole result whenever any non-positive value was present, so the
+        # placeholder never contaminates a returned value.
+        col = feature.name
+        safe = f"case when {col} > 0 then {col} else 1 end"
+        return f"case when min({col}) > 0 then exp(avg(ln({safe}))) else null end"
 
 
 sum = Aggregator(name="sum")
@@ -327,9 +361,6 @@ DEFAULT_AGGREGATIONS = {
     "all": all,
     "any": any,
     "nunique": nunique,
-    "min_max_scale": min_max_scale,
-    "mean_deviation": mean_deviation,
-    "z_score": z_score,
     "skewness": skewness,
     "kurtosis": kurtosis,
     "harmonic_mean": harmonic_mean,
@@ -338,6 +369,19 @@ DEFAULT_AGGREGATIONS = {
 
 for _name, _agg in DEFAULT_AGGREGATIONS.items():
     register_aggregation(_name, _agg)
+
+# ``z_score`` and ``min_max_scale`` are per-ROW normalizations, not reductions:
+# their SQL references a bare, un-grouped column, which is invalid inside the
+# ``SELECT key, <expr> ... GROUP BY key`` aggregation CTE. They are redundant
+# with the ``cross_entity_zscore`` / ``cross_entity_percentile`` transformers.
+# ``mean_deviation`` (mean absolute deviation) is a genuine reduction but needs
+# a two-pass correlated subquery (``avg(abs(x - avg(x)))`` nests aggregates,
+# which PostgreSQL forbids) — a SubqueryAggregator rewrite, tracked as follow-up.
+# All three stay registered (discoverable / requestable) but are OUT of the
+# default set so a wholesale default/wide aggregation sweep stays valid.
+register_aggregation("z_score", z_score)
+register_aggregation("min_max_scale", min_max_scale)
+register_aggregation("mean_deviation", mean_deviation)
 
 
 class OrderedSetAggregator(Aggregator):
@@ -498,17 +542,17 @@ class EventRate(Aggregator):
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return (
-            f"count(*){filt} / NULLIF(EXTRACT(EPOCH FROM "
-            f"max({feature.name}){filt} - min({feature.name}){filt}), 0)"
+        span_days = _epoch_day_span(
+            f"max({feature.name}){filt}", f"min({feature.name}){filt}"
         )
+        return f"count(*){filt} / NULLIF({span_days}, 0)"
 
 
 event_rate = EventRate()
 
 
 class TimeSpan(Aggregator):
-    """Time span in seconds between first and last event."""
+    """Time span in days between first and last event."""
 
     def __init__(self):
         super().__init__(name="time_span", input_types=["index"])
@@ -525,8 +569,8 @@ class TimeSpan(Aggregator):
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return (
-            f"EXTRACT(EPOCH FROM max({feature.name}){filt} - min({feature.name}){filt})"
+        return _epoch_day_span(
+            f"max({feature.name}){filt}", f"min({feature.name}){filt}"
         )
 
 
@@ -708,7 +752,7 @@ class GapStatAggregator(SubqueryAggregator):
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT {self.gap_aggregate}(gap) FROM ("
-            f"SELECT sub.{event_col} - LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col}) as gap "
+            f"SELECT {_epoch_day_span(f'sub.{event_col}', f'LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col})')} as gap "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") gaps WHERE gap IS NOT NULL)"
@@ -743,7 +787,7 @@ class GapCV(SubqueryAggregator):
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT STDDEV(gap) / NULLIF(AVG(gap), 0) FROM ("
-            f"SELECT sub.{event_col} - LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col}) as gap "
+            f"SELECT {_epoch_day_span(f'sub.{event_col}', f'LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col})')} as gap "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") gaps WHERE gap IS NOT NULL)"
@@ -775,7 +819,7 @@ class Burstiness(SubqueryAggregator):
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT (STDDEV(gap) - AVG(gap)) / NULLIF(STDDEV(gap) + AVG(gap), 0) FROM ("
-            f"SELECT sub.{event_col} - LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col}) as gap "
+            f"SELECT {_epoch_day_span(f'sub.{event_col}', f'LAG(sub.{event_col}) OVER (ORDER BY sub.{event_col})')} as gap "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") gaps WHERE gap IS NOT NULL)"
@@ -1542,7 +1586,7 @@ class CrossTypeLatency(SubqueryAggregator):
         b_causal = self._causal_filter(feature, interval, alias="b")
         return (
             f"(SELECT AVG(lat) FROM ("
-            f"SELECT EXTRACT(EPOCH FROM MIN(b.{ts}) - a.{ts}) AS lat "
+            f"SELECT {_epoch_day_span(f'MIN(b.{ts})', f'a.{ts}')} AS lat "
             f"FROM {ct} a JOIN {ct} b "
             f"ON b.{ck} = a.{ck} AND b.{ts} > a.{ts} AND b.{col} = '{b_val}'{b_causal} "
             f"WHERE a.{ck} = {ct}.{ck} AND a.{col} = '{a_val}'{a_causal} "

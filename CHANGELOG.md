@@ -6,6 +6,78 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-06
+
+Transformer-family label truncation + a cluster of never-executed advanced
+aggregator bugs found by stress-testing against three live datasets, plus a
+one-hot cardinality guard and CI action bumps.
+
+### Added
+
+- **High-cardinality one-hot warning.** Resolving a `role: categorical`
+  vocabulary (declared list or introspected `ENUM`) larger than 25 values now
+  logs a warning: one-hot encoding emits one sparse 0/1 column per value, which
+  is wide and weak. The nudge is to declare a top-N `vocabulary:` and let the
+  long tail fall into the all-zero "other". featurizer stays split-blind (it
+  cannot frequency/target-encode — those are fitted, train-only transforms), so
+  a warning on the declared/ENUM size is the right lever. Every value is still
+  encoded (no silent data loss).
+
+### Fixed
+
+- **Transformer-family names now survive PostgreSQL's 63-byte identifier cap.**
+  Every transformer (the base unary path plus the window / rolling / lag / EMA /
+  Holt-Winters / diff / cumulative-product / cyclical / binary / population /
+  CUSUM / mean-shift families) now routes its output name through
+  `pg_identifier` — a deterministic hash suffix past 63 bytes — and carries a
+  full untruncated `label`. Previously these names were emitted verbatim and
+  *silently truncated by PostgreSQL* at runtime, so a long transformer-wrapped
+  name (e.g. `ABS(patients.MEAN(visits.ABS(visits.duration_minutes)|interval=P1D))`
+  at 68 bytes) risked collapsing into an ambiguous column and carried no
+  intended name for the manifest. This completes the v0.5.0 manifest-label
+  work, which had wired aggregations only; the manifest now maps capped
+  transformer columns back to their full names and populates their lineage and
+  descriptions. Short names stay byte-identical (the ADR-0007 name-stability
+  contract).
+
+- **Temporal aggregators are now type-agnostic (date *and* timestamp columns).**
+  Stress-testing against three live datasets surfaced dialect bugs that only
+  appear when a temporal aggregation runs on a real column: `event_rate` /
+  `time_span` emitted `EXTRACT(EPOCH FROM max - min)`, invalid on a `date`
+  column (`date - date` is an integer); the `gap_*` family / `burstiness` /
+  `cross_type_latency` differenced raw temporal values, and `STDDEV(interval)`
+  is undefined on `timestamp` columns. All now extract epoch seconds per side
+  and express the result in **days** (`EXTRACT(EPOCH FROM col)/86400.0`), which
+  is numeric for both types and preserves the original integer-day output on
+  `date` columns. Verified executing on both a `date` and a `timestamp` fixture.
+
+- **`geometric_mean` produced invalid SQL** — unbalanced parentheses (syntax
+  error at `else`) and base-10 `log` where the geometric mean needs `ln`. Now
+  `case when min(x) > 0 then exp(avg(ln(x))) else null end` (NULL on the
+  undefined non-positive domain; the `ln` argument is guarded so the aggregate
+  never raises before the outer guard nulls it).
+
+- **`skewness` / `kurtosis` rewritten as pure-aggregate raw moments.** They
+  referenced a bare, un-grouped column (invalid in the `GROUP BY` aggregation
+  CTE) and used the `**` operator PostgreSQL lacks. Now computed from
+  `avg(power(x,k))` and `var_pop(x)` — valid SQL and statistically correct
+  (a normal distribution gives kurtosis 3).
+
+### Changed
+
+- **`z_score`, `min_max_scale`, `mean_deviation` removed from the default
+  aggregation set** (still registered / requestable). The first two are per-row
+  normalizations, not reductions — their SQL references a bare column that is
+  invalid inside a `GROUP BY` aggregate — and are redundant with the
+  `cross_entity_zscore` / `cross_entity_percentile` transformers.
+  `mean_deviation` nests aggregates (`sum(abs(x - avg(x)))`), forbidden by
+  PostgreSQL; it awaits a SubqueryAggregator rewrite. Removing them keeps a
+  wholesale default/wide aggregation sweep valid on real schemas.
+
+- **`in_array` removed from the default transformer set** (still registered).
+  Its `__call__` requires an `an_array` argument the planner cannot supply, so
+  it crashed any wholesale default/wide transform set.
+
 ## [0.5.0] - 2026-07-05
 
 Relationship identity + manifest persistence + CI/CD. Two long-standing

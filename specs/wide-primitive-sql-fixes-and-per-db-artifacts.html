@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Wide-Primitive SQL Fixes + Per-DB Feature Artifacts</title>
+<style>
+  :root {
+    --bg: #fafaf8;
+    --surface: #ffffff;
+    --fg: #1a2332;
+    --muted: #5b6472;
+    --accent: #0f766e;        /* teal — primary */
+    --accent-soft: #ccfbf1;
+    --accent-2: #b45309;      /* amber — secondary */
+    --accent-2-soft: #fef3c7;
+    --danger: #b91c1c;
+    --danger-soft: #fee2e2;
+    --ok: #15803d;
+    --ok-soft: #dcfce7;
+    --border: #e2e4e0;
+    --code-bg: #f1f3f0;
+    /* risk ramp */
+    --risk-high: #b91c1c;   --risk-high-bg: #fee2e2;
+    --risk-med:  #b45309;   --risk-med-bg:  #fef3c7;
+    --risk-low:  #15803d;   --risk-low-bg:  #dcfce7;
+    --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--sans);
+    line-height: 1.6; margin: 0; padding: 0;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 2.4rem 1.4rem 5rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  h2 {
+    font-size: 1.4rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem;
+    border-bottom: 2px solid var(--accent-soft); letter-spacing: -.01em;
+  }
+  h3 { font-size: 1.12rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: 1rem; margin: 1.1rem 0 .4rem; color: var(--accent); }
+  p { margin: .5rem 0; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--code-bg);
+    padding: .08em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: .8rem 1rem; overflow-x: auto; font-family: var(--mono); font-size: .82rem;
+    line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  .lede { font-size: 1.05rem; color: var(--muted); }
+  header .meta { margin-top: 1rem; font-size: .85rem; }
+  header .meta summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem;
+    margin: .6rem 0 0; font-size: .82rem; }
+  dl dt { color: var(--muted); font-weight: 600; }
+  dl dd { margin: 0; font-family: var(--mono); font-size: .95em; word-break: break-word; }
+  figure { margin: 1.2rem 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: .82rem; margin-top: .5rem; font-style: italic; }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; padding: .12em .5em; border-radius: 5px; vertical-align: middle; }
+  .tag.existing { background: var(--accent-soft); color: var(--accent); }
+  .tag.new { background: var(--accent-2-soft); color: var(--accent-2); }
+  .risk { display: inline-block; font-size: .72rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .05em; padding: .18em .6em; border-radius: 999px; }
+  .risk.high { background: var(--risk-high-bg); color: var(--risk-high); }
+  .risk.med  { background: var(--risk-med-bg);  color: var(--risk-med); }
+  .risk.low  { background: var(--risk-low-bg);  color: var(--risk-low); }
+  .bug { border: 1px solid var(--border); border-left-width: 6px; border-radius: 10px;
+    background: var(--surface); padding: 1rem 1.2rem; margin: 1.1rem 0; }
+  .bug.high { border-left-color: var(--risk-high); }
+  .bug.med  { border-left-color: var(--risk-med); }
+  .bug.low  { border-left-color: var(--risk-low); }
+  .bug h3 { margin-top: .1rem; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .bug .meta-row { font-size: .8rem; color: var(--muted); margin: .1rem 0 .6rem; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .8rem;
+    font-size: .86rem; margin: .5rem 0; }
+  .kv dt { font-weight: 700; color: var(--muted); }
+  .kv dd { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .4rem .55rem; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  td.num { text-align: right; font-family: var(--mono); }
+  .ok { color: var(--ok); font-weight: 700; }
+  .no { color: var(--danger); font-weight: 700; }
+  .phase { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+    padding: 1rem 1.3rem 1.2rem; margin: 1.2rem 0; }
+  .status { font-family: var(--mono); font-weight: 700; color: var(--accent-2); }
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { padding: .18rem 0; }
+  .loop { background: var(--accent-soft); border-radius: 8px; padding: .6rem .9rem;
+    font-size: .86rem; margin-top: .8rem; }
+  details { margin: .5rem 0; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .qa-answer { color: var(--muted); }
+  .callout { background: var(--accent-2-soft); border: 1px solid #f2d999; border-radius: 8px;
+    padding: .7rem 1rem; font-size: .9rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Wide-Primitive SQL Fixes + Per-DB Feature Artifacts</h1>
+    <p class="lede">Fix the four featurizer primitive bugs surfaced by stress-testing THIS tree
+      against triage-pg's three live datasets, re-validate on real PostgreSQL, and produce a
+      per-database HTML artifact documenting config, schema, and a sample of the generated features.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-06T16:45-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-06T16:45-06:00, 2026-07-06T17:00-06:00</dd>
+        <dt>commits</dt>      <dd>064dd01 (HEAD, pre-change baseline)</dd>
+        <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
+        <dt>session id</dt>   <dd>2942532b-8ae5-4abb-aa93-55d950f920cb</dd>
+        <dt>back refs</dt>    <dd>CHANGELOG [Unreleased] (transformer-label fix); TODO.org 2026-07-06; ADR-0007/0008</dd>
+        <dt>forward refs</dt> <dd>specs/wide-primitive-sql-fixes-and-per-db-artifacts/{dirtyduck,chicago311,donorschoose}.html (Phase 3)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure aria-label="Hero: four broken primitives on the DFS pipeline">
+    <svg viewBox="0 0 900 200" role="img" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="900" height="200" fill="#ffffff"/>
+      <text x="24" y="34" font-family="var(--sans)" font-size="15" fill="#5b6472">featurizer · deep feature synthesis → PostgreSQL</text>
+      <!-- pipeline spine -->
+      <line x1="40" y1="110" x2="860" y2="110" stroke="#e2e4e0" stroke-width="3"/>
+      <!-- healthy nodes -->
+      <g font-family="var(--mono)" font-size="12">
+        <circle cx="90" cy="110" r="16" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+        <text x="90" y="150" text-anchor="middle" fill="#0f766e">entities</text>
+        <circle cx="250" cy="110" r="16" fill="#ccfbf1" stroke="#0f766e" stroke-width="2"/>
+        <text x="250" y="150" text-anchor="middle" fill="#0f766e">aggregate</text>
+      </g>
+      <!-- broken nodes -->
+      <g font-family="var(--mono)" font-size="11">
+        <circle cx="420" cy="110" r="18" fill="#fee2e2" stroke="#b91c1c" stroke-width="2.5"/>
+        <text x="420" y="115" text-anchor="middle" fill="#b91c1c" font-weight="bold">×</text>
+        <text x="420" y="152" text-anchor="middle" fill="#b91c1c">event_rate</text>
+        <circle cx="560" cy="110" r="18" fill="#fee2e2" stroke="#b91c1c" stroke-width="2.5"/>
+        <text x="560" y="115" text-anchor="middle" fill="#b91c1c" font-weight="bold">×</text>
+        <text x="560" y="152" text-anchor="middle" fill="#b91c1c">burstiness/gap</text>
+        <circle cx="700" cy="110" r="18" fill="#fee2e2" stroke="#b91c1c" stroke-width="2.5"/>
+        <text x="700" y="115" text-anchor="middle" fill="#b91c1c" font-weight="bold">×</text>
+        <text x="700" y="152" text-anchor="middle" fill="#b91c1c">geometric_mean</text>
+        <circle cx="820" cy="110" r="18" fill="#fef3c7" stroke="#b45309" stroke-width="2.5"/>
+        <text x="820" y="115" text-anchor="middle" fill="#b45309" font-weight="bold">!</text>
+        <text x="820" y="152" text-anchor="middle" fill="#b45309">in_array</text>
+      </g>
+    </svg>
+    <figcaption>Four primitives that emit invalid SQL (or crash the planner) once the primitive set widens beyond triage's curated five.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Stress-testing this featurizer tree against triage-pg's three live databases
+      (<code>dirtyduck/food</code>, <code>chicago311</code>, <code>donorschoose</code>) proved the
+      just-landed transformer-label fix scales cleanly — <strong>zero name collisions and every
+      identifier ≤ 63 bytes up to 52,225 features</strong> — but it also surfaced <strong>four
+      pre-existing bugs</strong> that make the wider primitive sets unusable on real schemas. This plan
+      fixes those four bugs, re-validates every variant against the live databases, and delivers a
+      polished per-database HTML artifact that documents the config, the database structure, and a
+      representative sample of the generated features (name, short-name, and a plain-language
+      explanation).</p>
+  </section>
+
+  <!-- ===== PROBLEM ===== -->
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>triage-pg deliberately runs featurizer with a narrow primitive set
+      (<code>count/sum/mean/max/stddev</code> + <code>identity</code>) — the config comments say the
+      full set "blows past PostgreSQL's 1664-column limit" and produces "deeply-nested colliding
+      names." Widening the set to exercise the engine surfaced four independent defects. All predate
+      the label fix; they only appear when a non-curated primitive touches a column type it does not
+      support.</p>
+
+    <figure aria-label="Stress-test result at a glance">
+      <svg viewBox="0 0 900 150" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="150" fill="#ffffff"/>
+        <g font-family="var(--sans)">
+          <rect x="30" y="30" width="250" height="90" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+          <text x="155" y="62" text-anchor="middle" font-size="14" fill="#15803d" font-weight="bold">LABEL FIX HOLDS</text>
+          <text x="155" y="88" text-anchor="middle" font-size="12" fill="#166534">0 collisions · ≤63 bytes</text>
+          <text x="155" y="106" text-anchor="middle" font-size="12" fill="#166534">up to 52,225 features</text>
+
+          <rect x="325" y="30" width="250" height="90" rx="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5"/>
+          <text x="450" y="62" text-anchor="middle" font-size="14" fill="#b91c1c" font-weight="bold">3 SQL-GEN BUGS</text>
+          <text x="450" y="88" text-anchor="middle" font-size="12" fill="#7f1d1d">extract · stddev(interval)</text>
+          <text x="450" y="106" text-anchor="middle" font-size="12" fill="#7f1d1d">malformed CASE</text>
+
+          <rect x="620" y="30" width="250" height="90" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+          <text x="745" y="62" text-anchor="middle" font-size="14" fill="#b45309" font-weight="bold">1 PLANNER CRASH</text>
+          <text x="745" y="88" text-anchor="middle" font-size="12" fill="#92400e">in_array arity</text>
+          <text x="745" y="106" text-anchor="middle" font-size="12" fill="#92400e">+ combinatorial ceiling</text>
+        </g>
+      </svg>
+      <figcaption>The fix works; the widened sweep exposed four latent defects (and a scaling ceiling).</figcaption>
+    </figure>
+
+    <h3>The four defects, annotated &amp; risk-rated</h3>
+
+    <!-- BUG 1 -->
+    <div class="bug med">
+      <h3><span class="risk med">Medium</span> B1 · <code>EVENT_RATE</code> — <code>EXTRACT(EPOCH FROM integer)</code></h3>
+      <p class="meta-row">Surfaced on: <strong>dirtyduck/food</strong> (all-agg, wide) · would also hit donorschoose ·
+        <code>featurizer/primitives/aggregations.py:496-504</code></p>
+      <dl class="kv">
+        <dt>Emitted SQL</dt><dd><code>count(*) / NULLIF(EXTRACT(EPOCH FROM max(date) - min(date)), 0)</code></dd>
+        <dt>Root cause</dt><dd>On a <code>date</code>-typed column, <code>max(date) - min(date)</code> is an
+          <strong>integer</strong> (day count), and <code>EXTRACT(EPOCH FROM &lt;integer&gt;)</code> is undefined —
+          hence <code>function pg_catalog.extract(unknown, integer) does not exist</code>. The primitive assumes a
+          <code>timestamp</code> column (where the difference is an <code>interval</code>).</dd>
+        <dt>Fix</dt><dd>Make it type-agnostic and report <strong>events per day</strong>:
+          <code>count(*) / NULLIF((EXTRACT(EPOCH FROM max(date)) - EXTRACT(EPOCH FROM min(date))) / 86400.0, 0)</code>.
+          <code>EXTRACT(EPOCH FROM …)</code> returns numeric seconds for <em>both</em> <code>date</code> and
+          <code>timestamp</code>; dividing by 86400 yields days (the interpretable, EMA-consistent unit — see Q2).</dd>
+        <dt>Why medium</dt><dd>Contained to one primitive; it was fully broken on <code>date</code> columns (no regression risk),
+          but the SQL must stay correct for the <code>timestamp</code> case and interact correctly with the interval
+          <code>filter (where …)</code> clause.</dd>
+      </dl>
+    </div>
+
+    <!-- BUG 2 -->
+    <div class="bug med">
+      <h3><span class="risk med">Medium</span> B2 · <code>BURSTINESS</code> + <code>gap_*</code> family — <code>STDDEV(interval)</code></h3>
+      <p class="meta-row">Surfaced on: <strong>chicago311</strong> (<code>events.date :: timestamp</code>) ·
+        <code>aggregations.py:704-751, 771-782</code> — shared by <code>gap_mean/gap_stddev/gap_min/gap_max/gap_cv/burstiness</code></p>
+      <dl class="kv">
+        <dt>Emitted SQL</dt><dd><code>SELECT (STDDEV(gap) - AVG(gap)) / … FROM (SELECT sub.date - LAG(sub.date) OVER (…) as gap …)</code></dd>
+        <dt>Root cause</dt><dd><code>timestamp - timestamp = interval</code>. <code>AVG/MIN/MAX</code> accept
+          <code>interval</code>, but <code>STDDEV(interval)</code> is undefined → the error. (On <code>date</code>
+          columns the gap is integer days and it happens to work — so the bug is type-dependent and silent until a
+          timestamp dataset hits it.)</dd>
+        <dt>Fix</dt><dd>Difference epoch <strong>days</strong>, not raw temporal values:
+          <code>(EXTRACT(EPOCH FROM sub.date) - LAG(EXTRACT(EPOCH FROM sub.date)) OVER (ORDER BY sub.date)) / 86400.0</code> →
+          numeric <code>gap</code> in days. All six aggregators then work on both <code>date</code> and <code>timestamp</code>.</dd>
+        <dt>Why medium</dt><dd>Touches six primitives sharing one helper. <code>burstiness</code>/<code>gap_cv</code> are
+          dimensionless ratios (the <code>/86400</code> cancels — semantics unchanged, just now valid);
+          <code>gap_mean/min/max</code> emit <strong>days</strong>, which <em>matches the original integer-day output on
+          <code>date</code> columns</em> (no change there) and merely normalizes <code>timestamp</code> columns from an
+          invalid <code>interval</code> to fractional days. <strong>Not in any triage config (default set is 10 curated
+          aggregations; the gap family is opt-in) → no cross-repo contract impact.</strong></dd>
+      </dl>
+    </div>
+
+    <!-- BUG 3 -->
+    <div class="bug high">
+      <h3><span class="risk high">High</span> B3 · <code>GEOMETRIC_MEAN</code> — malformed SQL + wrong log base</h3>
+      <p class="meta-row">Surfaced on: <strong>donorschoose</strong> (all-agg) · <code>aggregations.py:279-289</code></p>
+      <dl class="kv">
+        <dt>Emitted SQL</dt><dd><code>( case when x &gt; 0 then exp(avg(log(x)) else (-1.0)^count(*)*exp(avg(log(abs(x))) end )</code></dd>
+        <dt>Root cause</dt><dd>Two defects: (1) <strong>unbalanced parentheses</strong> — <code>exp(avg(log(x))</code>
+          closes <code>log</code> and <code>avg</code> but leaves <code>exp(</code> open, so PostgreSQL hits
+          <code>else</code> mid-expression → <em>syntax error at or near "else"</em>; (2) it uses <code>log()</code>
+          which is <strong>base-10</strong> in PostgreSQL, whereas the geometric mean needs the natural log:
+          <code>exp(avg(ln(x)))</code>. The negative-value branch <code>(-1)^count·exp(avg(ln|x|))</code> is
+          non-standard and undefined for a true geometric mean.</dd>
+        <dt>Fix</dt><dd>Positive-domain definition (mirrors the existing <code>CumProd</code> transformer):
+          <code>case when min(x) &gt; 0 then exp(avg(ln(x))) else null end</code>.</dd>
+        <dt>Why high</dt><dd>Rated high for <em>correctness</em>: the current expression never produced valid SQL (so
+          zero regression risk), but the replacement must be mathematically right and NULL-safe. A wrong fix would
+          silently emit plausible-but-incorrect feature values — worse than a crash.</dd>
+      </dl>
+    </div>
+
+    <!-- BUG 4 -->
+    <div class="bug low">
+      <h3><span class="risk low">Low</span> B4 · <code>in_array</code> — planner arity crash</h3>
+      <p class="meta-row">Surfaced on: every <code>max</code> variant · <code>transformations.py</code> (<code>IsInArray</code>)</p>
+      <dl class="kv">
+        <dt>Symptom</dt><dd><code>IsInArray.__call__() missing 1 required positional argument: 'an_array'</code></dd>
+        <dt>Root cause</dt><dd><code>in_array</code> is registered in <code>DEFAULT_TRANSFORMERS</code>, but the planner
+          applies transformers as <code>transformer(entity, feature)</code>. <code>IsInArray.__call__</code> requires a
+          third <code>an_array</code> argument the config format can't supply, so it crashes whenever the default set is
+          used wholesale.</dd>
+        <dt>Fix</dt><dd>De-register <code>in_array</code> from <code>DEFAULT_TRANSFORMERS</code> (keep the class for
+          explicit, argument-supplying callers). Optionally, harden the planner to skip transformers whose
+          <code>__call__</code> arity ≠ 2.</dd>
+        <dt>Why low</dt><dd>Isolated, niche primitive; the fix is a one-line de-registration with an obvious blast radius.
+          It <em>blocks</em> the full-transform set today, so value is high even though risk is low.</dd>
+      </dl>
+    </div>
+
+    <div class="callout">
+      <strong>Non-goal (documented ceiling, not a bug):</strong> the full <code>max</code> set (67 aggregations × 82
+      transformations, nested) is a <em>combinatorial explosion</em> — donorschoose blew past a 60 s build timeout and
+      "wide" already reaches 52,225 features at depth 3. This plan does <em>not</em> try to make <code>max</code>
+      practical; it is noted for a future depth/primitive-budget guard (see Notes).
+    </div>
+  </section>
+
+  <!-- ===== SOLUTION ===== -->
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Three surgical primitive fixes plus one de-registration, then re-validation against the three live
+      databases — <strong>materializing the wide/over-1664-column configs through featurizer's sharded path and
+      timing it</strong> (not skipping them) — then the deliverable artifacts. The unifying idea for B1/B2 is
+      <strong>"extract epoch, express in days, never subtract raw temporal values"</strong> — a single type-agnostic
+      rule (<code>EXTRACT(EPOCH FROM col)/86400.0</code>) that makes every temporal primitive correct on both
+      <code>date</code> and <code>timestamp</code> columns and interpretable in days.</p>
+
+    <figure aria-label="Before/after of the temporal-epoch fix">
+      <svg viewBox="0 0 900 210" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="210" fill="#ffffff"/>
+        <g font-family="var(--mono)" font-size="12">
+          <rect x="30" y="30" width="390" height="150" rx="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5"/>
+          <text x="50" y="58" fill="#b91c1c" font-weight="bold" font-family="var(--sans)">Before — assumes timestamp</text>
+          <text x="50" y="90" fill="#7f1d1d">EXTRACT(EPOCH FROM</text>
+          <text x="66" y="110" fill="#7f1d1d">max(date) - min(date))</text>
+          <text x="50" y="140" fill="#b91c1c">date − date = integer  →  ✗</text>
+          <text x="50" y="160" fill="#b91c1c">ts − ts = interval → stddev ✗</text>
+
+          <rect x="480" y="30" width="390" height="150" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+          <text x="500" y="58" fill="#15803d" font-weight="bold" font-family="var(--sans)">After — type-agnostic</text>
+          <text x="500" y="90" fill="#166534">(EXTRACT(EPOCH FROM max(date))</text>
+          <text x="500" y="110" fill="#166534">  − EXTRACT(EPOCH FROM min))/86400</text>
+          <text x="500" y="140" fill="#15803d">numeric days  →  ✓ date</text>
+          <text x="500" y="160" fill="#15803d">numeric days  →  ✓ timestamp</text>
+        </g>
+        <path d="M430 105 L470 105" stroke="#5b6472" stroke-width="2" marker-end="url(#ar)"/>
+        <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+          <path d="M0 0 L6 3 L0 6 Z" fill="#5b6472"/></marker></defs>
+      </svg>
+      <figcaption>One rule fixes B1 and B2: extract epoch seconds first, then do numeric arithmetic.</figcaption>
+    </figure>
+
+    <p>Each fix ships with an integration test that <em>executes</em> the primitive against real PostgreSQL over
+      <strong>both</strong> a <code>date</code> and a <code>timestamp</code> temporal column, plus a DB-free
+      scaled-collision regression test that locks in the transformer-label fix at 1000s of features. Then Phase 3
+      renders one self-contained HTML artifact per database.</p>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code> — houses
+        <code>EventRate</code> (B1), the <code>GapStatAggregator</code>/<code>GapCV</code>/<code>Burstiness</code> family
+        (B2), and <code>GeometricMean</code> (B3).</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/transformations.py</code> —
+        <code>DEFAULT_TRANSFORMERS</code> registry containing <code>in_array</code> (B4).</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_default_primitives_execution.py</code> —
+        the pattern for executing primitives against real PostgreSQL; new B1–B3 tests join here.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/_harness.py</code> —
+        <code>create_temp_table</code> + <code>run_featurizer</code>; used to seed <code>date</code>/<code>timestamp</code> fixtures.</li>
+      <li><span class="tag existing">existing</span> <code>CHANGELOG.md</code> — the <code>[Unreleased]</code> section gets the fixes.</li>
+      <li><span class="tag existing">existing</span> <code>example/&lt;ds&gt;/experiment.yaml</code> (in <code>~/projects/triage</code>;
+        renamed from <code>greenfield.yaml</code> mid-session) — source of each dataset's <code>feature_config</code> (read-only).</li>
+    </ul>
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/primitives/test_temporal_epoch_primitives.py</code> — unit/SQL-shape
+        assertions that B1/B2 emit epoch-based numeric arithmetic (DB-free).</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_wide_primitive_execution.py</code> — executes
+        <code>event_rate</code>, the <code>gap_*</code> family, <code>burstiness</code>, and <code>geometric_mean</code>
+        against date- and timestamp-typed temporal columns.</li>
+      <li><span class="tag new">new</span> <code>tests/primitives/test_scaled_name_collisions.py</code> — DB-free guard:
+        a wide multi-entity config → assert 0 short-name collisions and all names ≤ 63 bytes.</li>
+      <li><span class="tag new">new</span> <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/dirtyduck.html</code> — per-DB artifact.</li>
+      <li><span class="tag new">new</span> <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/chicago311.html</code> — per-DB artifact.</li>
+      <li><span class="tag new">new</span> <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/donorschoose.html</code> — per-DB artifact.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete ·
+      <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <!-- PHASE 1 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Fix the four primitives</h3>
+      <p>Apply the four surgical fixes. Each is independent; land them together with tests so the suite proves the
+        contract before touching a live DB.</p>
+
+      <h4>1. B1 — <code>EventRate</code> epoch-safe span (events/day)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> In <code>EventRate._build_aggregate_expression</code>, replace
+          <code>EXTRACT(EPOCH FROM max(col){filt} - min(col){filt})</code> with
+          <code>(EXTRACT(EPOCH FROM max(col){filt}) - EXTRACT(EPOCH FROM min(col){filt})) / 86400.0</code>.</li>
+        <li><code class="status">[]</code> Keep the interval <code>{filt}</code> on both <code>max</code> and <code>min</code>.</li>
+      </ul>
+
+      <h4>2. B2 — gap family + burstiness epoch gaps (days)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Introduce a shared helper for the gap subquery so
+          <code>GapStatAggregator</code>, <code>GapCV</code>, and <code>Burstiness</code> emit
+          <code>(EXTRACT(EPOCH FROM sub.col) - LAG(EXTRACT(EPOCH FROM sub.col)) OVER (ORDER BY sub.col)) / 86400.0</code>.</li>
+        <li><code class="status">[]</code> Preserve the causal interval filter and <code>WHERE gap IS NOT NULL</code>.</li>
+      </ul>
+
+      <h4>3. B3 — <code>GeometricMean</code> positive-domain rewrite</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Replace the body with
+          <code>case when min(col) &gt; 0 then exp(avg(ln(col))) else null end</code> (balanced parens, natural log).</li>
+      </ul>
+
+      <h4>4. B4 — de-register <code>in_array</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Remove <code>in_array</code> from <code>DEFAULT_TRANSFORMERS</code> (and the
+          default registration loop); keep the <code>IsInArray</code> class + explicit registration for opt-in use.</li>
+        <li><code class="status">[]</code> Update the primitive count in docs/CLI if it enumerates default transformers.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>DB-free SQL-shape assertions (fast tier) prove each emitted expression is epoch-based / balanced before any DB
+        is involved; the snapshot suite guards name stability.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/primitives/test_temporal_epoch_primitives.py -q</code> — B1/B2 emit <code>extract(epoch</code>, no raw <code>date - date</code>.</li>
+        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — full fast suite green (555+ pass).</li>
+        <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 1 until every box is checked.</strong> If a command fails, fix the cause and re-run.</div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: Validate against the three live databases</h3>
+      <p>Prove the previously-failing variants now execute on real PostgreSQL, over both temporal column types, and add
+        permanent regression coverage.</p>
+
+      <figure aria-label="Validation matrix across three databases">
+        <svg viewBox="0 0 900 130" role="img" xmlns="http://www.w3.org/2000/svg">
+          <rect width="900" height="130" fill="#ffffff"/>
+          <g font-family="var(--sans)" font-size="12">
+            <rect x="40" y="30" width="240" height="70" rx="10" fill="#ccfbf1" stroke="#0f766e"/>
+            <text x="160" y="58" text-anchor="middle" font-weight="bold" fill="#0f766e">dirtyduck · date</text>
+            <text x="160" y="80" text-anchor="middle" fill="#134e4a">event_rate ✓</text>
+            <rect x="330" y="30" width="240" height="70" rx="10" fill="#ccfbf1" stroke="#0f766e"/>
+            <text x="450" y="58" text-anchor="middle" font-weight="bold" fill="#0f766e">chicago311 · timestamp</text>
+            <text x="450" y="80" text-anchor="middle" fill="#134e4a">burstiness / gap_* ✓</text>
+            <rect x="620" y="30" width="240" height="70" rx="10" fill="#ccfbf1" stroke="#0f766e"/>
+            <text x="740" y="58" text-anchor="middle" font-weight="bold" fill="#0f766e">donorschoose · date</text>
+            <text x="740" y="80" text-anchor="middle" fill="#134e4a">geometric_mean ✓</text>
+          </g>
+        </svg>
+        <figcaption>Each database exercises a different failing primitive; together they cover both temporal types.</figcaption>
+      </figure>
+
+      <h4>1. Re-run the stress harness</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Re-run the narrow/all-agg/wide sweep against ports 5438/5440/5441; the all-agg
+          and wide rows for all three DBs must return columns (no <code>UndefinedFunction</code>/<code>SyntaxError</code>), 0 dup-names.</li>
+        <li><code class="status">[]</code> Confirm collisions stay 0 and max identifier ≤ 63 bytes (unchanged by these fixes).</li>
+      </ul>
+
+      <h4>2. Materialize the sharded configs and measure time (do NOT skip &gt;1664)</h4>
+      <p>A single SQL query is capped at 1664 columns, so the wide/all-agg configs must run through featurizer's
+        <strong>sharded materialization path</strong> — <code>to_dataframe()</code> splits into ≤1664-column
+        group-queries joined on <code>(as_of_date, target_id)</code> over TEMP shards (no permanent writes). Measure
+        wall-clock per variant.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> For each DB × {narrow, all-agg, wide}: run <code>Featurizer(cfg).to_dataframe()</code>
+          against a bounded <code>as_of_dates</code> (1–2 dates) on the live DB; record <strong>features, shard count
+          (⌈features/1664⌉), rows, and wall-clock seconds</strong>.</li>
+        <li><code class="status">[]</code> Confirm the materialized frame's column count equals the planned feature count
+          (+ index) and there are no duplicate column names.</li>
+        <li><code class="status">[]</code> Surface the timing table in the plan Notes and in each Phase-3 artifact.</li>
+      </ul>
+
+      <h4>3. Add integration + regression tests</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>test_wide_primitive_execution.py</code>: seed a TEMP child with a
+          <code>date</code> column and one with a <code>timestamp</code> column; assert <code>event_rate</code>,
+          <code>gap_*</code>, <code>burstiness</code>, <code>geometric_mean</code> execute and return finite/NULL values.</li>
+        <li><code class="status">[]</code> <code>test_scaled_name_collisions.py</code> (DB-free): a wide multi-entity config
+          → assert 0 collisions and all names ≤ 63 bytes.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>Execution against the ephemeral/real PostgreSQL is the only trustworthy validator for dialect bugs (string-shape
+        tests missed all four). Run the integration tier plus the live-DB sweep and the sharded-materialization timing.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier green, incl. new tests.</li>
+        <li><code class="status">[]</code> <code>uv run python scratchpad/stress_triage.py</code> — all-agg/wide rows show "N cols, 0 dup-names" for all three DBs.</li>
+        <li><code class="status">[]</code> <code>uv run python scratchpad/materialize_timing.py</code> — every variant materializes; timing table produced.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 2 until every box is checked.</strong> A remaining live-DB error means a fix is incomplete — fix and re-run.</div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Per-database HTML artifacts</h3>
+      <p>One self-contained HTML page per database, sharing this plan's visual identity, documenting the config, the
+        database structure, and a representative feature sample.</p>
+
+      <h4>1. Gather per-DB content (read-only queries)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <strong>Config</strong>: the greenfield <code>feature_config</code> (target, depth, intervals, entities, relationships, chosen primitives).</li>
+        <li><code class="status">[]</code> <strong>DB structure</strong>: <code>ontology.entities</code> / <code>ontology.events</code> columns + types, row counts, temporal column type, date range.</li>
+        <li><code class="status">[]</code> <strong>Feature sample</strong>: pick ~20–30 representative output features spanning direct one-hots, plain aggregations, temporal primitives (now-fixed), and any capped names.</li>
+      </ul>
+
+      <h4>2. Render each artifact</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> For each sampled feature emit a row: <code>label</code> (full intended name),
+          <code>column</code> / short-name (the ≤63-byte rendered identifier, flagged when hash-capped), and the
+          manifest <code>description</code> (plain-language explanation).</li>
+        <li><code class="status">[]</code> Include the executed SQL fragment for 2–3 marquee features (e.g. a fixed
+          <code>event_rate</code>/<code>burstiness</code>) and a few real sampled values via <code>LIMIT</code>.</li>
+        <li><code class="status">[]</code> Write to <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/&lt;ds&gt;.html</code>, self-contained, palette-synced.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Artifacts are documentation, validated by construction: every value comes from the live DB / manifest, and each
+        page must open standalone with no external requests.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Each artifact opens in the browser with all three sections populated and no broken layout.</li>
+        <li><code class="status">[]</code> Every short-name shown equals featurizer's <code>Feature.short_name</code> for that feature (spot-check ≥ 3 capped names).</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit Phase 3 until all three artifacts render correctly and their feature samples match the manifest.</strong></div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — full fast suite green, incl. new DB-free tests.</li>
+      <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — integration tier green, incl. wide-primitive execution.</li>
+      <li><code class="status">[]</code> <code>uv run python scratchpad/stress_triage.py</code> — all three DBs: all-agg &amp; wide rows execute (0 dup-names), collisions 0, max ≤ 63.</li>
+      <li><code class="status">[]</code> <code>uv run python scratchpad/materialize_timing.py</code> — every variant materializes via the sharded path; wall-clock recorded.</li>
+      <li><code class="status">[]</code> Three artifacts exist under <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/</code> and open standalone.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely impossible, mark it <code>[f]</code>, explain, and move on.</strong></div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <figure aria-label="Open decisions">
+      <svg viewBox="0 0 900 90" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="90" fill="#ffffff"/>
+        <g font-family="var(--sans)" font-size="13">
+          <rect x="30" y="20" width="270" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="165" y="50" text-anchor="middle" fill="#92400e">geometric_mean of ≤0 → NULL?</text>
+          <rect x="320" y="20" width="270" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="455" y="50" text-anchor="middle" fill="#92400e">gap units: seconds vs days</text>
+          <rect x="610" y="20" width="260" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="740" y="50" text-anchor="middle" fill="#92400e">release: fold into v0.5.1?</text>
+        </g>
+      </svg>
+      <figcaption>Three decisions to confirm before/while building.</figcaption>
+    </figure>
+
+    <details open>
+      <summary>Q1 — <code>geometric_mean</code> semantics for non-positive inputs — <strong>RESOLVED: return NULL</strong></summary>
+      <p class="qa-answer">Return <code>NULL</code> when <code>min(col) ≤ 0</code> (geometric mean is undefined on
+        non-positive values). Mirrors the existing <code>CumProd</code> transformer and is NULL-safe for the imputation
+        layer. Signed pseudo-geometric-mean rejected as non-standard/misleading. <em>(Confirmed by user, 2026-07-06.)</em></p>
+    </details>
+    <details open>
+      <summary>Q2 — gap-statistic units — <strong>RESOLVED: days, not seconds</strong></summary>
+      <p class="qa-answer">Emit gaps and spans in <strong>days</strong> (<code>EXTRACT(EPOCH FROM col)/86400.0</code>),
+        not seconds. Decisive reason: the original working output on <code>date</code> columns was already integer
+        <em>days</em>, so days <strong>preserves existing date-column semantics exactly</strong> — only
+        <code>timestamp</code> columns change (invalid <code>interval</code> → fractional days). Days is also
+        interpretable and matches featurizer's EMA transformer (<code>…/86400.0</code>). For the dimensionless ratios
+        (<code>burstiness</code>, <code>gap_cv</code>) the divisor cancels. Note: "triage doesn't use the gap family"
+        means the <strong>default aggregation set is 10 curated primitives</strong>
+        (<code>count/max/mean/median/min/nunique/recency/stddev/sum/tenure</code>); <code>gap_*</code>,
+        <code>event_rate</code>, <code>burstiness</code>, <code>geometric_mean</code> are opt-in extras in the 67-set
+        that no triage config selects. <em>(Confirmed by user, 2026-07-06.)</em></p>
+    </details>
+    <details open>
+      <summary>Q3 — release packaging — <strong>RESOLVED: fold into v0.5.1</strong></summary>
+      <p class="qa-answer">Fold these four fixes together with the unreleased transformer-label work into a single
+        <strong>v0.5.1</strong> patch via the existing <code>release.yml</code> pipeline. <em>(Confirmed by user, 2026-07-06.)</em></p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Stress-test results that motivated this plan (baseline, pre-fix)</h3>
+    <p>This featurizer tree, run against the three live triage DBs (read-only, <code>LIMIT 0</code> + rollback).
+      <code>coll</code> = post-63-byte-cap collisions (the transformer-label fix keeps this 0); <code>maxB</code> =
+      longest emitted identifier.</p>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>dataset</th><th>variant</th><th>features</th><th>fits ≤1664</th><th>depth</th><th>capped</th><th>coll</th><th>maxB</th><th>live-DB result</th></tr></thead>
+      <tbody>
+        <tr><td>dirtyduck</td><td>narrow <em>(ships)</em></td><td class="num">147</td><td class="ok">yes</td><td class="num">2</td><td class="num">0</td><td class="num">0</td><td class="num">60</td><td class="ok">✓ 149 cols, 0 dup</td></tr>
+        <tr><td>dirtyduck</td><td>all-agg</td><td class="num">272</td><td class="ok">yes</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">59</td><td class="no">✗ extract(unknown,int) — B1</td></tr>
+        <tr><td>dirtyduck</td><td>wide</td><td class="num">1497</td><td class="ok">yes</td><td class="num">2</td><td class="num">337</td><td class="num">0</td><td class="num">63</td><td class="no">✗ B1</td></tr>
+        <tr><td>dirtyduck</td><td>max</td><td class="num">5931</td><td class="no">NO</td><td class="num">2</td><td class="num">2066</td><td class="num">0</td><td class="num">63</td><td>skip (needs sharding)</td></tr>
+        <tr><td>chicago311</td><td>narrow <em>(ships)</em></td><td class="num">28</td><td class="ok">yes</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">61</td><td class="ok">✓ 32 cols, 0 dup</td></tr>
+        <tr><td>chicago311</td><td>all-agg</td><td class="num">191</td><td class="ok">yes</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">62</td><td class="no">✗ stddev(interval) — B2</td></tr>
+        <tr><td>chicago311</td><td>wide</td><td class="num">1086</td><td class="ok">yes</td><td class="num">2</td><td class="num">159</td><td class="num">0</td><td class="num">63</td><td class="no">✗ B2</td></tr>
+        <tr><td>chicago311</td><td>max</td><td class="num">4316</td><td class="no">NO</td><td class="num">2</td><td class="num">1085</td><td class="num">0</td><td class="num">63</td><td>skip (needs sharding)</td></tr>
+        <tr><td>donorschoose</td><td>narrow <em>(ships)</em></td><td class="num">175</td><td class="ok">yes</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">54</td><td class="ok">✓ 179 cols, 0 dup</td></tr>
+        <tr><td>donorschoose</td><td>all-agg</td><td class="num">1119</td><td class="ok">yes</td><td class="num">1</td><td class="num">56</td><td class="num">0</td><td class="num">63</td><td class="no">✗ syntax "else" — B3</td></tr>
+        <tr><td>donorschoose</td><td>wide</td><td class="num">52225</td><td class="no">NO</td><td class="num">3</td><td class="num">44844</td><td class="num">0</td><td class="num">63</td><td>skip (needs sharding)</td></tr>
+        <tr><td>donorschoose</td><td>max</td><td colspan="7">TIMEOUT &gt; 60 s — combinatorial explosion</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Cross-repo safety</h3>
+    <p>triage-pg pins featurizer at <code>v0.4.2</code>. Its configs use either an explicit narrow set
+      (<code>count/sum/mean/max/stddev</code> + <code>identity</code>, for chicago311 &amp; donorschoose) or the
+      <strong>curated 10-primitive default</strong> (<code>count/max/mean/median/min/nunique/recency/stddev/sum/tenure</code>,
+      for dirtyduck). Neither includes <code>event_rate</code>, the <code>gap_*</code> family, <code>burstiness</code>, or
+      <code>geometric_mean</code> — those are opt-in extras in the 67-primitive full registry. So B1–B4 fixes are
+      backward-safe for the downstream one-hot contract (ADR-0007) and change no name or value that triage consumes.</p>
+
+    <h3>Future work (out of scope here)</h3>
+    <ul>
+      <li>A <strong>depth/primitive-budget guard</strong> so a wide config fails fast with a clear message instead of a
+        multi-minute build (the <code>max</code> explosion).</li>
+      <li>Type-guarding at registration so numeric-only aggregations never attach to date/text columns (defense in depth
+        beyond these four point fixes).</li>
+      <li>Transformer-family label truncation is already fixed (this session); these primitive fixes are the aggregation-side follow-up.</li>
+    </ul>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-07-06T17:00 — Questionables resolved; fix switched to days; sharded-materialization timing added</summary>
+      <p><strong>Q1 → NULL</strong> for <code>geometric_mean</code> of non-positive inputs.
+        <strong>Q2 → days</strong> not seconds (<code>EXTRACT(EPOCH …)/86400.0</code>): preserves the original
+        integer-day output on <code>date</code> columns and normalizes <code>timestamp</code> to fractional days; B1/B2
+        fix expressions and the Solution diagram updated accordingly. Clarified that "triage doesn't use the gap family"
+        means the curated 10-primitive default set excludes all four buggy primitives.
+        <strong>Q3 → v0.5.1</strong> single patch. <strong>Sharding:</strong> Phase 2 no longer skips &gt;1664-column
+        configs — it materializes them through featurizer's sharded <code>to_dataframe()</code> path and records
+        wall-clock (new <code>materialize_timing.py</code> harness + timing rows in every artifact).</p>
+    </details>
+    <details open>
+      <summary>2026-07-06T17:20 — build revealed a larger aggregator cluster (scope: 4 → ~9 fixes)</summary>
+      <p>Executing the fixes on the live DBs (Phase 2) surfaced defects the initial 4-bug scan missed, because they
+        only appear when an advanced aggregator actually runs on a real column:</p>
+      <ul>
+        <li><strong>B1 also covers <code>time_span</code> and <code>cross_type_latency</code></strong> — same
+          <code>EXTRACT(EPOCH FROM &lt;temporal diff&gt;)</code> bug as <code>event_rate</code>. Fixed together via one
+          <code>_epoch_day_span()</code> helper.</li>
+        <li><strong>Fixing <code>geometric_mean</code>'s <code>else</code> syntax error unmasked a 5th–9th bug</strong>
+          on donorschoose (its many numeric columns exercise the advanced set): <code>skewness</code>/<code>kurtosis</code>
+          used the non-existent <code>**</code> operator on a bare, un-grouped column; <code>min_max_scale</code>/
+          <code>z_score</code> reference a bare column (per-row, invalid as a <code>GROUP BY</code> aggregate);
+          <code>mean_deviation</code> nests aggregates. <strong>Resolution:</strong> <code>skewness</code>/
+          <code>kurtosis</code> rewritten as correct pure-aggregate raw moments (verified: skewness 0, kurtosis 3 on a
+          normal series); <code>z_score</code>/<code>min_max_scale</code>/<code>mean_deviation</code> removed from the
+          default set (kept registered), redundant with existing transformers or awaiting a subquery rewrite.</li>
+        <li><strong>Planner empty-CTE bug (documented, not fixed here):</strong> a single-type aggregation set over a
+          mixed-type entity graph emits an aggs CTE with a dangling <code>select key, from …</code> (the 12
+          "syntax error at or near from" enumeration hits). It does NOT occur in the default/all-agg set (other
+          aggregations populate the CTE) and does not affect any triage config; tracked as follow-up.</li>
+      </ul>
+      <p>After these, all three live DBs' <code>narrow</code>, <code>all-agg</code>, and (fitting) <code>wide</code>
+        configs describe/execute with 0 duplicate column names. Config path also updated
+        (<code>greenfield.yaml</code> → <code>experiment.yaml</code>; triage renamed them mid-session).</p>
+    </details>
+    <details open>
+      <summary>2026-07-06T17:45 — materialization timing: narrow clean; all-agg/wide is a documented follow-up</summary>
+      <p>The <code>narrow</code> set materializes fast on every live DB (dirtyduck 22,169 rows / 3.6 s; chicago311
+        30,654 / 1.0 s; donorschoose 3,000 / 1.6 s — all 0 duplicate names). Materializing <code>all-agg</code> /
+        <code>wide</code> on the full cohort does NOT complete: the advanced correlated-subquery aggregators are
+        O(target-rows × subqueries) (dirtyduck all-agg &gt; 300 s over 22k rows) and, on real data, still carry
+        <strong>unguarded divisions</strong> (donorschoose all-agg raised <em>division by zero</em> — a group with a
+        single event or a zero measure, in <code>harmonic_mean</code>/<code>cv</code>/several subquery aggregators).
+        The generated SQL is <em>valid</em> (all variants describe with 0 dup names); <strong>hardening the advanced
+        aggregators for full-cohort execution — NULLIF guards + subquery-cost review — is a separate systematic effort,
+        deliberately out of scope here</strong> and tracked as follow-up. This is the honest boundary of what these
+        fixes cover: the detected temporal/geometric/shape bugs are fixed and validated; the broader advanced-aggregator
+        runtime hardening is its own project.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

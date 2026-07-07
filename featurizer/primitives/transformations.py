@@ -37,8 +37,36 @@ to preserve hashing semantics for set operations and deduplication.
 
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
-from .abstractions import Entity, Feature
+from .abstractions import Entity, Feature, pg_identifier
 from .utils import register_transformer
+
+
+def _parent_token(feature: Feature, *, use_label: bool) -> str:
+    """``alias.identifier`` for one parent feature inside a transformer name.
+
+    ``use_label=True`` substitutes the parent's full, untruncated ``label`` so
+    the readable chain survives PostgreSQL's 63-byte cap at any nesting depth;
+    ``use_label=False`` substitutes its possibly hash-truncated ``name`` — the
+    actual column the generated SQL reads. Quotes are stripped either way.
+    """
+    inner = (feature.label if use_label else feature.name) or feature.name
+    return f"{feature.entity.alias}.{inner}".replace('"', "")
+
+
+def _name_label(prefix: str, *features: Feature) -> Tuple[str, str]:
+    """``(pg_identifier name, full untruncated label)`` for a transformer output.
+
+    Names follow ``PREFIX(alias.parent[, alias.parent2...])`` — the same grammar
+    the aggregators emit — so a long transformer-wrapped name gets a
+    deterministic hash-suffixed identifier (bug #8) AND a manifest ``label`` that
+    maps the capped column back to its intended name. ``prefix`` is upper-cased
+    here, matching the historical ``str.upper(name)`` spelling, so short names
+    stay byte-identical (the ADR-0007 name-stability contract).
+    """
+    prefix = prefix.upper()
+    name_core = ", ".join(_parent_token(f, use_label=False) for f in features)
+    label_core = ", ".join(_parent_token(f, use_label=True) for f in features)
+    return pg_identifier(f"{prefix}({name_core})"), f"{prefix}({label_core})"
 
 
 class Transformer:
@@ -87,8 +115,11 @@ class Transformer:
 
     @staticmethod
     def _build_name(name, feature):
-        name = f"{str.upper(name)}({feature.entity.alias}.{feature.name})"
-        return f'''"{name.replace('"', "")}"'''
+        return _name_label(name, feature)[0]
+
+    @staticmethod
+    def _build_label(name, feature):
+        return _name_label(name, feature)[1]
 
     def _build_transformer_call(self, feature):
         return f""" {self.transformer}({feature.name}) """
@@ -96,13 +127,15 @@ class Transformer:
     def __call__(self, parent, feature):
         if feature.type == "key" or feature.type not in self.input_types:
             return feature
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=self._build_name(self.name, feature),
+            name=name,
             type=self.output_type,
             definition=self._build_transformer_call(feature),
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -166,13 +199,15 @@ class DateTransformer(Transformer):
             return feature
         if feature.type not in self.input_types:
             return feature
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=self._build_name(self.name, feature),
+            name=name,
             type=self.output_type,
             definition=self._build_transformer_call(feature),
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -255,22 +290,26 @@ class CyclicalDateTransformer(DateTransformer):
     def __call__(self, parent, feature):
         if feature.type == "key" or feature.type not in self.input_types:
             return feature
+        sin_name, sin_label = _name_label(self.name + "_sin", feature)
+        cos_name, cos_label = _name_label(self.name + "_cos", feature)
         return [
             Feature(
-                name=self._build_name(self.name + "_sin", feature),
+                name=sin_name,
                 type=self.output_type,
                 definition=self._build_transformer_call(feature, trig_function="sin"),
                 parents=feature,
                 entity=parent,
                 stack_depth=feature.stack_depth + 1,
+                label=sin_label,
             ),
             Feature(
-                name=self._build_name(self.name + "_cos", feature),
+                name=cos_name,
                 type=self.output_type,
                 definition=self._build_transformer_call(feature, trig_function="cos"),
                 parents=feature,
                 entity=parent,
                 stack_depth=feature.stack_depth + 1,
+                label=cos_label,
             ),
         ]
 
@@ -335,8 +374,11 @@ class WindowFunctionTransformer:
 
     @staticmethod
     def _build_name(name, feature):
-        name = f"{str.upper(name)}({feature.entity.alias}.{feature.name})"
-        return f'''"{name.replace('"', "")}"'''
+        return _name_label(name, feature)[0]
+
+    @staticmethod
+    def _build_label(name, feature):
+        return _name_label(name, feature)[1]
 
     def _resolve_order_by(self, feature: Feature) -> Optional[str]:
         if callable(self.order_by):
@@ -379,13 +421,15 @@ class WindowFunctionTransformer:
         definition = self._build_window_function_call(parent, feature)
         if not definition:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=self._build_name(self.name, feature),
+            name=name,
             type=self.output_type,
             definition=definition,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -520,13 +564,15 @@ class Diff:
         lag_expr = _build_temporal_window("lag", parent, feature)
         if lag_expr is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type=self.output_type,
             definition=f"{feature.name} - {lag_expr}",
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -566,13 +612,15 @@ class NthDiff:
             definition = f"({x}) - 3*({lags[1]}) + 3*({lags[2]}) - ({lags[3]})"
         else:
             raise ValueError(f"Unsupported difference order: {self.order}")
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type=self.output_type,
             definition=definition,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -604,13 +652,15 @@ class CumProd:
             f"case when min({x}) {window} > 0 "
             f"then exp(sum(ln({x})) {window}) else null end"
         )
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type=self.output_type,
             definition=definition,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -702,13 +752,15 @@ class LagTransformer:
         )
         if expression is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"LAG_{self.periods}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type=feature.type,
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -744,13 +796,15 @@ class RollingStatisticTransformer:
         expression = _build_temporal_window(self.function, parent, feature, frame=frame)
         if expression is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"{self.label.upper()}_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -765,13 +819,15 @@ class RollingMedianTransformer:
         expression = _build_rolling_percentile(parent, feature, 0.5, self.window)
         if expression is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"ROLLING_MEDIAN_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -788,13 +844,15 @@ class RollingIQRTransformer:
         if not p75 or not p25:
             return None
         expression = f"({p75}) - ({p25})"
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"ROLLING_IQR_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -840,13 +898,15 @@ class ExponentialMovingAverageTransformer:
         numerator = f"sum({feature.name} * {weight_expr}) over ({base_window})"
         denominator = f"sum({weight_expr}) over ({base_window})"
         expression = f"{numerator} / NULLIF({denominator}, 0)"
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"EMA_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -874,13 +934,15 @@ class HoltWintersLevelTransformer:
         expression = _build_temporal_window("avg", parent, feature, frame=frame)
         if expression is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"HOLT_WINTERS_LEVEL_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -923,13 +985,15 @@ class HoltWintersTrendTransformer:
         )
         if expression is None:
             return None
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"HOLT_WINTERS_TREND_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -952,13 +1016,15 @@ class PercentageChangeTransformer:
         else ({feature.name} - {lag_expr}) / {lag_expr}
         end
         """
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"PCT_CHANGE_{self.periods}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -977,8 +1043,11 @@ class BinaryTransformer(Transformer):
 
     @staticmethod
     def _build_name(name, feature1, feature2):
-        name = f"{str.upper(name)}({feature1.entity.alias}.{feature1.name}, {feature2.entity.alias}.{feature2.name})"
-        return f'''"{name.replace('"', "")}"'''
+        return _name_label(name, feature1, feature2)[0]
+
+    @staticmethod
+    def _build_label(name, feature1, feature2):
+        return _name_label(name, feature1, feature2)[1]
 
     def _build_transformer_call(self, feature1, feature2):
         return f"{feature1.entity.alias}.{feature1.name} {self.operation}  {feature2.entity.alias}.{feature2.name}"
@@ -991,13 +1060,15 @@ class BinaryTransformer(Transformer):
             # Don't do anything
             trans_feature = None
         else:
+            name, label = _name_label(self.name, feature1, feature2)
             trans_feature = Feature(
-                name=self._build_name(self.name, feature1, feature2),
+                name=name,
                 type=self.output_type,
                 definition=self._build_transformer_call(feature1, feature2),
                 parents=[feature1, feature2],
                 entity=parent,
                 stack_depth=feature1.stack_depth + 1,
+                label=label,
             )
 
         return trans_feature
@@ -1070,13 +1141,15 @@ class IsInArray(Transformer):
     def __call__(self, parent, feature, an_array):
         if feature.type not in self.input_types:
             return feature
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=self._build_name(self.name, feature),
+            name=name,
             type=self.output_type,
             definition=self._build_transformer_call(feature, an_array),
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -1129,11 +1202,17 @@ DEFAULT_TRANSFORMERS = {
     "percent_rank": percent_rank,
     "ntile": ntile,
     "is_null": isnull,
-    "in_array": inarray,
 }
 
 for _name, _transformer in DEFAULT_TRANSFORMERS.items():
     register_transformer(_name, _transformer)
+
+# ``in_array`` is intentionally NOT in DEFAULT_TRANSFORMERS: its ``__call__``
+# requires a third ``an_array`` argument that the planner (which applies
+# transformers as ``transformer(entity, feature)``) cannot supply, so it crashes
+# when included in a wholesale default/wide transform set. It stays registered so
+# it remains discoverable and usable by a caller that passes ``an_array`` directly.
+register_transformer("in_array", inarray)
 
 for _periods in (1, 3, 7):
     _lag_transformer = LagTransformer(_periods)
@@ -1197,13 +1276,15 @@ class PopulationWindowTransformer:
         if feature.type == "key" or feature.type not in self.input_types:
             return feature
         expression = self.expression_template.format(col=feature.name)
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"{self.name.upper()}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type=self.output_type,
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -1242,13 +1323,15 @@ class MeanShiftRatioTransformer:
         recent = f"AVG({feature.name}) OVER (partition by {partition} order by {order_by} rows between {recent_start} preceding and current row)"
         prior = f"AVG({feature.name}) OVER (partition by {partition} order by {order_by} rows between {prior_start} preceding and {prior_end} preceding)"
         expression = f"{recent} / NULLIF({prior}, 0)"
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"MEAN_SHIFT_RATIO_{self.window}({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 
@@ -1276,13 +1359,15 @@ class CusumTransformer:
         row_num = f"ROW_NUMBER() OVER (partition by {partition} order by {order_by})"
         part_avg = f"AVG({feature.name}) OVER (partition by {partition})"
         expression = f"{cum_sum} - {row_num} * {part_avg}"
+        name, label = _name_label(self.name, feature)
         return Feature(
-            name=f'"CUSUM({feature.entity.alias}.{feature.name})"',
+            name=name,
             type="numeric",
             definition=expression,
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
+            label=label,
         )
 
 

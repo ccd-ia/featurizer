@@ -128,6 +128,41 @@ def test_declared_vocabulary_one_hot_columns_sorted() -> None:
     assert "facility_type as facility_type" not in query
 
 
+def test_high_cardinality_vocabulary_warns_but_still_encodes() -> None:
+    # A 30-value declared vocabulary (e.g. a per-zipcode encoding) exceeds the
+    # one-hot cardinality threshold: it should WARN but still encode every value
+    # (split-blind, no silent data loss).
+    vocab = [f"v{i:02d}" for i in range(30)]
+    config = _facilities_config(
+        {"type": "categorical", "role": "categorical", "vocabulary": vocab}
+    )
+    with capture_warnings() as warnings:
+        featurizer = _featurizer(config)
+
+    one_hot_cols = [
+        e.column for e in featurizer.feature_manifest if e.kind == "one_hot"
+    ]
+    assert len(one_hot_cols) == 30  # every value still encoded
+    assert any(
+        "high-cardinality" in m.lower() and "facilities.facility_type" in m
+        for m in warnings
+    ), warnings
+
+
+def test_small_vocabulary_does_not_warn() -> None:
+    # A deliberately-capped top-N vocabulary (like triage's zip_code=12) is fine.
+    config = _facilities_config(
+        {
+            "type": "categorical",
+            "role": "categorical",
+            "vocabulary": [f"z{i}" for i in range(12)],
+        }
+    )
+    with capture_warnings() as warnings:
+        _featurizer(config)
+    assert not any("high-cardinality" in m.lower() for m in warnings), warnings
+
+
 def test_declared_vocabulary_escapes_single_quotes() -> None:
     config = _facilities_config(
         {"type": "categorical", "role": "categorical", "vocabulary": ["O'Hare"]}
