@@ -6,6 +6,11 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-06
+
+Advanced-aggregator hardening: full-registry execution coverage (closing the
+string-shape-only blind spot), plus the runtime fixes it surfaced.
+
 ### Added
 
 - **Full-registry aggregator execution coverage.**
