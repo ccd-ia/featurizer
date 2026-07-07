@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Advanced Aggregator Hardening</title>
+<style>
+  :root {
+    --bg: #fafaf8; --surface: #ffffff; --fg: #1a2332; --muted: #5b6472;
+    --accent: #0f766e; --accent-soft: #ccfbf1; --accent-2: #b45309; --accent-2-soft: #fef3c7;
+    --danger: #b91c1c; --danger-soft: #fee2e2; --ok: #15803d; --ok-soft: #dcfce7;
+    --border: #e2e4e0; --code-bg: #f1f3f0;
+    --risk-high: #b91c1c; --risk-high-bg: #fee2e2;
+    --risk-med: #b45309; --risk-med-bg: #fef3c7;
+    --risk-low: #15803d; --risk-low-bg: #dcfce7;
+    --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--sans); line-height: 1.6; margin: 0; }
+  main { max-width: 980px; margin: 0 auto; padding: 2.4rem 1.4rem 5rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.4rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--accent-soft); }
+  h3 { font-size: 1.12rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: 1rem; margin: 1.1rem 0 .4rem; color: var(--accent); }
+  p { margin: .5rem 0; } a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: .08em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  .lede { font-size: 1.05rem; color: var(--muted); }
+  header .meta { margin-top: 1rem; font-size: .85rem; }
+  header .meta summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  dl.metadata { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .6rem 0 0; font-size: .82rem; }
+  dl.metadata dt { color: var(--muted); font-weight: 600; } dl.metadata dd { margin: 0; font-family: var(--mono); font-size: .95em; word-break: break-word; }
+  figure { margin: 1.2rem 0; text-align: center; } figure svg { max-width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: .82rem; margin-top: .5rem; font-style: italic; }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .12em .5em; border-radius: 5px; vertical-align: middle; }
+  .tag.existing { background: var(--accent-soft); color: var(--accent); } .tag.new { background: var(--accent-2-soft); color: var(--accent-2); }
+  .risk { display: inline-block; font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; padding: .18em .6em; border-radius: 999px; }
+  .risk.high { background: var(--risk-high-bg); color: var(--risk-high); } .risk.med { background: var(--risk-med-bg); color: var(--risk-med); } .risk.low { background: var(--risk-low-bg); color: var(--risk-low); }
+  .issue { border: 1px solid var(--border); border-left-width: 6px; border-radius: 10px; background: var(--surface); padding: 1rem 1.2rem; margin: 1.1rem 0; }
+  .issue.high { border-left-color: var(--risk-high); } .issue.med { border-left-color: var(--risk-med); } .issue.low { border-left-color: var(--risk-low); }
+  .issue h3 { margin-top: .1rem; display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .15rem .8rem; font-size: .86rem; margin: .5rem 0; }
+  .kv dt { font-weight: 700; color: var(--muted); } .kv dd { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .4rem .55rem; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  td.num { text-align: right; font-family: var(--mono); }
+  .phase { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 1rem 1.3rem 1.2rem; margin: 1.2rem 0; }
+  .status { font-family: var(--mono); font-weight: 700; color: var(--accent-2); }
+  ul.checklist { list-style: none; padding-left: 0; } ul.checklist li { padding: .18rem 0; }
+  .loop { background: var(--accent-soft); border-radius: 8px; padding: .6rem .9rem; font-size: .86rem; margin-top: .8rem; }
+  details { margin: .5rem 0; } details summary { cursor: pointer; font-weight: 600; } .qa-answer { color: var(--muted); }
+  .callout { background: var(--accent-2-soft); border: 1px solid #f2d999; border-radius: 8px; padding: .7rem 1rem; font-size: .9rem; margin: 1rem 0; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Advanced Aggregator Hardening</h1>
+    <p class="lede">Close the execution-coverage gap that let a whole tier of featurizer's advanced
+      aggregators ship non-executable: build a full-registry execution harness, then fix the
+      division-by-zero, degenerate-input, planner, and reclassification defects it surfaces.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl class="metadata">
+        <dt>created</dt>      <dd>2026-07-06T19:16-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-06T19:16-06:00</dd>
+        <dt>commits</dt>      <dd>61e79fd (v0.5.1 baseline — the fixes this plan follows on from)</dd>
+        <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
+        <dt>session id</dt>   <dd>2942532b-8ae5-4abb-aa93-55d950f920cb</dd>
+        <dt>back refs</dt>    <dd>specs/wide-primitive-sql-fixes-and-per-db-artifacts.html (the v0.5.1 work that surfaced these); TODO.org residuals; tests/integration/test_default_primitives_execution.py (issue #6, the coverage precedent)</dd>
+        <dt>forward refs</dt> <dd>docs/adr/ (a correlated-subquery-scaling ADR, Phase 5)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure aria-label="Hero: the untested advanced tier">
+    <svg viewBox="0 0 900 190" role="img" xmlns="http://www.w3.org/2000/svg">
+      <rect width="900" height="190" fill="#ffffff"/>
+      <text x="24" y="32" font-family="var(--sans)" font-size="15" fill="#5b6472">featurizer aggregator registry — execution coverage</text>
+      <g font-family="var(--sans)" font-size="12">
+        <rect x="30" y="55" width="250" height="100" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+        <text x="155" y="90" text-anchor="middle" font-size="15" fill="#15803d" font-weight="bold">default-active set</text>
+        <text x="155" y="115" text-anchor="middle" fill="#166534">executed on real data</text>
+        <text x="155" y="135" text-anchor="middle" fill="#166534">(issue #6 harness)</text>
+        <rect x="320" y="55" width="550" height="100" rx="10" fill="#fee2e2" stroke="#b91c1c" stroke-width="1.5"/>
+        <text x="595" y="90" text-anchor="middle" font-size="15" fill="#b91c1c" font-weight="bold">~57 advanced aggregators</text>
+        <text x="595" y="115" text-anchor="middle" fill="#7f1d1d">string-shape tested only · never executed</text>
+        <text x="595" y="135" text-anchor="middle" fill="#7f1d1d">26 correlated-subquery · 10+ unguarded divisions</text>
+      </g>
+    </svg>
+    <figcaption>The v0.5.1 stress test executed the advanced tier for the first time and it broke in clusters. This plan makes "every registered aggregator executes" a tested invariant.</figcaption>
+  </figure>
+
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>v0.5.1 fixed the specific advanced-aggregator bugs the triage-dataset stress test happened to
+      reach (temporal epoch handling, <code>geometric_mean</code>, <code>skewness</code>/<code>kurtosis</code>).
+      But it also revealed the <em>root</em> problem: featurizer's ~57 advanced aggregators (everything
+      beyond the curated default-active set) were only <strong>string-shape tested</strong> — no test ever
+      executed their generated SQL on real data — so they accumulated bugs that only appear at runtime:
+      division-by-zero, degenerate single-row groups, and a planner CTE defect. This plan closes that
+      gap systematically: build execution coverage for the <em>whole registry</em> first (measure, don't
+      guess), then fix everything it surfaces, and make an explicit decision about the correlated-subquery
+      performance ceiling.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Five documented defects (from the v0.5.1 session), all rooted in "never executed on real data":</p>
+
+    <figure aria-label="The five defect categories">
+      <svg viewBox="0 0 900 130" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="130" fill="#ffffff"/>
+        <g font-family="var(--sans)" font-size="11.5">
+          <rect x="20" y="30" width="160" height="70" rx="8" fill="#fee2e2" stroke="#b91c1c"/>
+          <text x="100" y="58" text-anchor="middle" fill="#b91c1c" font-weight="bold">÷ by zero</text>
+          <text x="100" y="80" text-anchor="middle" fill="#7f1d1d">10+ aggregators</text>
+          <rect x="192" y="30" width="160" height="70" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="272" y="58" text-anchor="middle" fill="#b45309" font-weight="bold">degenerate input</text>
+          <text x="272" y="80" text-anchor="middle" fill="#92400e">1-row / constant grp</text>
+          <rect x="364" y="30" width="160" height="70" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="444" y="58" text-anchor="middle" fill="#b45309" font-weight="bold">empty aggs CTE</text>
+          <text x="444" y="80" text-anchor="middle" fill="#92400e">planner dangling ,</text>
+          <rect x="536" y="30" width="160" height="70" rx="8" fill="#fef3c7" stroke="#b45309"/>
+          <text x="616" y="58" text-anchor="middle" fill="#b45309" font-weight="bold">mis-classified</text>
+          <text x="616" y="80" text-anchor="middle" fill="#92400e">3 per-row/nested</text>
+          <rect x="708" y="30" width="172" height="70" rx="8" fill="#fee2e2" stroke="#b91c1c"/>
+          <text x="794" y="58" text-anchor="middle" fill="#b91c1c" font-weight="bold">O(rows×subq)</text>
+          <text x="794" y="80" text-anchor="middle" fill="#7f1d1d">26 correlated subq</text>
+        </g>
+      </svg>
+      <figcaption>Four are correctness (fixable); the fifth is an architectural performance ceiling that needs a decision, not necessarily a rewrite.</figcaption>
+    </figure>
+
+    <div class="issue high">
+      <h3><span class="risk high">High</span> P1 · No execution coverage for the advanced set (the root cause)</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd><code>tests/integration/test_default_primitives_execution.py</code> deliberately covers only
+          the <em>default-active</em> set; <code>test_default_active_set_is_fully_covered</code> records the advanced
+          primitives as knowingly-excluded. So no test executes them — string-shape tests miss dialect/runtime bugs
+          (exactly how bug #6, the ge/last/rolling bugs, and now this cluster all slipped through).</dd>
+        <dt>Fix</dt><dd>A full-registry execution harness that runs <em>every</em> registered aggregator against a
+          fixture engineered to trigger edge cases (below). This is the foundation — it produces the authoritative
+          broken-list instead of us guessing.</dd>
+      </dl>
+    </div>
+
+    <div class="issue high">
+      <h3><span class="risk high">High</span> P2 · Unguarded divisions → division-by-zero on real data</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd>donorschoose all-agg <em>materialization</em> raised <code>division by zero</code> at runtime
+          (the SQL is valid — it only fails on data). Static scan flags ≥ 1 unguarded division in
+          <code>harmonic_mean</code> (<code>1.0/x</code> with <code>x=0</code>), <code>entropy</code>, <code>theil</code>,
+          <code>cosinor_amplitude_weekly</code>, <code>markov_conditional_entropy</code>, <code>sequence_entropy</code>,
+          <code>max_transition_prob</code> (+ the excluded <code>z_score</code>/<code>min_max_scale</code>/<code>mean_deviation</code>).</dd>
+        <dt>Fix</dt><dd>Wrap every denominator in <code>NULLIF(denom, 0)</code>; for <code>harmonic_mean</code> guard the
+          reciprocal (<code>1.0/NULLIF(x,0)</code>). Zero-denominator → NULL, never a crash.</dd>
+      </dl>
+    </div>
+
+    <div class="issue med">
+      <h3><span class="risk med">Medium</span> P3 · Degenerate inputs (single-row / constant groups)</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd>A group with one event has undefined <code>stddev</code>/<code>gap</code>/skew; a constant
+          column has <code>var_pop = 0</code> (already NULLIF-guarded in the new moments, but many others aren't).
+          These must return <strong>NULL</strong> (undefined), never error or emit garbage.</dd>
+        <dt>Fix</dt><dd>Decide and apply a uniform degenerate-input contract (NULL) across the stat aggregators; the
+          Phase-1 harness includes 1-row and constant-column fixtures to prove it.</dd>
+      </dl>
+    </div>
+
+    <div class="issue med">
+      <h3><span class="risk med">Medium</span> P4 · Planner empty-CTE bug</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd>A single-type aggregation set (e.g. <code>[entropy]</code>) over a mixed-type entity graph
+          emits <code>select &lt;key&gt;, &nbsp;from …</code> — a dangling comma — for the entity where the aggregator
+          produced no features (the 12 "syntax error at or near from" enumeration hits). It does NOT occur in the
+          default/all-agg set (other aggregations populate the CTE), but it is a real robustness bug.</dd>
+        <dt>Fix</dt><dd>In the planner, skip emitting an <code>&lt;child&gt;_aggs_for_&lt;target&gt;</code> CTE (or its
+          projection) when the aggregation yields zero features for that child.</dd>
+      </dl>
+    </div>
+
+    <div class="issue low">
+      <h3><span class="risk low">Low</span> P5 · Mis-classified primitives (mean_deviation, z_score, min_max_scale)</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd>v0.5.1 removed all three from the default set. <code>z_score</code>/<code>min_max_scale</code>
+          are per-row normalizations (bare column, invalid as a <code>GROUP BY</code> reduction);
+          <code>mean_deviation</code> (MAD) is a genuine reduction but nests aggregates.</dd>
+        <dt>Fix</dt><dd>Rewrite <code>mean_deviation</code> as a two-pass <code>SubqueryAggregator</code> and re-add to
+          defaults; reclassify <code>z_score</code>/<code>min_max_scale</code> as transformers OR formally deprecate
+          them (redundant with <code>cross_entity_zscore</code>/<code>cross_entity_percentile</code>).</dd>
+      </dl>
+    </div>
+
+    <div class="issue high">
+      <h3><span class="risk high">High</span> P6 · Correlated-subquery scaling (architectural)</h3>
+      <dl class="kv">
+        <dt>Evidence</dt><dd>26 aggregators are <code>SubqueryAggregator</code>s — a correlated subquery per target row
+          via the lateral join. all-agg materialization over 22k–30k target rows exceeds 300 s (O(target-rows ×
+          subqueries × child-scan)). The narrow set materializes in seconds; the advanced set does not scale to
+          full-cohort materialization.</dd>
+        <dt>Fix</dt><dd>A <strong>spike + decision</strong>, not necessarily a full rewrite: characterize the cost,
+          evaluate pre-aggregating the child stream once per group vs. LATERAL rewrites vs. accepting the ceiling, and
+          record the decision as an ADR. High risk = high effort/uncertainty; may spawn its own implementation plan.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p><strong>Measure first.</strong> The through-line of the v0.5.1 session is that string-shape tests hid every one
+      of these bugs. So Phase 1 builds the execution harness that makes "every registered aggregator executes on real
+      data (over numeric / categorical / date / timestamp columns, and degenerate groups) without error" a tested
+      invariant. That harness produces the authoritative broken-list; Phases 2–5 fix what it finds, in
+      correctness-first order, ending with an explicit decision on the performance ceiling.</p>
+
+    <figure aria-label="Measure-first flow">
+      <svg viewBox="0 0 900 120" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="120" fill="#ffffff"/>
+        <g font-family="var(--sans)" font-size="12">
+          <rect x="20" y="40" width="150" height="46" rx="8" fill="#ccfbf1" stroke="#0f766e"/><text x="95" y="68" text-anchor="middle" fill="#0f766e" font-weight="bold">harness</text>
+          <rect x="210" y="40" width="150" height="46" rx="8" fill="#fee2e2" stroke="#b91c1c"/><text x="285" y="68" text-anchor="middle" fill="#b91c1c" font-weight="bold">÷0 guards</text>
+          <rect x="400" y="40" width="150" height="46" rx="8" fill="#fef3c7" stroke="#b45309"/><text x="475" y="68" text-anchor="middle" fill="#92400e">degenerate + planner</text>
+          <rect x="590" y="40" width="140" height="46" rx="8" fill="#dcfce7" stroke="#15803d"/><text x="660" y="68" text-anchor="middle" fill="#166534">reclassify</text>
+          <rect x="758" y="40" width="122" height="46" rx="8" fill="#e0e7ff" stroke="#4338ca"/><text x="819" y="68" text-anchor="middle" fill="#3730a3">perf ADR</text>
+        </g>
+        <defs><marker id="a" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="#5b6472"/></marker></defs>
+        <line x1="170" y1="63" x2="208" y2="63" stroke="#5b6472" stroke-width="1.5" marker-end="url(#a)"/>
+        <line x1="360" y1="63" x2="398" y2="63" stroke="#5b6472" stroke-width="1.5" marker-end="url(#a)"/>
+        <line x1="550" y1="63" x2="588" y2="63" stroke="#5b6472" stroke-width="1.5" marker-end="url(#a)"/>
+        <line x1="730" y1="63" x2="756" y2="63" stroke="#5b6472" stroke-width="1.5" marker-end="url(#a)"/>
+      </svg>
+      <figcaption>Foundation harness → correctness fixes (÷0, degenerate, planner, reclassify) → an explicit performance decision.</figcaption>
+    </figure>
+  </section>
+
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code> — every advanced
+        aggregator (the ~26 <code>SubqueryAggregator</code>s + the moment/ratio stat aggregators) lives here.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> — the aggs-CTE emission
+        (<code>_build_aggregations</code>) where the empty-CTE dangling comma originates.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_default_primitives_execution.py</code> —
+        the execution-coverage precedent (issue #6); the new harness mirrors and extends it to the full registry.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/_harness.py</code> — <code>create_temp_table</code>
+        + <code>run_featurizer</code>; used to seed the edge-case fixtures.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/transformations.py</code> — destination if
+        <code>z_score</code>/<code>min_max_scale</code> are reclassified as transformers.</li>
+    </ul>
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/integration/test_all_aggregators_execution.py</code> — the
+        full-registry execution harness (Phase 1): every registered aggregator × edge-case fixtures.</li>
+      <li><span class="tag new">new</span> <code>tests/primitives/test_aggregator_division_guards.py</code> — DB-free
+        assertions that every denominator is <code>NULLIF</code>-guarded (regression lock for Phase 2).</li>
+      <li><span class="tag new">new</span> <code>docs/adr/NNNN-correlated-subquery-aggregator-scaling.md</code> — the
+        Phase-5 decision record.</li>
+    </ul>
+  </section>
+
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed.</p>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Full-registry execution harness (foundation)</h3>
+      <p>Build the test that executes every registered aggregator on real PostgreSQL over edge-case fixtures. Run it
+        FIRST — it produces the authoritative broken-list that Phases 2–4 fix. Start with the broken ones marked
+        <code>xfail(strict=True)</code> so the harness is green and each fix flips one to pass.</p>
+      <h4>1. Edge-case fixtures</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Seed a child entity with a <code>date</code> temporal_ix and a parallel one with a <code>timestamp</code> temporal_ix.</li>
+        <li><code class="status">[x]</code> Include groups that trigger degeneracy: a <strong>single-row</strong> group, a <strong>constant-value</strong> group (var=0), a group containing a <strong>zero</strong> and a <strong>negative</strong> value, and a normal multi-row group.</li>
+        <li><code class="status">[x]</code> Provide both a numeric measure column and a categorical column (for the sequence/distribution aggregators).</li>
+      </ul>
+      <h4>2. Drive every registered aggregator</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Parametrize over <code>list_aggregations()</code>; for each, build a minimal config selecting only it (+ identity), execute, assert it returns finite-or-NULL for every group (no SQL error, no division-by-zero, no interval error).</li>
+        <li><code class="status">[x]</code> Add <code>test_every_registered_aggregator_is_covered</code> — no silent gaps (mirrors the default-set coverage test).</li>
+        <li><code class="status">[x]</code> Mark currently-broken aggregators <code>xfail(strict=True)</code> with the reason; Phases 2–4 remove each xfail as the fix lands.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p>Execution against the ephemeral PostgreSQL is the only trustworthy validator (the whole point). The harness IS the test.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — harness runs; xfail list matches the known-broken set.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until the harness runs green (broken ones xfail, the rest pass) and the coverage test confirms no gaps.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Division-by-zero &amp; degenerate-input hardening</h3>
+      <p>Guard every denominator; apply the NULL-on-undefined contract. Flip the corresponding Phase-1 xfails to pass.</p>
+      <h4>1. NULLIF every denominator</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Audit each division flagged by the static scan + Phase-1 harness; wrap denominators in <code>NULLIF(denom, 0)</code>.</li>
+        <li><code class="status">[x]</code> <code>harmonic_mean</code>: guard the reciprocal — <code>1.0/NULLIF(x,0)</code> — and the outer <code>sum(...)</code> denominator.</li>
+        <li><code class="status">[x]</code> <code>entropy</code>/<code>theil</code>/<code>markov_conditional_entropy</code>/<code>sequence_entropy</code>/<code>cosinor_amplitude_weekly</code>/<code>max_transition_prob</code>: guard the <code>/total</code> and <code>LN(.../...)</code> divisions.</li>
+      </ul>
+      <h4>2. Degenerate-input contract</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Confirm single-row / constant-column groups return NULL for stddev/var/skew/kurtosis/gap-based aggregators (var_pop=0 → NULLIF → NULL).</li>
+        <li><code class="status">[x]</code> Add <code>tests/primitives/test_aggregator_division_guards.py</code>: DB-free assertion that no aggregator definition contains an unguarded <code>/</code> (regression lock).</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just test-integration</code> — the division/degenerate xfails now PASS (materialization no longer raises division-by-zero).</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/primitives/test_aggregator_division_guards.py -q</code> — 0 unguarded divisions.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until the harness's division/degenerate cases are green and the guard test passes.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Planner empty-CTE bug</h3>
+      <p>Stop emitting a dangling-comma aggs CTE when an aggregation yields no features for a child.</p>
+      <h4>1. Skip empty aggregation CTEs</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> In the planner's aggregation-CTE emission, when the per-child aggregation feature list is empty, do not emit the <code>&lt;child&gt;_aggs_for_&lt;target&gt;</code> CTE (and drop any downstream join to it).</li>
+        <li><code class="status">[x]</code> Verify the normal (non-empty) path is byte-unchanged (snapshot).</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — new test: a single-type agg set (e.g. <code>[entropy]</code>) over a numeric-only-child graph renders valid SQL (no <code>select key, from</code>); snapshot unchanged.</li>
+        <li><code class="status">[x]</code> <code>just test-integration</code> — the single-type-set enumeration cases execute.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until single-type aggregation sets render and execute over mixed-type graphs.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4: mean_deviation rewrite + z_score/min_max_scale disposition</h3>
+      <p>Restore MAD as a correct reduction; decide the fate of the two per-row primitives.</p>
+      <h4>1. mean_deviation → SubqueryAggregator</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Convert <code>AverageDeviation</code> to a two-pass <code>SubqueryAggregator</code>: inner subquery computes the group mean, outer <code>avg(abs(x - mean))</code>. Re-add to <code>DEFAULT_AGGREGATIONS</code>.</li>
+        <li><code class="status">[x]</code> Integration test: MAD of a known series equals the hand-computed value.</li>
+      </ul>
+      <h4>2. z_score / min_max_scale disposition (see Questionables)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Either (a) implement them as row-wise <code>Transformer</code>s and register there, or (b) formally deprecate + drop the aggregator classes (redundant with <code>cross_entity_zscore</code>/<code>cross_entity_percentile</code>). Document the choice.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just test-integration</code> — mean_deviation executes + matches hand value; the reclassified/deprecated primitives behave per the decision.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — full fast suite green.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until MAD is correct and the two per-row primitives have a landed disposition.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 5: Correlated-subquery scaling — spike &amp; decision</h3>
+      <p>Investigate the O(target-rows × subqueries) ceiling and record a decision. Do NOT commit to a full rewrite here
+        — that is a separate implementation plan if the spike justifies it.</p>
+      <h4>1. Characterize</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Benchmark a representative all-agg materialization vs. target-row count (bounded cohorts: 100 / 1k / 10k rows); record the scaling curve and the dominant aggregators (EXPLAIN ANALYZE on 2–3).</li>
+      </ul>
+      <h4>2. Evaluate options + decide</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Compare: (a) pre-aggregate the child stream once per group into an intermediate CTE that the stat aggregators read; (b) LATERAL-join rewrites; (c) accept the ceiling + document "advanced aggregators are for bounded cohorts" and lean on the sharded path.</li>
+        <li><code class="status">[x]</code> Write <code>docs/adr/NNNN-correlated-subquery-aggregator-scaling.md</code> with the decision and, if warranted, a pointer to a follow-up implementation plan.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p>A spike: the deliverable is the benchmark data + ADR, not a code change. If option (a)/(b) is chosen and small, land it behind the Phase-1 harness (which guarantees correctness is preserved).</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Benchmark numbers recorded; ADR committed under <code>docs/adr/</code>.</li>
+      </ul>
+      <div class="loop">🔁 Do not exit until the scaling decision is recorded (and any chosen small optimization keeps the Phase-1 harness green).</div>
+    </div>
+  </section>
+
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <ul class="checklist">
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — full-registry execution harness green: every registered aggregator executes over date+timestamp+degenerate fixtures (0 remaining xfails after Phases 2–4).</li>
+      <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — fast suite green incl. the division-guard + empty-CTE tests.</li>
+      <li><code class="status">[x]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      <li><code class="status">[x]</code> A bounded-cohort all-agg materialization completes without division-by-zero (the v0.5.1 blocker); scaling ADR exists under <code>docs/adr/</code>.</li>
+    </ul>
+    <div class="loop">🔁 The plan is not complete until every box is checked. Mark genuinely-impossible steps <code>[f]</code> with a reason.</div>
+  </section>
+
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <figure aria-label="Open decisions">
+      <svg viewBox="0 0 900 90" role="img" xmlns="http://www.w3.org/2000/svg">
+        <rect width="900" height="90" fill="#ffffff"/>
+        <g font-family="var(--sans)" font-size="12.5">
+          <rect x="24" y="20" width="270" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/><text x="159" y="50" text-anchor="middle" fill="#92400e">degenerate → NULL vs 0?</text>
+          <rect x="314" y="20" width="270" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/><text x="449" y="50" text-anchor="middle" fill="#92400e">z_score/min_max: move or drop?</text>
+          <rect x="604" y="20" width="272" height="50" rx="8" fill="#fef3c7" stroke="#b45309"/><text x="740" y="50" text-anchor="middle" fill="#92400e">scaling: fix now or defer?</text>
+        </g>
+      </svg>
+      <figcaption>Three decisions to settle during the build.</figcaption>
+    </figure>
+    <details open>
+      <summary>Q1 — Degenerate-input semantics — <strong>RESOLVED: NULL</strong></summary>
+      <p class="qa-answer">Return <strong>NULL</strong> for genuinely-undefined results (stddev/skew/gap over a single
+        row, a ratio with a zero denominator). NULL is honest, composes with the imputation layer, and matches the
+        moment fix already shipped. <em>(Confirmed by user, 2026-07-06.)</em></p>
+    </details>
+    <details open>
+      <summary>Q2 — z_score / min_max_scale — <strong>RESOLVED: drop</strong></summary>
+      <p class="qa-answer"><strong>Drop the aggregator classes</strong> (formal deprecation): they are per-row
+        normalizations already covered by the <code>cross_entity_zscore</code> / <code>cross_entity_percentile</code>
+        transformers. A partition-relative z-score, if ever wanted, becomes a new clearly-named transformer — not a
+        resurrection of the mis-classified aggregators. <em>(Confirmed by user, 2026-07-06.)</em></p>
+    </details>
+    <details open>
+      <summary>Q3 — Correlated-subquery scaling — <strong>RESOLVED: spike-and-defer</strong></summary>
+      <p class="qa-answer"><strong>Spike-and-defer.</strong> Phase 5 characterizes the cost and records an ADR; the
+        actual O(rows×subqueries) remediation gets its <em>own</em> dedicated plan later. Correctness (Phases 1–4) is
+        the commitment here. <em>(Confirmed by user, 2026-07-06 — "we will create a plan for this later".)</em></p>
+    </details>
+  </section>
+
+  <section id="notes">
+    <h2>Notes</h2>
+    <h3>Hardening surface (static scan, v0.5.1 baseline)</h3>
+    <p>Aggregators flagged for a correlated subquery and/or an unguarded division (heuristic; Phase 1 produces the
+      authoritative runtime list). <code>default</code> = in the default-active set today.</p>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>aggregator</th><th>default</th><th>subquery</th><th>unguarded ÷ (heuristic)</th></tr></thead>
+      <tbody>
+        <tr><td>harmonic_mean</td><td>yes</td><td>no</td><td class="num">2</td></tr>
+        <tr><td>entropy</td><td>yes</td><td>yes</td><td class="num">2</td></tr>
+        <tr><td>theil</td><td>yes</td><td>yes</td><td class="num">2</td></tr>
+        <tr><td>cosinor_amplitude_weekly</td><td>yes</td><td>yes</td><td class="num">2</td></tr>
+        <tr><td>markov_conditional_entropy</td><td>yes</td><td>yes</td><td class="num">2</td></tr>
+        <tr><td>sequence_entropy</td><td>yes</td><td>yes</td><td class="num">2</td></tr>
+        <tr><td>max_transition_prob</td><td>yes</td><td>yes</td><td class="num">1</td></tr>
+        <tr><td>mean_deviation</td><td>no (excluded)</td><td>no</td><td class="num">1</td></tr>
+        <tr><td>z_score</td><td>no (excluded)</td><td>no</td><td class="num">1</td></tr>
+        <tr><td>min_max_scale</td><td>no (excluded)</td><td>no</td><td class="num">1</td></tr>
+        <tr><td colspan="4"><em>+ 19 other SubqueryAggregators (gap_*, gini, hhi, ngram_*, longest_streak, median_absolute_deviation, trimmed_mean_10, variance_ratio, acf_1, recurrence_interval, rework_count, state_volatility, time_in_current_state, transition_matrix_summary, first_passage_time, cross_type_latency, …) — correlated, so in the P6 scaling set even where the ÷ heuristic is clean.</em></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><strong>Totals:</strong> 26 SubqueryAggregators (correlated → O(rows×subq)); ≥ 10 with an unguarded division.</p>
+
+    <h3>Why this exists</h3>
+    <p>featurizer's execution-coverage test (<code>test_default_primitives_execution.py</code>, issue #6) was scoped —
+      by an explicit decision — to the <em>default-active</em> set, recording the advanced primitives as knowingly
+      excluded "so there are no silent gaps." The gap was documented but never closed; the advanced tier kept
+      accumulating never-executed bugs. This plan closes it: after Phase 1, "every registered aggregator executes on
+      real data" is a tested invariant, and the string-shape-only blind spot is gone for good.</p>
+
+    <h3>Scope discipline</h3>
+    <p>Phases 1–4 are correctness and are the commitment. Phase 5 is a <em>spike</em> whose deliverable is a decision
+      (ADR), not a rewrite. This keeps the plan bounded and avoids the exact scope-explosion that made the v0.5.1
+      session long — the correctness surface is finite and enumerable; the performance surface is open-ended and gets
+      a decision gate, not an open build.</p>
+  </section>
+
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-07-06T19:45 — built (Phases 1–5 complete)</summary>
+      <p><strong>Measure-first paid off.</strong> The Phase-1 harness executed every registered aggregator on
+        edge-case fixtures and found the authoritative broken-list was just <strong>4</strong>, not the ~10 the static
+        scan feared — the flagged divisions in <code>entropy</code>/<code>hhi</code>/<code>gini</code>/<code>theil</code>/<code>cv</code>
+        are structurally safe (denominators are counts ≥ 1, or already <code>NULLIF</code>-guarded), proven even against
+        an avg-zero group.</p>
+      <ul>
+        <li><strong>P1</strong> — <code>tests/integration/test_all_aggregators_execution.py</code>: every registered
+          aggregator × {date, timestamp} × edge-case groups; 113 pass, 22 skip (boolean/spatial/predicate/drift needing
+          special config, recorded so there are no silent gaps).</li>
+        <li><strong>P2</strong> — only <code>harmonic_mean</code> actually broke (÷0 on a zero value). Fixed
+          positive-domain + guarded reciprocal (mirrors <code>geometric_mean</code>). Verified value 2.81 on [1,4,9,16],
+          NULL on a non-positive group.</li>
+        <li><strong>P3</strong> — planner now skips the empty aggs CTE (no more <code>select key, from</code>).</li>
+        <li><strong>P4</strong> — <code>mean_deviation</code> rewritten as a two-pass <code>SubqueryAggregator</code>
+          and restored to defaults (MAD=5.0 on [1,4,9,16]); <code>z_score</code>/<code>min_max_scale</code>
+          <strong>dropped</strong> per Q2 (cli docs + tests updated).</li>
+        <li><strong>P5</strong> — <code>docs/adr/0009-correlated-subquery-aggregator-scaling.md</code> records the
+          spike-and-defer decision with the benchmark evidence; the O(rows×subq) remediation gets its own plan.</li>
+      </ul>
+      <p>565 fast tests + integration green; basedpyright 0 errors. CHANGELOG <code>[Unreleased]</code> updated.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

@@ -906,12 +906,13 @@ class TestCusum:
 class TestIntervalBugFixes:
     """Aggregators that previously crashed on interval parameter now work."""
 
-    def test_zscore_with_interval_no_crash(self):
+    def test_overriding_aggregator_with_interval_no_crash(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         feature = _get_feature(child, "amount")
-        agg = get_aggregations(["z_score"])["z_score"]
-        # This used to raise TypeError because Zscore._build_aggregate_expression
-        # did not accept interval in older code. Should not raise now.
+        # An aggregator that overrides _build_aggregate_expression must still
+        # accept the interval kwarg without raising (harmonic_mean; z_score, the
+        # original example, was dropped in the advanced-aggregator hardening).
+        agg = get_aggregations(["harmonic_mean"])["harmonic_mean"]
         result = agg(parent, child, feature, interval="P1W")
         assert isinstance(result, Feature)
 

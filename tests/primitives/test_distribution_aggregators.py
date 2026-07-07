@@ -8,19 +8,19 @@ never-run bugs:
   GROUP BY aggregate CTE) and the ``**`` operator PostgreSQL does not have. They
   are rewritten as pure-aggregate raw-moment formulas.
 * ``z_score`` / ``min_max_scale`` are per-ROW normalizations, not reductions —
-  their SQL references a bare column and cannot be an aggregation. They are
-  removed from the default set (redundant with the ``cross_entity_zscore``
-  transformer) but stay registered.
-* ``mean_deviation`` (mean absolute deviation) nests aggregates
-  (``sum(abs(x - avg(x)))``), which PostgreSQL forbids; removed from the default
-  set pending a SubqueryAggregator rewrite.
+  their SQL references a bare column and cannot be an aggregation. The
+  advanced-aggregator hardening pass DROPPED them entirely (they are redundant
+  with the ``cross_entity_zscore`` / ``cross_entity_percentile`` transformers).
+* ``mean_deviation`` (mean absolute deviation) nested aggregates
+  (``sum(abs(x - avg(x)))``), which PostgreSQL forbids; it was rewritten as a
+  two-pass ``SubqueryAggregator`` and RESTORED to the default set.
 """
 
 from featurizer.primitives.abstractions import Entity, Relationship
 from featurizer.primitives.aggregations import DEFAULT_AGGREGATIONS
 from featurizer.primitives.utils import get_aggregations, list_aggregations
 
-_EXCLUDED_FROM_DEFAULT = ["z_score", "min_max_scale", "mean_deviation"]
+_DROPPED = ["z_score", "min_max_scale"]
 
 
 def _num_agg(name: str) -> str:
@@ -48,14 +48,20 @@ def test_skewness_kurtosis_are_pure_aggregate_moments():
         assert d.count("(") == d.count(")"), f"unbalanced: {name}: {d}"
 
 
-def test_perrow_and_nested_aggregators_left_the_default_set():
-    for name in _EXCLUDED_FROM_DEFAULT:
-        assert name not in DEFAULT_AGGREGATIONS, name
-
-
-def test_excluded_aggregators_stay_registered():
-    # Still discoverable / requestable by name (just not default-active).
+def test_perrow_aggregators_are_dropped_entirely():
+    # z_score / min_max_scale are per-row normalizations, invalid as reductions —
+    # dropped from the registry (not merely default-excluded).
     registered = set(list_aggregations())
-    for name in _EXCLUDED_FROM_DEFAULT:
-        assert name in registered, name
-        assert name in get_aggregations([name])
+    for name in _DROPPED:
+        assert name not in DEFAULT_AGGREGATIONS, name
+        assert name not in registered, name
+
+
+def test_mean_deviation_restored_as_subquery_reduction():
+    from featurizer.primitives.aggregations import SubqueryAggregator
+
+    assert "mean_deviation" in DEFAULT_AGGREGATIONS  # back in the default set
+    agg = get_aggregations(["mean_deviation"])["mean_deviation"]
+    assert isinstance(agg, SubqueryAggregator)  # two-pass, no nested aggregates
+    d = _num_agg("mean_deviation")
+    assert "SELECT AVG(m_sub.num)" in d and "AVG(ABS(sub.num - m.mean_val))" in d

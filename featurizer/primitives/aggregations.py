@@ -13,7 +13,7 @@ Available aggregations:
     - Basic: sum, min, max, mean, stddev, variance, count, nunique
     - Boolean: all, any
     - Ordered-set: median, mode
-    - Statistical: min_max_scale, mean_deviation, z_score, skewness, kurtosis
+    - Statistical: mean_deviation (subquery), skewness, kurtosis
     - Mean variants: harmonic_mean, geometric_mean
 
 Example usage:
@@ -174,20 +174,14 @@ class Aggregator:
         return agg_feature
 
 
-class Zscore(Aggregator):
-    """Z-score (standard score) aggregation.
-
-    Computes how many standard deviations a value is from the mean.
-    Useful for identifying outliers and normalizing distributions.
-
-    SQL: (ABS(value - AVG(value)) / STDDEV(value))
-    """
-
-    def __init__(self):
-        super().__init__(name="zscore")
-
-    def _build_aggregate_expression(self, feature, interval=None):
-        return f"(abs({feature.name} - avg({feature.name})) / stddev({feature.name})"
+# NOTE: ``z_score`` and ``min_max_scale`` were removed here (advanced-aggregator
+# hardening). They are per-ROW normalizations — their SQL references a bare,
+# un-grouped column, which is invalid inside the ``SELECT key, <expr> GROUP BY
+# key`` aggregation CTE — so they can never be reductions. The cross-entity
+# equivalents live as transformers (``cross_entity_zscore`` /
+# ``cross_entity_percentile``). ``mean_deviation`` was ALSO removed from this
+# section and re-implemented below as a two-pass ``SubqueryAggregator``
+# (``avg(abs(x - avg(x)))`` nests aggregates, which PostgreSQL forbids).
 
 
 class Skewness(Aggregator):
@@ -240,40 +234,6 @@ class Kurtosis(Aggregator):
         return f"({m4}) / NULLIF(power(var_pop({col}), 2), 0)"
 
 
-class MinMaxScale(Aggregator):
-    """Min-max normalization aggregation.
-
-    Scales values to a 0-1 range based on min and max.
-    Useful for comparing features with different scales.
-
-    SQL: (value - MIN(value)) / (MAX(value) - MIN(value))
-    """
-
-    def __init__(self):
-        super().__init__(name="min_max_scale")
-
-    def _build_aggregate_expression(self, feature, interval=None):
-        return f"1.0*({feature.name} - min({feature.name})/(max({feature.name}) - min({feature.name}))"
-
-
-class AverageDeviation(Aggregator):
-    """Mean absolute deviation aggregation.
-
-    Measures average distance from the mean. More robust to outliers
-    than standard deviation.
-
-    SQL: SUM(ABS(value - AVG(value))) / COUNT(value)
-    """
-
-    def __init__(self):
-        super().__init__(name="mean_deviation")
-
-    def _build_aggregate_expression(self, feature, interval=None):
-        return (
-            f"(sum(abs({feature.name} - avg({feature.name}))) / count({feature.name}))"
-        )
-
-
 class HarmonicMean(Aggregator):
     """
     It is the appropriate when dealing with rates and prices
@@ -289,7 +249,19 @@ class HarmonicMean(Aggregator):
         super().__init__(name="harmonic_mean")
 
     def _build_aggregate_expression(self, feature, interval=None):
-        return f"(count({feature.name}) / sum(1.0/{feature.name}))"
+        # Harmonic mean is defined only on positive values: n / sum(1/x). Return
+        # NULL when any value is <= 0 (undefined domain), mirroring geometric_mean.
+        # As with that aggregator, ``sum(1/x)`` is evaluated over EVERY row before
+        # the outer CASE short-circuits, so ``1.0/x`` on a zero row would raise
+        # division-by-zero regardless of the guard — hence ``1.0/NULLIF(x,0)``
+        # (a zero contributes NULL, ignored by sum); the outer ``min(x) > 0`` then
+        # nulls the whole result whenever any non-positive value was present.
+        col = feature.name
+        return (
+            f"case when min({col}) > 0 "
+            f"then count({col}) / NULLIF(sum(1.0/NULLIF({col}, 0)), 0) "
+            f"else null end"
+        )
 
 
 class GeometricMean(Aggregator):
@@ -342,9 +314,6 @@ nunique = Aggregator(
     input_types=["categorical", "index"],
     distinct=True,
 )
-min_max_scale = MinMaxScale()
-mean_deviation = AverageDeviation()
-z_score = Zscore()
 skewness = Skewness()
 kurtosis = Kurtosis()
 harmonic_mean = HarmonicMean()
@@ -369,19 +338,6 @@ DEFAULT_AGGREGATIONS = {
 
 for _name, _agg in DEFAULT_AGGREGATIONS.items():
     register_aggregation(_name, _agg)
-
-# ``z_score`` and ``min_max_scale`` are per-ROW normalizations, not reductions:
-# their SQL references a bare, un-grouped column, which is invalid inside the
-# ``SELECT key, <expr> ... GROUP BY key`` aggregation CTE. They are redundant
-# with the ``cross_entity_zscore`` / ``cross_entity_percentile`` transformers.
-# ``mean_deviation`` (mean absolute deviation) is a genuine reduction but needs
-# a two-pass correlated subquery (``avg(abs(x - avg(x)))`` nests aggregates,
-# which PostgreSQL forbids) — a SubqueryAggregator rewrite, tracked as follow-up.
-# All three stay registered (discoverable / requestable) but are OUT of the
-# default set so a wholesale default/wide aggregation sweep stays valid.
-register_aggregation("z_score", z_score)
-register_aggregation("min_max_scale", min_max_scale)
-register_aggregation("mean_deviation", mean_deviation)
 
 
 class OrderedSetAggregator(Aggregator):
@@ -763,6 +719,35 @@ gap_mean = GapStatAggregator(name="gap_mean", gap_aggregate="AVG")
 gap_stddev = GapStatAggregator(name="gap_stddev", gap_aggregate="STDDEV")
 gap_min = GapStatAggregator(name="gap_min", gap_aggregate="MIN")
 gap_max = GapStatAggregator(name="gap_max", gap_aggregate="MAX")
+
+
+class MeanAbsoluteDeviation(SubqueryAggregator):
+    """Mean absolute deviation about the mean: ``avg(|x - mean(x)|)``.
+
+    This nests aggregates (``avg`` inside ``avg``), which PostgreSQL forbids, so
+    it is computed in two passes via a correlated subquery: an inner subquery
+    finds the group mean over the causally-bounded child rows, the outer averages
+    the absolute deviations from it. More robust to outliers than ``stddev``.
+    """
+
+    def __init__(self):
+        super().__init__(name="mean_deviation")  # input_types defaults to numeric
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        child_key = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        outer = self._causal_filter(feature, interval)  # alias 'sub'
+        inner = self._causal_filter(feature, interval, alias="m_sub")
+        return (
+            f"(SELECT AVG(ABS(sub.{col} - m.mean_val)) FROM {ct} sub, "
+            f"(SELECT AVG(m_sub.{col}) AS mean_val FROM {ct} m_sub "
+            f"WHERE m_sub.{child_key} = {ct}.{child_key}{inner}) m "
+            f"WHERE sub.{child_key} = {ct}.{child_key}{outer})"
+        )
+
+
+mean_deviation = MeanAbsoluteDeviation()
 
 
 class GapCV(SubqueryAggregator):
@@ -1734,6 +1719,7 @@ _NEW_AGGREGATIONS = {
     "iqr": iqr,
     "cv": cv,
     "range": range_agg,
+    "mean_deviation": mean_deviation,
     "event_rate": event_rate,
     "time_span": time_span,
     "gap_mean": gap_mean,

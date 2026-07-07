@@ -107,25 +107,11 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "MODE() WITHIN GROUP (ORDER BY status)",
         "temporal": False,
     },
-    "min_max_scale": {
-        "description": "Min-max normalized value (0-1 scale)",
-        "input_types": ["numeric"],
-        "output_type": "numeric",
-        "sql_example": "(value - MIN(value)) / (MAX(value) - MIN(value))",
-        "temporal": False,
-    },
     "mean_deviation": {
-        "description": "Average absolute deviation from mean",
+        "description": "Average absolute deviation from the mean (two-pass subquery)",
         "input_types": ["numeric"],
         "output_type": "numeric",
-        "sql_example": "SUM(ABS(value - AVG(value))) / COUNT(value)",
-        "temporal": False,
-    },
-    "z_score": {
-        "description": "Z-score (standard score)",
-        "input_types": ["numeric"],
-        "output_type": "numeric",
-        "sql_example": "(value - AVG(value)) / STDDEV(value)",
+        "sql_example": "AVG(ABS(value - (SELECT AVG(value) ...)))",
         "temporal": False,
     },
     "skewness": {

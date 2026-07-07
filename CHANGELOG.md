@@ -6,6 +6,40 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **Full-registry aggregator execution coverage.**
+  `tests/integration/test_all_aggregators_execution.py` now executes *every*
+  registered aggregator on real PostgreSQL over edge-case fixtures (single-row,
+  constant, zero/negative, avg-zero, single-category groups; date **and**
+  timestamp temporal columns). Previously only the default-active set had
+  execution coverage — the advanced tier was string-shape tested only, which is
+  how the v0.5.1 cluster of runtime bugs slipped through. "Every registered
+  aggregator executes without error" is now a tested invariant.
+
+### Fixed
+
+- **`harmonic_mean` division-by-zero.** `count(x)/sum(1/x)` raised on a zero
+  value (`1/0`) and on a zero denominator. Now positive-domain and guarded:
+  `case when min(x) > 0 then count(x)/NULLIF(sum(1.0/NULLIF(x,0)),0) else null end`
+  (NULL on the undefined non-positive domain, mirroring `geometric_mean`).
+- **`mean_deviation` restored** as a correct two-pass `SubqueryAggregator`
+  (`avg(abs(x - mean))` via a correlated subquery for the mean) and re-added to
+  the default set — it had been removed in v0.5.1 because the single-pass form
+  nested aggregates. Verified: MAD of `[1,4,9,16]` = 5.0.
+- **Planner empty-CTE bug.** A single-type aggregation set over a mixed-type
+  entity graph (e.g. `[entropy]` over a numeric-only child) emitted
+  `select <key>, from …` — a dangling comma. The planner now skips emitting the
+  aggs CTE (and its join) when an aggregation yields no features for a child.
+
+### Removed
+
+- **`z_score` and `min_max_scale` dropped from the registry.** They are per-row
+  normalizations, not reductions — their SQL references a bare, un-grouped
+  column, invalid in a `GROUP BY` aggregate. Use the `cross_entity_zscore` /
+  `cross_entity_percentile` transformers instead. (v0.5.1 had excluded them from
+  the default set but kept them registered; they are now fully removed.)
+
 ## [0.5.1] - 2026-07-06
 
 Transformer-family label truncation + a cluster of never-executed advanced

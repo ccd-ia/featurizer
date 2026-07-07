@@ -1288,6 +1288,13 @@ class FeaturePlanner:
         )
 
         agg_features = [feature for feature in features if feature.type not in ["key"]]
+        # No aggregation produced a feature for this child (e.g. a categorical-only
+        # aggregation like `entropy` over a numeric-only entity). Emit nothing:
+        # otherwise the projection is `select <key>, <empty> from …` — a dangling
+        # comma that PostgreSQL rejects ("syntax error at or near from"). No CTE,
+        # no join, no synth source is registered, so downstream stays consistent.
+        if not agg_features:
+            return
         rendered_features = [feature.query for feature in agg_features]
         # Canonical orientation: column on the left, aod.as_of_date on the right
         # (the same spelling every other builder uses), so the invariant reads
