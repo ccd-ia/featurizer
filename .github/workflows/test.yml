@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
       - run: uv sync --extra parquet
@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
       - run: uv build
@@ -68,7 +68,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/featurizer_test
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
       - run: uv sync --extra parquet
