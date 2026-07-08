@@ -6,6 +6,8 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-08
+
 Set-based pre-aggregation for the correlated-subquery aggregator tier — the
 performance follow-up ADR-0009 deferred. Removes the full-cohort scaling cliff
 while preserving output column names (ADR-0007) and values exactly.
