@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Correlated-Subquery Aggregator Scaling</title>
+<style>
+  :root {
+    --bg: #fafaf8; --surface: #ffffff; --fg: #1a2332; --muted: #5b6472;
+    --accent: #0f766e; --accent-soft: #ccfbf1; --accent-2: #b45309; --accent-2-soft: #fef3c7;
+    --danger: #b91c1c; --danger-soft: #fee2e2; --ok: #15803d; --ok-soft: #dcfce7;
+    --border: #e2e4e0; --code-bg: #f1f3f0;
+    --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--sans); line-height: 1.6; margin: 0; }
+  main { max-width: 980px; margin: 0 auto; padding: 2.4rem 1.4rem 5rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.4rem; margin: 2.6rem 0 .8rem; padding-bottom: .35rem; border-bottom: 2px solid var(--accent-soft); }
+  h3 { font-size: 1.12rem; margin: 1.6rem 0 .5rem; }
+  h4 { font-size: 1rem; margin: 1.1rem 0 .4rem; color: var(--accent); }
+  p { margin: .5rem 0; } a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--code-bg); padding: .08em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: .8rem 1rem; overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  .lede { font-size: 1.05rem; color: var(--muted); }
+  header .meta { margin-top: 1rem; font-size: .85rem; }
+  header .meta summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  dl.metadata { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .9rem; margin: .6rem 0 0; font-size: .82rem; }
+  dl.metadata dt { color: var(--muted); font-weight: 600; } dl.metadata dd { margin: 0; font-family: var(--mono); font-size: .95em; word-break: break-word; }
+  figure { margin: 1.4rem 0; text-align: center; } figure svg { max-width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: .82rem; margin-top: .5rem; font-style: italic; }
+  .tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: .12em .5em; border-radius: 5px; vertical-align: middle; }
+  .tag.existing { background: var(--accent-soft); color: var(--accent); } .tag.new { background: var(--accent-2-soft); color: var(--accent-2); }
+  table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: 1rem 0; }
+  th, td { border: 1px solid var(--border); padding: .4rem .55rem; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+  td.num { text-align: right; font-family: var(--mono); }
+  .phase { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 1rem 1.3rem 1.2rem; margin: 1.2rem 0; }
+  .status { font-family: var(--mono); font-weight: 700; color: var(--accent-2); }
+  ul.checklist { list-style: none; padding-left: 0; } ul.checklist li { padding: .18rem 0; }
+  .loop { background: var(--accent-soft); border-radius: 8px; padding: .6rem .9rem; font-size: .86rem; margin-top: .8rem; }
+  details { margin: .5rem 0; } details summary { cursor: pointer; font-weight: 600; } .qa-answer { color: var(--muted); }
+  .callout { background: var(--accent-2-soft); border: 1px solid #f2d999; border-radius: 8px; padding: .7rem 1rem; font-size: .9rem; margin: 1rem 0; }
+  .callout.danger { background: var(--danger-soft); border-color: #f3b4b4; }
+  .callout.ok { background: var(--ok-soft); border-color: #b7e4c0; }
+  .scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: Correlated-Subquery Aggregator Scaling</h1>
+    <p class="lede">Remove the full-cohort scaling cliff of featurizer's advanced aggregator tier by
+      replacing per-group correlated subqueries with set-based window pre-passes reduced by plain
+      <code>GROUP BY</code> — measured first, migrated family-by-family, gated at every step by the
+      full-registry execution harness and golden-value equality.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl class="metadata">
+        <dt>created</dt>      <dd>2026-07-06T20:10-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-06T20:10-06:00</dd>
+        <dt>commits</dt>      <dd>2ab6051 (v0.5.2 baseline — correctness hardening this plan builds on)</dd>
+        <dt>agent name</dt>   <dd>claude-fable-5</dd>
+        <dt>session id</dt>   <dd>0a83acea-b799-476f-8c2d-f8ad5b0319da</dd>
+        <dt>back refs</dt>    <dd>docs/adr/0009-correlated-subquery-aggregator-scaling.md (the spike-and-defer decision this plan discharges); specs/advanced-aggregator-hardening.html (v0.5.2 — built the correctness harness this plan uses as its gate); specs/wide-primitive-sql-fixes-and-per-db-artifacts.html (the stress test that measured the &gt;300 s timeout); TODO.org deferred item</dd>
+        <dt>forward refs</dt> <dd>docs/adr/0010-set-based-preaggregation.md (candidate, Phase 1 decision gate); CHANGELOG v0.6.0; specs/correlated-subquery-aggregator-scaling/ (benchmark artifacts)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <!-- Hero image — scaling cliff before/after -->
+  <figure>
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Scaling curve: correlated subqueries hit the timeout; set-based pre-aggregation stays flat">
+      <rect width="760" height="300" fill="#ffffff" rx="10"/>
+      <!-- axes -->
+      <line x1="80" y1="240" x2="700" y2="240" stroke="#e2e4e0" stroke-width="2"/>
+      <line x1="80" y1="40" x2="80" y2="240" stroke="#e2e4e0" stroke-width="2"/>
+      <text x="390" y="278" font-family="-apple-system,sans-serif" font-size="13" fill="#5b6472" text-anchor="middle">target rows</text>
+      <text x="30" y="140" font-family="-apple-system,sans-serif" font-size="13" fill="#5b6472" text-anchor="middle" transform="rotate(-90 30 140)">wall-clock</text>
+      <!-- x ticks -->
+      <text x="160" y="258" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">100</text>
+      <text x="330" y="258" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">1k</text>
+      <text x="500" y="258" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">10k</text>
+      <text x="650" y="258" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">22k</text>
+      <!-- timeout line -->
+      <line x1="80" y1="70" x2="700" y2="70" stroke="#b91c1c" stroke-width="1.5" stroke-dasharray="7 5"/>
+      <text x="694" y="62" font-family="SF Mono,monospace" font-size="11" fill="#b91c1c" text-anchor="end">300 s timeout</text>
+      <!-- correlated curve (steep) -->
+      <path d="M 160 232 Q 330 220 430 160 Q 520 100 555 40" fill="none" stroke="#b91c1c" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="160" cy="232" r="4" fill="#b91c1c"/><circle cx="330" cy="213" r="4" fill="#b91c1c"/><circle cx="480" cy="122" r="4" fill="#b91c1c"/>
+      <text x="470" y="95" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#b91c1c" text-anchor="end">correlated  O(G·S·N)</text>
+      <!-- set-based curve (flat-ish) -->
+      <path d="M 160 234 L 330 228 L 500 214 L 650 198" fill="none" stroke="#15803d" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="160" cy="234" r="4" fill="#15803d"/><circle cx="330" cy="228" r="4" fill="#15803d"/><circle cx="500" cy="214" r="4" fill="#15803d"/><circle cx="650" cy="198" r="4" fill="#15803d"/>
+      <text x="652" y="185" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#15803d" text-anchor="end">set-based  O(N log N)</text>
+    </svg>
+    <figcaption>The goal in one picture: the advanced-aggregator tier currently hits the 300&nbsp;s timeout at ~22k target rows; the set-based rewrite keeps it on the same near-linear curve as the default tier.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Discharge the deferred remediation of <strong>ADR-0009</strong>: make the ~26 subquery-backed
+      advanced aggregators (gap statistics, burstiness, entropy/hhi/gini, deviation statistics, the
+      n-gram/sequence/Markov family) practical for <strong>full-cohort materialization</strong>. The
+      acceptance bar is concrete: the all-agg dirtyduck materialization that today exceeds a 300&nbsp;s
+      budget over 22,169 target rows must complete in well under a minute, with <strong>byte-identical
+      output column names</strong> (ADR-0007 / triage-pg contract) and <strong>value-identical
+      results</strong> (proven against golden values captured from v0.5.2).</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Every <code>SubqueryAggregator</code> emits a <em>scalar correlated subquery</em> into the aggs CTE
+      (<code>planner.py:1313</code>): <code>select child_key, (SELECT … FROM &lt;child&gt;_transform sub WHERE
+      sub.child_key = &lt;child&gt;_transform.child_key …) … group by child_key</code>. PostgreSQL evaluates that
+      subquery once per group — and because <code>&lt;child&gt;_transform</code> is a <strong>CTE, which cannot
+      carry an index</strong>, every evaluation is a sequential scan of the entire child stream. Total cost is
+      <code>O(as_of_dates × groups × subqueries × child_rows)</code>, where "subqueries" multiplies again per
+      configured interval. Measured (ADR-0009): the narrow default tier materializes dirtyduck's 22,169
+      targets in 3.6&nbsp;s; the all-agg tier times out at &gt;300&nbsp;s. This is purely a performance
+      property — v0.5.2 proved all generated SQL is valid and correct.</p>
+    <figure>
+      <svg viewBox="0 0 760 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Each group and each aggregator re-scans the full child stream">
+        <rect width="760" height="290" fill="#ffffff" rx="10"/>
+        <!-- child stream table -->
+        <rect x="40" y="70" width="180" height="160" rx="10" fill="#f1f3f0" stroke="#e2e4e0" stroke-width="1.5"/>
+        <text x="130" y="58" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#1a2332" text-anchor="middle">child stream (CTE)</text>
+        <text x="130" y="102" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">N rows</text>
+        <text x="130" y="122" font-family="SF Mono,monospace" font-size="11" fill="#b91c1c" text-anchor="middle">no index</text>
+        <line x1="55" y1="140" x2="205" y2="140" stroke="#e2e4e0"/><line x1="55" y1="160" x2="205" y2="160" stroke="#e2e4e0"/>
+        <line x1="55" y1="180" x2="205" y2="180" stroke="#e2e4e0"/><line x1="55" y1="200" x2="205" y2="200" stroke="#e2e4e0"/>
+        <!-- groups column -->
+        <g font-family="SF Mono,monospace" font-size="11">
+          <rect x="480" y="48" width="240" height="34" rx="7" fill="#ccfbf1" stroke="#0f766e"/>
+          <text x="600" y="69" fill="#0f766e" text-anchor="middle">group 1 · 26 subqueries</text>
+          <rect x="480" y="94" width="240" height="34" rx="7" fill="#ccfbf1" stroke="#0f766e"/>
+          <text x="600" y="115" fill="#0f766e" text-anchor="middle">group 2 · 26 subqueries</text>
+          <rect x="480" y="140" width="240" height="34" rx="7" fill="#ccfbf1" stroke="#0f766e"/>
+          <text x="600" y="161" fill="#0f766e" text-anchor="middle">group 3 · 26 subqueries</text>
+          <text x="600" y="196" fill="#5b6472" text-anchor="middle">⋮</text>
+          <rect x="480" y="210" width="240" height="34" rx="7" fill="#ccfbf1" stroke="#0f766e"/>
+          <text x="600" y="231" fill="#0f766e" text-anchor="middle">group G · 26 subqueries</text>
+        </g>
+        <!-- rescan arrows -->
+        <g stroke="#b91c1c" stroke-width="2" fill="none" opacity="0.85">
+          <path d="M 478 65 C 360 65 300 90 224 110" marker-end="url(#arr)"/>
+          <path d="M 478 111 C 360 111 300 125 224 140" marker-end="url(#arr)"/>
+          <path d="M 478 157 C 360 157 300 160 224 165" marker-end="url(#arr)"/>
+          <path d="M 478 227 C 360 227 300 215 224 195" marker-end="url(#arr)"/>
+        </g>
+        <defs><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#b91c1c"/></marker></defs>
+        <text x="352" y="262" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#b91c1c" text-anchor="middle">G × 26 full re-scans</text>
+      </svg>
+      <figcaption>The failure geometry: each of G groups evaluates ~26 correlated subqueries, and each evaluation sequentially re-scans the unindexed child-stream CTE.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Convert each aggregator <em>family</em> from G-per-group rescans into <strong>one companion CTE</strong>:
+      an inner <strong>window pre-pass</strong> (e.g. <code>LAG(ts) OVER (PARTITION BY child_key ORDER BY ts)</code>)
+      that scans the child stream once, wrapped by a <strong>plain <code>GROUP BY child_key</code> reduction</strong>
+      that computes every family member's aggregate in the same pass. The companion CTE joins into the target's
+      synth exactly like today's aggs CTE (same join, synth-column-source, sharding, and materialization
+      machinery). Cost per family drops to one <code>O(N log N)</code> sort + one <code>O(N)</code> reduction —
+      the same class as the default tier that already scales. The migration is <strong>opt-in per aggregator</strong>
+      (a <code>preagg</code> protocol on <code>SubqueryAggregator</code>), so special-config families
+      (predicate-driven, drift, spatial) keep the correlated path untouched until/unless they need it.
+      Work is <strong>measure-first</strong>: Phase 0 builds the scaling benchmark and captures golden values,
+      Phase 1 spikes the two ADR-0009 candidates head-to-head before any planner code changes.</p>
+    <figure>
+      <svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One window pre-pass, one GROUP BY reduction, one join">
+        <rect width="760" height="250" fill="#ffffff" rx="10"/>
+        <defs><marker id="arr2" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#0f766e"/></marker></defs>
+        <!-- child stream -->
+        <rect x="30" y="85" width="150" height="80" rx="10" fill="#f1f3f0" stroke="#e2e4e0" stroke-width="1.5"/>
+        <text x="105" y="118" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700" fill="#1a2332" text-anchor="middle">child stream</text>
+        <text x="105" y="138" font-family="SF Mono,monospace" font-size="11" fill="#5b6472" text-anchor="middle">N rows</text>
+        <!-- window pre-pass -->
+        <rect x="235" y="85" width="180" height="80" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="325" y="113" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700" fill="#0f766e" text-anchor="middle">window pre-pass</text>
+        <text x="325" y="133" font-family="SF Mono,monospace" font-size="10.5" fill="#0f766e" text-anchor="middle">LAG · PARTITION BY key</text>
+        <text x="325" y="151" font-family="SF Mono,monospace" font-size="10.5" fill="#15803d" text-anchor="middle">one scan</text>
+        <!-- reduction -->
+        <rect x="470" y="85" width="160" height="80" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="550" y="113" font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700" fill="#0f766e" text-anchor="middle">reduction</text>
+        <text x="550" y="133" font-family="SF Mono,monospace" font-size="10.5" fill="#0f766e" text-anchor="middle">GROUP BY key</text>
+        <text x="550" y="151" font-family="SF Mono,monospace" font-size="10.5" fill="#5b6472" text-anchor="middle">whole family at once</text>
+        <!-- synth -->
+        <rect x="672" y="95" width="62" height="60" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+        <text x="703" y="129" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#b45309" text-anchor="middle">synth</text>
+        <!-- arrows -->
+        <g stroke="#0f766e" stroke-width="2.5" fill="none">
+          <line x1="182" y1="125" x2="228" y2="125" marker-end="url(#arr2)"/>
+          <line x1="417" y1="125" x2="463" y2="125" marker-end="url(#arr2)"/>
+          <line x1="632" y1="125" x2="665" y2="125" marker-end="url(#arr2)"/>
+        </g>
+        <text x="380" y="215" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#15803d" text-anchor="middle">O(N log N) per family — the cliff is gone</text>
+      </svg>
+      <figcaption>Target shape: one companion CTE per (family, interval) — a single window scan feeding a plain reduction, joined into the synth like any aggs CTE.</figcaption>
+    </figure>
+
+    <h3>Before / after, gap family</h3>
+    <div class="scroll"><pre><code>-- TODAY (per group, ×G, ×interval): correlated re-scan inside the aggs CTE
+select c_transform.pid,
+  (SELECT AVG(gap) FROM (
+     SELECT &lt;epoch_day_span&gt;(sub.ts, LAG(sub.ts) OVER (ORDER BY sub.ts)) as gap
+     FROM c_transform sub
+     WHERE sub.pid = c_transform.pid AND sub.ts::date &lt;= aod.as_of_date
+   ) gaps WHERE gap IS NOT NULL) as "GAP_MEAN(c.ts)",
+  … 5 more gap-family subqueries, each re-scanning c_transform …
+from c_transform where ts::date &lt;= aod.as_of_date group by pid
+
+-- TARGET (once, whole family): companion CTE, window pre-pass + plain reduction
+c_gaps_aggs_for_p as (
+  select pid,
+    avg(gap)                                                as "GAP_MEAN(c.ts)",
+    stddev(gap)                                             as "GAP_STDDEV(c.ts)",
+    min(gap)                                                as "GAP_MIN(c.ts)",
+    max(gap)                                                as "GAP_MAX(c.ts)",
+    stddev(gap) / nullif(avg(gap), 0)                       as "GAP_CV(c.ts)",
+    (stddev(gap) - avg(gap)) / nullif(stddev(gap) + avg(gap), 0) as "BURSTINESS(c.ts)"
+  from (
+    select pid,
+           &lt;epoch_day_span&gt;(ts, lag(ts) over (partition by pid order by ts)) as gap
+    from c_transform
+    where ts::date &lt;= aod.as_of_date          -- (+ daterange window per interval variant)
+  ) gaps
+  where gap is not null
+  group by pid
+)
+-- joined into p's synth on pid, exactly like c_aggs_for_p</code></pre></div>
+    <p>Output column names come from the unchanged <code>_build_name</code>/<code>_build_label</code> —
+      <strong>byte-identical</strong> to today. Only the <code>definition</code> and the CTE it renders in change.
+      Keeping pre-pass + reduction as <em>one</em> CTE (subquery in <code>FROM</code>, not a chained CTE) means the
+      existing <code>ShardableCTE</code> prefix/suffix machinery, synth pruning, and
+      <code>MaterializationKey</code> registration apply without modification.</p>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code> — all 26 <code>SubqueryAggregator</code> subclasses live here (base at :622); each migrated family's <code>_build_subquery_expression</code> is replaced by the preagg protocol</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> — <code>_build_aggregations</code> (:1063) partitions preagg features; new <code>_build_preagg_cte</code> modeled on <code>_build_aggregations_cte</code> (:1275) incl. ShardableCTE / synth-source / MaterializationKey registration</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/abstractions.py</code> — <code>Feature</code> gains an optional <code>preagg</code> attribute (precedent: <code>direct_source</code>)</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> — verify-only: companion CTEs must ride the existing <code>ShardableCTE</code>/pruning/materialization paths unchanged</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_all_aggregators_execution.py</code> — the v0.5.2 full-registry execution harness; the per-batch correctness gate</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/_harness.py</code> — <code>create_temp_table</code>/<code>run_featurizer</code> reused by golden-value capture and equality tests</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/datasets/</code> — dirtyduck seeder for the realistic acceptance run</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_planner_sql_validity.py</code> — DB-free shape guards; extended with companion-CTE shape assertions</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_parallel_relationships.py</code> — the ADR-0007 name-stability snapshot; must pass byte-identical throughout</li>
+      <li><span class="tag existing">existing</span> <code>tests/fixtures/sample_featurizer.sql</code> — SQL snapshot; regenerated deliberately once, in Phase 4</li>
+      <li><span class="tag existing">existing</span> <code>justfile</code> — gains <code>bench-aggs</code> recipe alongside <code>db-up</code>/<code>test-integration</code></li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/0009-correlated-subquery-aggregator-scaling.md</code> — amended with the resolution in Phase 4</li>
+      <li><span class="tag existing">existing</span> <code>CHANGELOG.md</code> — <code>[Unreleased]</code> → v0.6.0 notes</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>featurizer/primitives/preagg.py</code> — <code>PreAggSpec</code> dataclass (family key, pre-pass SQL, reduction filter) + shared pre-pass builders (gaps, category frequencies, transitions, numeric stream)</li>
+      <li><span class="tag new">new</span> <code>benchmarks/__init__.py</code>, <code>benchmarks/__main__.py</code>, <code>benchmarks/bench_subquery_aggregators.py</code> — synthetic scaling seeder + per-family timing + <code>EXPLAIN (ANALYZE, FORMAT JSON)</code> capture; excluded from the wheel automatically (<code>packages = ["featurizer"]</code>)</li>
+      <li><span class="tag new">new</span> <code>tests/fixtures/preagg_golden_values.json</code> — v0.5.2 golden values per (aggregator, fixture group), captured in Phase 0 <em>before</em> any rewrite</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_preagg_value_equality.py</code> — every migrated aggregator's post-rewrite values vs the golden JSON (exact for counts, rel-tol 1e-9 for floats)</li>
+      <li><span class="tag new">new</span> <code>specs/correlated-subquery-aggregator-scaling/baseline.html</code> (+ <code>baseline.json</code>, <code>after.json</code>, <code>scaling.html</code>) — committed benchmark artifacts, house precedent from the wide-primitive stress test</li>
+      <li><span class="tag new">new</span> <code>docs/adr/0010-set-based-preaggregation.md</code> — written at the Phase 1 decision gate (hard to reverse: shapes 26 aggregators; real trade-off: pre-agg vs indexed temp table; surprising: two aggs-CTE tiers)</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <!-- ================= PHASE 0 ================= -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 0: Baseline — benchmark harness + golden values (measure first)</h3>
+      <p>Nothing is rewritten until the scaling curve is measured and the v0.5.2 values are frozen. This phase
+        produces the two artifacts every later phase is judged against: the <strong>baseline scaling curve</strong>
+        (ADR-0009's follow-up mandate: 100 / 1k / 10k rows + <code>EXPLAIN ANALYZE</code> of the dominant
+        aggregators) and the <strong>golden-value JSON</strong> that makes "values are preserved" a mechanical check
+        instead of a claim.</p>
+
+      <h4>0.1 Aggregator inventory (source of truth by introspection)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Add a helper in <code>benchmarks/</code> that lists every registered aggregator with <code>isinstance(agg, SubqueryAggregator)</code>, its input types, and whether it needs special config (reuse <code>_NEEDS_SPECIAL_CONFIG</code> from the harness) — the plan's family tables are validated against this, not hardcoded</li>
+        <li><code class="status">[x]</code> Emit the inventory into <code>specs/correlated-subquery-aggregator-scaling/baseline.json</code> so drift from the ADR's "26" count is visible</li>
+      </ul>
+
+      <h4>0.2 Synthetic scaling benchmark</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>benchmarks/bench_subquery_aggregators.py</code>: seeded-RNG synthetic dataset — parents T ∈ {100, 1k, 10k}, ~20 children/parent (numeric + categorical + timestamp columns), 1 as-of date, plus a 5-date variant to expose the <code>as_of_dates ×</code> multiplier</li>
+        <li><code class="status">[x]</code> Time three tiers per scale: (a) narrow default set (control — must stay fast), (b) each subquery family in isolation (<code>[family_agg, "count"]</code> configs, the harness pattern), (c) the all-agg set; per-run timeout 300 s recorded as censored, not crashed</li>
+        <li><code class="status">[x]</code> Capture <code>EXPLAIN (ANALYZE, FORMAT JSON)</code> for the two most expensive families at 1k scale; store in <code>baseline.json</code></li>
+        <li><code class="status">[x]</code> Render <code>specs/correlated-subquery-aggregator-scaling/baseline.html</code> (scaling table + curve, per-DB-artifact house style)</li>
+        <li><code class="status">[x]</code> justfile: <code>bench-aggs scale="1k"</code> recipe wired to the ephemeral <code>pg_url</code> (same pattern as <code>test-integration</code>)</li>
+      </ul>
+
+      <h4>0.3 Golden-value capture (v0.5.2 semantics, frozen)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Run every non-special-config subquery aggregator over BOTH the 6-group edge fixture (from <code>test_all_aggregators_execution.py</code>) and a denser seeded random fixture (~50 keys × ~15 rows), date and timestamp variants, no-interval and <code>P1M</code> interval</li>
+        <li><code class="status">[x]</code> Dump <code>{aggregator: {variant: {key: value}}}</code> to <code>tests/fixtures/preagg_golden_values.json</code> — committed BEFORE any aggregator is touched (this is the point of no confusion)</li>
+        <li><code class="status">[x]</code> Write <code>tests/integration/test_preagg_value_equality.py</code> that replays the same configs and compares against the JSON (exact for integer counts, rel-tol 1e-9 / NULL-equals-NULL for floats) — at this phase it trivially passes, proving the harness itself round-trips</li>
+      </ul>
+
+      <h4>0.4 Testing Strategy</h4>
+      <p>Everything runs against the ephemeral PostgreSQL 16 (<code>just db-up</code>). The benchmark is not a
+        pytest test (no assertions on timings); the golden equality module IS a pytest integration test and joins
+        the permanent suite.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just bench-aggs 100 &amp;&amp; just bench-aggs 1k</code> — baseline artifacts written; 10k tier attempted with censoring</li>
+        <li><code class="status">[x]</code> <code>just test-integration</code> — golden equality module green on untouched v0.5.2 code</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — fast suite untouched (565 pass)</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright</code> — 0 errors on the new modules</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ================= PHASE 1 ================= -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Spike + decision gate — pre-aggregation vs indexed temp table</h3>
+      <p>ADR-0009 named two candidates. Settle it with SQL-only spikes (no planner changes yet) on the
+        <strong>gap family</strong> — six aggregators sharing one pre-pass, the cleanest head-to-head.</p>
+
+      <h4>1.1 Option A spike — companion pre-agg CTE</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Hand-write the <code>c_gaps_aggs_for_p</code> companion CTE (the "TARGET" SQL above) against the benchmark dataset; run at 100 / 1k / 10k</li>
+        <li><code class="status">[x]</code> Verify values equal the golden JSON for all six gap aggregators (incl. single-row groups → NULL, interval variants)</li>
+      </ul>
+
+      <h4>1.2 Option B spike — materialized child stream + index</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>CREATE TEMP TABLE … AS SELECT * FROM &lt;child stream&gt;</code> + <code>CREATE INDEX ON (child_key, ts)</code>; run the UNCHANGED correlated SQL against it at the same scales</li>
+        <li><code class="status">[x]</code> Record the interaction cost with the per-as-of-date lateral (temp table is aod-invariant only because every subquery re-applies <code>_causal_filter</code>; confirm plans use the index)</li>
+      </ul>
+
+      <h4>1.3 Decision gate</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Compare wall-clock + <code>EXPLAIN ANALYZE</code>; decision rule: adopt A if it is ≥10× baseline at 10k AND ≥2× faster than B at 10k; otherwise reassess in a plan amendment before proceeding</li>
+        <li><code class="status">[x]</code> Write <code>docs/adr/0010-set-based-preaggregation.md</code> recording the winner, the numbers, and why the loser was rejected (or retained as a complement)</li>
+        <li><code class="status">[x]</code> Append the outcome to this plan's Amendments section</li>
+      </ul>
+
+      <h4>1.4 Testing Strategy</h4>
+      <p>Spike validation is by value-equality against the golden JSON plus plan inspection — throwaway SQL,
+        permanent numbers.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just bench-aggs 10k</code> (spike mode) — both options timed at all three scales, results merged into <code>baseline.json</code></li>
+        <li><code class="status">[x]</code> Spike value check script exits 0 — all six gap aggregators match golden values under both options</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        This gate exists to stop a 26-aggregator rewrite from being built on an unmeasured assumption.
+      </div>
+    </div>
+
+    <!-- ================= PHASE 2 ================= -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Planner + primitive infrastructure (no family migrated yet)</h3>
+      <p>Build the routing so an aggregator can <em>opt in</em> to pre-aggregation while every un-migrated
+        aggregator keeps today's correlated path bit-for-bit.</p>
+
+      <h4>2.1 The preagg protocol</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>featurizer/primitives/preagg.py</code>: <code>PreAggSpec(family_key, prepass_sql, reduction_where)</code> — <code>prepass_sql</code> is the inner subquery body (built per child/relationship/interval), <code>reduction_where</code> the family's row filter (e.g. <code>gap is not null</code>)</li>
+        <li><code class="status">[x]</code> <code>SubqueryAggregator</code> gains optional <code>_build_preagg(feature, child, relationship, interval) → PreAggSpec | None</code>; when it returns a spec, <code>__call__</code> attaches it to the returned <code>Feature.preagg</code> and sets <code>definition</code> to the plain reduction expression (<code>avg(gap)</code>); names/labels still via unchanged <code>_build_name</code>/<code>_build_label</code></li>
+        <li><code class="status">[x]</code> <code>Feature</code> in <code>abstractions.py</code>: optional <code>preagg</code> attribute (default <code>None</code>), following the <code>direct_source</code> precedent — hashing/equality semantics untouched</li>
+      </ul>
+
+      <h4>2.2 Planner routing + companion CTE builder</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>_build_aggregations</code>: partition produced features into plain (→ existing <code>_build_aggregations_cte</code>, unchanged) and preagg (grouped by <code>(family_key, interval)</code>)</li>
+        <li><code class="status">[x]</code> New <code>_build_preagg_cte(target, source, relationship, family_key, interval, features)</code>: renders <code>select child_key, &lt;reductions&gt; from (&lt;prepass&gt;) g [where &lt;reduction_where&gt;] group by child_key</code>; asserts all features in the group share one prepass SQL</li>
+        <li><code class="status">[x]</code> Register everything the aggs CTE registers: join statement, <code>_synth_column_source</code> (pruning), <code>ShardableCTE</code> (prefix/suffix around the reduction select-list; prepass rides in the suffix), <code>MaterializationKey(join_key=child_key)</code></li>
+        <li><code class="status">[x]</code> CTE naming: <code>pg_identifier(f"{naming_alias}_{family_key}{'_'+interval if interval else ''}_aggs_for_{target.alias}")</code> — 63-byte capped, parallel-relationship-safe via <code>naming_alias</code></li>
+        <li><code class="status">[x]</code> Empty-group guard mirroring the v0.5.2 dangling-comma fix: no features in a family group → no CTE, no join</li>
+      </ul>
+
+      <h4>2.3 DB-free shape guards</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Extend <code>tests/test_planner_sql_validity.py</code>: with a stub preagg aggregator — companion CTE present exactly once per (family, interval), balanced parens, <code>group by</code> carries the child key, and the migrated SQL contains NO <code>sub.&lt;key&gt; = &lt;table&gt;.&lt;key&gt;</code> correlation pattern</li>
+        <li><code class="status">[x]</code> Sharding unit test: a config forced over the column limit splits companion-CTE columns across groups and prunes the join when a group keeps none (pattern from <code>tests/test_sharding.py</code>)</li>
+      </ul>
+
+      <h4>2.4 Testing Strategy</h4>
+      <p>Infrastructure must be a no-op for every registered aggregator (none migrated yet): generated SQL for all
+        existing configs is byte-identical to v0.5.2.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — full fast suite including new shape guards; <code>sample_featurizer.sql</code> snapshot UNCHANGED in this phase</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_parallel_relationships.py tests/test_sharding.py -q</code> — name-stability + sharding contracts intact</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright</code> — 0 errors</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ================= PHASE 3 ================= -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Family migrations — four gated batches</h3>
+      <p>Each batch converts one family to the preagg protocol and must exit green on the full-registry execution
+        harness, the golden-value equality module, and the fast suite before the next batch starts. A failing batch
+        never blocks the previous ones from shipping.</p>
+
+      <figure>
+        <svg viewBox="0 0 760 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four migration batches, each passing the same gate">
+          <rect width="760" height="240" fill="#ffffff" rx="10"/>
+          <defs><marker id="arr3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#0f766e"/></marker></defs>
+          <g font-family="-apple-system,sans-serif" font-size="12.5" font-weight="700">
+            <rect x="30"  y="40" width="150" height="56" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+            <text x="105" y="63" fill="#0f766e" text-anchor="middle">3a  gaps</text>
+            <text x="105" y="82" fill="#5b6472" text-anchor="middle" font-weight="400" font-size="11">6 aggregators</text>
+            <rect x="217" y="40" width="150" height="56" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+            <text x="292" y="63" fill="#0f766e" text-anchor="middle">3b  categorical</text>
+            <text x="292" y="82" fill="#5b6472" text-anchor="middle" font-weight="400" font-size="11">entropy · hhi</text>
+            <rect x="404" y="40" width="150" height="56" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+            <text x="479" y="63" fill="#0f766e" text-anchor="middle">3c  numeric</text>
+            <text x="479" y="82" fill="#5b6472" text-anchor="middle" font-weight="400" font-size="11">8 aggregators</text>
+            <rect x="591" y="40" width="150" height="56" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+            <text x="666" y="63" fill="#0f766e" text-anchor="middle">3d  sequence</text>
+            <text x="666" y="82" fill="#5b6472" text-anchor="middle" font-weight="400" font-size="11">10 aggregators</text>
+          </g>
+          <g stroke="#0f766e" stroke-width="2" fill="none">
+            <line x1="105" y1="98" x2="105" y2="140" marker-end="url(#arr3)"/>
+            <line x1="292" y1="98" x2="292" y2="140" marker-end="url(#arr3)"/>
+            <line x1="479" y1="98" x2="479" y2="140" marker-end="url(#arr3)"/>
+            <line x1="666" y1="98" x2="666" y2="140" marker-end="url(#arr3)"/>
+          </g>
+          <rect x="30" y="148" width="711" height="52" rx="10" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+          <text x="385" y="171" font-family="-apple-system,sans-serif" font-size="13" font-weight="700" fill="#15803d" text-anchor="middle">gate: execution harness + golden values + fast suite</text>
+          <text x="385" y="190" font-family="SF Mono,monospace" font-size="10.5" fill="#15803d" text-anchor="middle">names byte-identical · values equal · every aggregator executes</text>
+        </svg>
+        <figcaption>Every batch passes the same three-part gate before the next begins; special-config families are explicitly out of scope and stay correlated.</figcaption>
+      </figure>
+
+      <h4>3a. Gap family — one <code>gaps</code> pre-pass</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Migrate <code>gap_mean</code>, <code>gap_stddev</code>, <code>gap_min</code>, <code>gap_max</code> (GapStatAggregator), <code>gap_cv</code>, <code>burstiness</code> — shared prepass: <code>epoch_day_span(ts, lag(ts) over (partition by key order by ts))</code>, reductions <code>avg/stddev/min/max</code> + the cv/burstiness ratios with their existing <code>NULLIF</code> guards</li>
+        <li><code class="status">[x]</code> Batch gate (below) green</li>
+      </ul>
+
+      <h4>3b. Categorical distribution — per-column frequency pre-pass</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Migrate <code>entropy</code>, <code>hhi</code> — prepass per categorical column: <code>select key, count(*) as freq, sum(count(*)) over (partition by key) as total … group by key, col</code>; reductions <code>-sum(p·ln p)</code> / <code>sum(p²)</code>; family key <code>catfreq:&lt;col&gt;</code></li>
+        <li><code class="status">[x]</code> Batch gate green</li>
+      </ul>
+
+      <h4>3c. Numeric stream — ordered/ranked pre-pass (some need a grouped-join pre-pass)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Migrate <code>gini</code> (row_number-over-partition rank), <code>mean_deviation</code> (per-key mean via <code>avg(x) over (partition by key)</code>, then <code>avg(abs(x-mean))</code>), <code>theil</code>, <code>acf_1</code>, <code>variance_ratio</code>, <code>cosinor_amplitude_weekly</code></li>
+        <li><code class="status">[]</code> <code>trimmed_mean_10</code>, <code>median_absolute_deviation</code>: percentile bounds are ordered-set aggregates (no <code>OVER</code>) — prepass joins a per-key percentile subquery (<code>group by key</code> + join back), still two set-based scans; verify each rewrite reproduces the EXACT existing expression semantics before coding, and leave any aggregator whose semantics do not map cleanly on the correlated path (documented in the batch notes)</li>
+        <li><code class="status">[]</code> Batch gate green (note: <code>mean_deviation</code> is default-active — also confirm the narrow-tier benchmark stays within its Phase 0 envelope)</li>
+      </ul>
+
+      <h4>3d. Sequence / transition — per-column transitions pre-pass</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Migrate <code>ngram_2_freq</code>, <code>ngram_3_freq</code>, <code>sequence_entropy</code>, <code>longest_streak</code>, <code>state_volatility</code>, <code>transition_matrix_summary</code>, <code>rework_count</code>, <code>recurrence_interval</code>, <code>markov_conditional_entropy</code>, <code>max_transition_prob</code> — shared prepass: <code>(curr, lag(curr) over (partition by key order by ts)) </code> per categorical column; family key <code>transitions:&lt;col&gt;</code></li>
+        <li><code class="status">[]</code> <code>time_in_current_state</code>: reduction emits <code>max(change_ts)</code>; the aod arithmetic (<code>aod.as_of_date::date - …</code>) stays in the feature's synth-side definition inside the lateral — verify this split reproduces golden values</li>
+        <li><code class="status">[]</code> Batch gate green</li>
+      </ul>
+
+      <h4>3e. Explicit non-goals (stay correlated, documented)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Record in ADR-0010 + CHANGELOG: predicate-driven (<code>first_passage_time</code>, <code>cross_type_latency</code>, <code>right_censoring_indicator</code>), two-window drift (<code>kl_drift</code>, <code>wasserstein_drift</code>), spatial (<code>distance_travelled</code>, <code>radius_of_gyration</code>, <code>spatial_std</code>, <code>bbox_area</code>) keep the correlated path — they fire only under special config, are excluded from the all-agg acceptance measurement, and migrate later only if a real workload demands it</li>
+      </ul>
+
+      <h4>3f. Testing Strategy (the per-batch gate, run after EVERY batch)</h4>
+      <p>Three-part gate on the ephemeral PG: nothing regressed structurally, every aggregator still executes,
+        every migrated value equals its golden.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — fast suite + shape guards green</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — <code>test_all_aggregators_execution.py</code> (date + timestamp) and <code>test_preagg_value_equality.py</code> green</li>
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_parallel_relationships.py -q</code> — output column names byte-identical (ADR-0007 / triage-pg)</li>
+        <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit a batch until its gate is fully green; do not start the next batch on a red gate.</strong>
+        A value mismatch is a stop-the-line event: fix the rewrite, never the golden file (golden edits require a
+        documented semantics-change decision in Amendments).
+      </div>
+    </div>
+
+    <!-- ================= PHASE 4 ================= -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Full-cohort acceptance, docs, release</h3>
+      <p>Prove the ADR-0009 headline number is fixed, regenerate the deliberate snapshots, close the documentation
+        loop, and ship v0.6.0.</p>
+
+      <h4>4.1 Acceptance measurements</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Re-run the full benchmark matrix (100 / 1k / 10k, 1 + 5 as-of dates) → <code>after.json</code> + before/after <code>scaling.html</code> artifact</li>
+        <li><code class="status">[]</code> Acceptance: synthetic 10k all-agg (migrated set) completes in &lt; 60 s AND the 10k/1k wall-clock ratio ≤ 15× (near-linear, not group-quadratic)</li>
+        <li><code class="status">[]</code> Realistic acceptance: seed dirtyduck (<code>tests/integration/datasets</code>), run the all-agg variant that timed out at &gt;300 s in ADR-0009 — must complete &lt; 120 s; record the number in the ADR amendment</li>
+        <li><code class="status">[]</code> Control: narrow default-tier timings within noise of the Phase 0 baseline (the rewrite must not tax the fast path)</li>
+      </ul>
+
+      <h4>4.2 Deliberate snapshot + docs updates</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Regenerate <code>tests/fixtures/sample_featurizer.sql</code> once (SQL structure changed by design; column names must diff clean)</li>
+        <li><code class="status">[]</code> Amend <code>docs/adr/0009</code>: follow-up resolved, link ADR-0010 + this plan + the before/after numbers; soften the "bounded cohorts" guidance in README for the migrated families</li>
+        <li><code class="status">[]</code> <code>CHANGELOG.md</code> <code>[Unreleased]</code>: performance rewrite entry (families migrated, families intentionally left correlated, name/value-preservation guarantees, benchmark numbers)</li>
+        <li><code class="status">[]</code> Update TODO.org: close the deferred item; note the residual (special-config families still correlated)</li>
+      </ul>
+
+      <h4>4.3 Release v0.6.0</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Version bump to 0.6.0 (SQL-changing but contract-preserving → minor), cut CHANGELOG section</li>
+        <li><code class="status">[]</code> Push, CI green (test.yml incl. integration + packaging gate), tag <code>v0.6.0</code>, release.yml publishes the GitHub release on nanounanue/featurizer — the v0.5.x flow exactly</li>
+      </ul>
+
+      <h4>4.4 Testing Strategy</h4>
+      <p>The global validation list below IS this phase's test; acceptance is numeric, not vibes — every number
+        lands in a committed artifact.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just bench-aggs 10k</code> — after-curve captured, acceptance thresholds met</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just test-realistic</code> — full integration + realistic tiers green (realistic tier independently re-derives entropy/gap values in SQL — the strongest semantic cross-check)</li>
+        <li><code class="status">[]</code> <code>gh run watch</code> on the release-tag CI — green before the tag is pushed</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — full fast suite (565+ at baseline) green, including new shape guards</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — full-registry execution harness + golden-value equality + sharding/materialization integration green on live PG</li>
+      <li><code class="status">[]</code> <code>just test-realistic</code> — realistic tier (independent SQL re-derivations of entropy/gap, causal invariants) green</li>
+      <li><code class="status">[]</code> <code>uv run pytest tests/test_parallel_relationships.py tests/test_sharding.py -q</code> — ADR-0007 name-stability + sharding contracts byte-identical</li>
+      <li><code class="status">[]</code> <code>just bench-aggs 10k</code> — synthetic 10k all-agg &lt; 60 s; dirtyduck all-agg &lt; 120 s (was &gt;300 s); narrow tier within baseline noise</li>
+      <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors, 0 warnings</li>
+      <li><code class="status">[]</code> <code>git diff v0.5.2 -- tests/fixtures/preagg_golden_values.json</code> — empty (golden values never edited after Phase 0 capture)</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Family inventory (validated by introspection in Phase 0.1)</h3>
+    <div class="scroll">
+    <table>
+      <tr><th>Family / pre-pass</th><th>Aggregators</th><th>Batch</th><th>Pre-pass shape</th></tr>
+      <tr><td><code>gaps</code></td><td>gap_mean, gap_stddev, gap_min, gap_max, gap_cv, burstiness</td><td>3a</td><td><code>lag(ts) over (partition by key order by ts)</code> → epoch-day span</td></tr>
+      <tr><td><code>catfreq:&lt;col&gt;</code></td><td>entropy, hhi</td><td>3b</td><td><code>group by key, col</code> counts + <code>sum() over (partition by key)</code> total</td></tr>
+      <tr><td><code>numstream:&lt;col&gt;</code></td><td>gini, mean_deviation, theil, acf_1, variance_ratio, cosinor_amplitude_weekly; trimmed_mean_10 + median_absolute_deviation via grouped-join variant</td><td>3c</td><td>window rank / per-key mean; percentile bounds via <code>group by key</code> + join-back</td></tr>
+      <tr><td><code>transitions:&lt;col&gt;</code></td><td>ngram_2_freq, ngram_3_freq, sequence_entropy, longest_streak, state_volatility, transition_matrix_summary, rework_count, time_in_current_state, recurrence_interval, markov_conditional_entropy, max_transition_prob</td><td>3d</td><td><code>(curr, lag(curr) over (partition by key order by ts))</code> pairs</td></tr>
+      <tr><td><em>stays correlated</em></td><td>first_passage_time, cross_type_latency, right_censoring_indicator, kl_drift, wasserstein_drift, distance_travelled, radius_of_gyration, spatial_std, bbox_area</td><td>3e (non-goal)</td><td>special-config only; excluded from acceptance measurement</td></tr>
+    </table>
+    </div>
+
+    <h3>Design constraints that must hold throughout</h3>
+    <ul>
+      <li><strong>Naming contract (ADR-0007 / triage-pg):</strong> output column names and manifest labels are produced by <code>_build_name</code>/<code>_build_label</code>, which this plan never touches. The name-stability snapshot in <code>tests/test_parallel_relationships.py</code> is the mechanical enforcement — it runs in every batch gate.</li>
+      <li><strong>Interval semantics:</strong> the current subqueries filter the child stream to the interval window <em>before</em> LAG, so the first in-window event has a NULL gap. Companion CTEs replicate this by emitting one CTE per (family, interval) whose pre-pass applies the same <code>daterange_window</code>/causal filter before the window function. Never compute LAG globally and filter after — that changes boundary values.</li>
+      <li><strong>Tie-ordering:</strong> <code>order by ts</code> with equal timestamps is nondeterministic today (correlated form) and stays so (window form). Gap values are tie-invariant (multiset preserved); sequence transitions are not — the golden comparison must treat tie-affected fixtures with set-level equality or use tie-free fixtures (Phase 0 fixtures are tie-free by construction).</li>
+      <li><strong>NULL semantics:</strong> empty group → correlated subquery returns NULL; companion CTE has no row and the LEFT JOIN yields NULL — same observable value. Groups whose pre-pass rows are all filtered (e.g. single event → NULL gap) produce either no row or a NULL aggregate; both land as NULL. Golden equality covers both via the pid=1/pid=6 fixture groups.</li>
+      <li><strong>One CTE per family, not two:</strong> pre-pass lives as a subquery in the reduction's <code>FROM</code>, so <code>ShardableCTE</code> prefix/suffix, synth pruning, and <code>MaterializationKey</code> registration work without touching <code>sharding.py</code>. A chained pre-pass CTE would need a CTE-dependency notion sharding doesn't have.</li>
+      <li><strong>Per-aod recomputation is fine:</strong> companion CTEs sit inside the lateral like every other CTE; the narrow tier proves per-aod GROUP-BY recomputation scales (3.6 s / 22k targets). The cliff was G×S rescans, not the lateral.</li>
+    </ul>
+
+    <h3>Rejected / non-selected approaches</h3>
+    <ul>
+      <li><strong>Pure LATERAL rewrite</strong> (<code>select … from (select distinct key …) cross join lateral (…)</code>): same asymptotics as today against an unindexed CTE — reshapes the query without removing the per-group rescan. Only reconsidered if the Phase 1 spike surprises.</li>
+      <li><strong>Indexing the CTE:</strong> impossible in PostgreSQL; that is precisely why Option B materializes a temp table first. Option B remains the spike's control arm and the documented fallback if Option A's planner work stalls — but it keeps O(G×S) index probes and inherits ADR-0006's as-of materialization residual (<code>NotImplementedError</code> on as-of LATERAL in a materialized synth).</li>
+      <li><strong>Status quo (bounded cohorts forever):</strong> ADR-0009's own framing marks this as the interim state, not the destination — the advanced tier exists for triage-style full-cohort matrices.</li>
+    </ul>
+
+    <h3>Risk register</h3>
+    <div class="scroll">
+    <table>
+      <tr><th>Risk</th><th>Mitigation</th></tr>
+      <tr><td>Value drift in a rewritten family (subtle NULL/boundary differences)</td><td>Golden JSON captured from v0.5.2 before any change; per-batch equality gate; realistic tier independently re-derives entropy/gap in SQL</td></tr>
+      <tr><td>Name drift breaking triage-pg</td><td><code>_build_name</code>/<code>_build_label</code> untouched; name-stability snapshot in every gate; <code>git diff</code> guard on the golden file</td></tr>
+      <tr><td>Sharding / materialization regressions from the new CTE kind</td><td>Companion CTE reuses <code>ShardableCTE</code> + <code>MaterializationKey</code> verbatim; dedicated sharding unit test in Phase 2.3</td></tr>
+      <tr><td>Window sorts spilling to disk at scale (work_mem)</td><td>Benchmark records <code>EXPLAIN ANALYZE</code> sort methods; if spills dominate, note <code>work_mem</code> guidance in README rather than tuning inside generated SQL</td></tr>
+      <tr><td>Percentile-based rewrites (trimmed_mean, MAD) not mapping cleanly</td><td>Explicit permission in 3c to leave individual aggregators correlated with a documented note — partial migration still removes the bulk of the cliff</td></tr>
+      <tr><td>Scope creep into the special-config families</td><td>Phase 3e declares them non-goals up front; ADR-0010 records the boundary</td></tr>
+    </table>
+    </div>
+
+    <h3>Operational notes</h3>
+    <ul>
+      <li>All DB work uses the ephemeral <code>postgres:16</code> via <code>just db-up</code> (DATABASE_URL provided by the recipe) — no external credentials.</li>
+      <li><code>benchmarks/</code> is a root package outside the wheel (<code>[tool.hatch.build.targets.wheel] packages = ["featurizer"]</code>); no packaging change needed.</li>
+      <li>Benchmark artifacts are committed under <code>specs/correlated-subquery-aggregator-scaling/</code>, following the wide-primitive per-DB-artifacts precedent.</li>
+      <li>Estimated diff: ~150 lines planner, ~100 lines preagg module, ~400 lines aggregations.py rewrites, ~450 lines tests/bench. No new runtime dependencies.</li>
+    </ul>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-07-06T21:05 — Phase 2 infrastructure + migration batches 3a (gaps) and 3b (categorical) complete and gated green</summary>
+      <p><strong>Phase 2 (infrastructure):</strong> <code>featurizer/primitives/preagg.py</code> (<code>PreAggSpec</code> +
+        <code>causal_where</code>), <code>Feature.preagg</code> attribute, <code>SubqueryAggregator._build_preagg</code>
+        opt-in hook, planner partition + <code>_build_preagg_cte</code> (registers join / synth-source / ShardableCTE /
+        MaterializationKey identically to the aggs CTE). Verified <strong>no-op</strong> for every un-migrated
+        aggregator: the full fast suite and <code>sample_featurizer.sql</code> snapshot were byte-identical after Phase 2.
+        Added <code>tests/test_preagg_shape.py</code> (5 DB-free shape guards with a throwaway stub aggregator that never
+        enters the global registry).</p>
+      <p><strong>Batch 3a (gap family, 6 aggregators):</strong> <code>gap_mean/stddev/min/max</code>, <code>gap_cv</code>,
+        <code>burstiness</code> — one shared window-LAG pre-pass, six reductions in one companion CTE. All 36 golden
+        cases equal; in the real pipeline at 1k, <strong>all six gaps compute together in 0.118 s</strong> (each was
+        ~0.54 s correlated — the family collapses to one scan).</p>
+      <p><strong>Batch 3b (categorical, 2 aggregators):</strong> <code>entropy</code>, <code>hhi</code> — one shared
+        per-category frequency pre-pass. Two bugs found and fixed by the gate: (1) a raw <code>:</code> in the
+        <code>catfreq:&lt;col&gt;</code> family key leaked into the CTE name (invalid unquoted SQL) → sanitize the family
+        token to <code>\w</code>; (2) FP summation-order noise (16th digit) reordered tied rows and misaligned the
+        positional golden compare → the equality harness now re-sorts both sides by a float-rounded key (values still
+        compared at 1e-9; no re-capture, so the golden stays the pre-rewrite oracle).</p>
+      <p><strong>Migration-touched unit tests updated</strong> (SQL text moved from the correlated <code>definition</code>
+        to the shared pre-pass): the causal-safety leakage guard now checks the pre-pass carries the bound; the gap /
+        entropy / hhi shape tests check the full generated SQL. Intent preserved, not weakened.</p>
+      <p><strong>Gate green:</strong> fast suite <strong>570 passed</strong>; full integration <strong>333 passed, 55
+        skipped, 0 failed</strong> (sharding / materialization / wide-primitive unaffected); name-stability 13/13
+        (ADR-0007 names byte-identical); basedpyright 0 errors; my files ruff-clean. <strong>10k baseline confirms the
+        cliff:</strong> all-agg tier censored at the 300 s timeout (matching ADR-0009's dirtyduck &gt;300 s); per-family
+        quadratic (<code>trimmed_mean_10</code> 0.75 s → 94.6 s from 1k → 10k).</p>
+      <p><strong>Remaining:</strong> batches 3c (numeric stream, 8 — incl. the percentile-based <code>trimmed_mean_10</code> /
+        <code>median_absolute_deviation</code> the plan flags as possible leave-correlated judgment calls) and 3d
+        (sequence / transition, 11); then Phase 4 acceptance + the v0.6.0 release (release needs sign-off). All work is
+        uncommitted in the working tree.</p>
+    </details>
+    <details>
+      <summary>2026-07-06T20:45 — Phase 1 decision gate: Option A (set-based pre-aggregation) adopted; ADR-0010 written</summary>
+      <p>Gap-family head-to-head (6 aggregators, 1k parents × 20 children = 20k child rows, 1000 groups):
+        status quo (correlated vs unindexed CTE) <strong>2003 ms</strong>, Option B (temp table + index)
+        <strong>51 ms</strong>, <strong>Option A (window pre-pass + GROUP BY) 9.8 ms</strong> — and Option A
+        computes all six aggregators while the status-quo/B EXPLAINs ran only four subqueries, so its advantage is
+        understated. Option A reproduced the correlated oracle's values <strong>exactly (0 mismatched rows</strong>
+        over 1000 groups; <code>gap_stddev</code> equal to 10 decimals). This clears the plan's rule (≥10× status quo
+        AND ≥2× Option B) decisively; Option A is the same complexity class as the flat default tier. Recorded in
+        <code>docs/adr/0010-set-based-preaggregation.md</code>. Option B retained as documented control only.</p>
+    </details>
+    <details>
+      <summary>2026-07-06T20:35 — Phase 0 complete: inventory drift found (27 not 26), baseline cliff measured, 162 golden values frozen</summary>
+      <p><strong>Inventory (0.1):</strong> live introspection finds <strong>36</strong> <code>SubqueryAggregator</code>s,
+        not the ADR's "26" — the gap is the 9 special-config families (4 spatial subclasses of
+        <code>SubqueryAggregator</code> + 3 predicate + 2 drift). <strong>27 are migratable</strong> (rewrite scope);
+        the family tables and batch counts in this plan should read 27 (batch 3c = 8, 3d = 11). The code is
+        introspection-driven (<code>benchmarks/preagg_cases.py</code>), so this is a doc correction, not a code one.</p>
+      <p><strong>Baseline curve (0.2), synthetic (~20 children/parent, ephemeral pg 16):</strong></p>
+      <div class="scroll"><table>
+        <tr><th>config</th><th>100</th><th>1k</th><th>10k</th></tr>
+        <tr><td>narrow (control, 7 aggs)</td><td class="num">0.12 s</td><td class="num">0.12 s</td><td class="num">0.26 s</td></tr>
+        <tr><td>all-agg (27 families)</td><td class="num">1.2 s</td><td class="num">11.3 s</td><td class="num">running / expected &gt;300 s (censored)</td></tr>
+        <tr><td><code>acf_1</code> (one family)</td><td class="num">0.08 s</td><td class="num">0.56 s</td><td class="num">63.4 s</td></tr>
+      </table></div>
+      <p>The control tier is flat (0.12 s → 0.26 s); a single correlated family is quadratic
+        (<code>acf_1</code> 0.56 s → 63.4 s, ~113× for 10× data), and all-agg is 1.2 s → 11.3 s (~9.4×/decade) —
+        directly reproducing the ADR-0009 cliff. <code>EXPLAIN ANALYZE</code> of the two costliest families
+        (<code>trimmed_mean_10</code>, <code>mean_deviation</code>) at 1k stored under the artifact dir. Artifacts:
+        <code>specs/correlated-subquery-aggregator-scaling/baseline-{100,1k,10k}.{json,html}</code>.</p>
+      <p><strong>Golden values (0.3):</strong> 162 cases (27 aggregators × 6 fixture/type/interval combos) frozen to
+        <code>tests/fixtures/preagg_golden_values.json</code> from the v0.5.2 correlated path. A capture bug
+        (per-fixture seed cache vs drop-and-replace tables → some cases ran against the wrong fixture) was caught by
+        the equality test itself and fixed before freezing. Dense fixture reworked to cluster a December event tail so
+        the P1M interval cases exercise real in-window values (all 50 keys ≥2 in-window events), not just NULLs.
+        <strong>Gate green:</strong> 565 fast + 163 integration (incl. the new equality module) pass; basedpyright 0
+        errors; ruff clean — the latter caught a 3.12-only nested-f-string in the benchmark HTML renderer that would
+        have broken the declared 3.10 floor; fixed.</p>
+    </details>
+    <details>
+      <summary>2026-07-06T20:20 — CTE-index premise empirically confirmed on PostgreSQL 16.14 (pre-build verification)</summary>
+      <p>Before building, the load-bearing claim — "you cannot index a CTE, so the correlated subquery is forced to
+        seq-scan the child stream per group" — was verified with an <code>EXPLAIN (ANALYZE, BUFFERS)</code> battery on
+        the ephemeral <code>postgres:16</code> (50k child rows, 500 groups, one <code>avg</code> subquery):</p>
+      <div class="scroll"><table>
+        <tr><th>Shape</th><th>Index used?</th><th>Time</th></tr>
+        <tr><td><code>CREATE INDEX ON &lt;cte_alias&gt;</code></td><td>—</td><td><strong>hard ERROR</strong> (<code>relation … does not exist</code>) — a CTE is not an indexable relation</td></tr>
+        <tr><td>correlated subquery vs default CTE <em>(featurizer's current state)</em></td><td>no — <code>CTE Scan</code> + filter, <code>loops=500</code></td><td class="num">547 ms</td></tr>
+        <tr><td><code>MATERIALIZED</code> CTE</td><td>no</td><td class="num">535 ms</td></tr>
+        <tr><td>temp table + index (Option B)</td><td>yes — <code>Bitmap Index Scan</code></td><td class="num">19 ms</td></tr>
+        <tr><td>set-based single <code>GROUP BY</code> (Option A)</td><td>n/a — one scan</td><td class="num">5.5 ms</td></tr>
+        <tr><td><code>NOT MATERIALIZED</code> passthrough CTE</td><td>yes (inlined → base index)</td><td class="num">29 ms</td></tr>
+        <tr><td><code>NOT MATERIALIZED</code> + computed window column</td><td>partial — index for the pid filter, but recomputes the window per group</td><td class="num">37 ms</td></tr>
+      </table></div>
+      <p><strong>Confirmed, with a refinement.</strong> The <code>CREATE INDEX</code> on a CTE is a hard error, but the
+        deeper reason featurizer can't recover an index is twofold: (1) its <code>_transform</code> CTEs are referenced
+        multiple times (the outer projection <em>and</em> each correlated subquery), so PostgreSQL auto-materializes
+        them into an unindexed working table; and (2) even if forced inline with <code>NOT MATERIALIZED</code>, the
+        transform layer carries computed/window columns, so the subquery still recomputes per group (37 ms case) rather
+        than probing a usable index. This means a "just add <code>NOT MATERIALIZED</code>" shortcut does <em>not</em>
+        rescue the real transform-layer case — it only helps a trivial passthrough. <strong>Early Phase-1 signal:</strong>
+        Option A (set-based, 5.5 ms) beats Option B (temp+index, 19 ms) by ~3.5× and the status quo by ~100× on a single
+        subquery; the multiplier compounds with 26 subqueries × intervals. This pre-answers the decision gate in Option A's
+        favor, but the Phase 1 spike still runs the full gap-family head-to-head at 100/1k/10k before it is ratified in
+        ADR-0010. Probe SQL retained under the session scratchpad; a permanent copy lands in <code>benchmarks/</code> in Phase 0.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

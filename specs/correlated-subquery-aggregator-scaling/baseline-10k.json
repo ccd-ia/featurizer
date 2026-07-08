@@ -1,0 +1,157 @@
+{
+  "scales": {
+    "10k": {
+      "all_agg": {
+        "censored": true,
+        "error": "canceling statement due to statement timeout",
+        "seconds": 300.006
+      },
+      "n_parents": 10000,
+      "narrow": {
+        "censored": false,
+        "rows": 10000,
+        "seconds": 0.264
+      },
+      "per_family": {
+        "acf_1": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 63.354
+        },
+        "burstiness": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 61.947
+        },
+        "cosinor_amplitude_weekly": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.289
+        },
+        "entropy": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 46.931
+        },
+        "gap_cv": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 61.654
+        },
+        "gap_max": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 61.655
+        },
+        "gap_mean": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 62.346
+        },
+        "gap_min": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 64.493
+        },
+        "gap_stddev": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 66.189
+        },
+        "gini": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 49.422
+        },
+        "hhi": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.452
+        },
+        "longest_streak": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.842
+        },
+        "markov_conditional_entropy": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 47.878
+        },
+        "max_transition_prob": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 46.766
+        },
+        "mean_deviation": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 93.856
+        },
+        "median_absolute_deviation": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 94.977
+        },
+        "ngram_2_freq": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.105
+        },
+        "ngram_3_freq": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.198
+        },
+        "recurrence_interval": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 62.386
+        },
+        "rework_count": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 62.427
+        },
+        "sequence_entropy": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 46.436
+        },
+        "state_volatility": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 61.959
+        },
+        "theil": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 70.166
+        },
+        "time_in_current_state": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 63.058
+        },
+        "transition_matrix_summary": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 47.563
+        },
+        "trimmed_mean_10": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 94.618
+        },
+        "variance_ratio": {
+          "censored": false,
+          "rows": 10000,
+          "seconds": 48.788
+        }
+      },
+      "scale": "10k",
+      "timeout_s": 300.0
+    }
+  },
+  "timeout_s": 300.0
+}

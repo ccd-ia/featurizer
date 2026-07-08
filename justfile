@@ -68,3 +68,19 @@ examples:
 
 typecheck:
     uv run basedpyright
+
+# Freeze v0.5.2 aggregator semantics as golden values (requires `just db-up`).
+# Run ONCE before the set-based rewrite; never edit the JSON afterward.
+bench-capture-golden:
+    DATABASE_URL={{pg_url}} uv run python -m benchmarks capture-golden
+
+# List the subquery aggregators + rewrite scope (no database needed).
+bench-inventory:
+    uv run python -m benchmarks inventory
+
+# Scaling benchmark for the subquery-aggregator tier (requires `just db-up`).
+# SCALE is one of 100 / 1k / 10k; artifacts land under
+# specs/correlated-subquery-aggregator-scaling/.
+bench-aggs SCALE="1k" TIMEOUT="300" LABEL="":
+    DATABASE_URL={{pg_url}} uv run python -m benchmarks bench \
+      --scale {{SCALE}} --timeout {{TIMEOUT}} {{ if LABEL != "" { "--label " + LABEL } else { "" } }}

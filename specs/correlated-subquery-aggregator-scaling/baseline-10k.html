@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>Subquery aggregator scaling — baseline-10k</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:820px;margin:2rem auto;padding:0 1rem;color:#1a2332}
+table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{border:1px solid #e2e4e0;padding:.35rem .5rem;text-align:left}
+th{background:#ccfbf1;color:#0f766e}td:first-child{font-family:monospace}h1{font-size:1.4rem}</style></head>
+<body><h1>Subquery aggregator scaling — baseline-10k</h1>
+<p>Wall-clock per config at each parent-count scale (~20 children/parent). Timeout 300.0s.</p>
+<table><tr><th>config</th><th>10k</th></tr>
+<tr><td>narrow (control)</td><td>0.264s</td></tr>
+<tr><td><strong>all-agg</strong></td><td>&gt;300.006s (censored)</td></tr>
+<tr><td>acf_1</td><td>63.354s</td></tr>
+<tr><td>burstiness</td><td>61.947s</td></tr>
+<tr><td>cosinor_amplitude_weekly</td><td>48.289s</td></tr>
+<tr><td>entropy</td><td>46.931s</td></tr>
+<tr><td>gap_cv</td><td>61.654s</td></tr>
+<tr><td>gap_max</td><td>61.655s</td></tr>
+<tr><td>gap_mean</td><td>62.346s</td></tr>
+<tr><td>gap_min</td><td>64.493s</td></tr>
+<tr><td>gap_stddev</td><td>66.189s</td></tr>
+<tr><td>gini</td><td>49.422s</td></tr>
+<tr><td>hhi</td><td>48.452s</td></tr>
+<tr><td>longest_streak</td><td>48.842s</td></tr>
+<tr><td>markov_conditional_entropy</td><td>47.878s</td></tr>
+<tr><td>max_transition_prob</td><td>46.766s</td></tr>
+<tr><td>mean_deviation</td><td>93.856s</td></tr>
+<tr><td>median_absolute_deviation</td><td>94.977s</td></tr>
+<tr><td>ngram_2_freq</td><td>48.105s</td></tr>
+<tr><td>ngram_3_freq</td><td>48.198s</td></tr>
+<tr><td>recurrence_interval</td><td>62.386s</td></tr>
+<tr><td>rework_count</td><td>62.427s</td></tr>
+<tr><td>sequence_entropy</td><td>46.436s</td></tr>
+<tr><td>state_volatility</td><td>61.959s</td></tr>
+<tr><td>theil</td><td>70.166s</td></tr>
+<tr><td>time_in_current_state</td><td>63.058s</td></tr>
+<tr><td>transition_matrix_summary</td><td>47.563s</td></tr>
+<tr><td>trimmed_mean_10</td><td>94.618s</td></tr>
+<tr><td>variance_ratio</td><td>48.788s</td></tr>
+</table></body></html>

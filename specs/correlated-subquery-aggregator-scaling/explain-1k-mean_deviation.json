@@ -1,0 +1,285 @@
+[
+  {
+    "Plan": {
+      "Node Type": "Sort",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 228027465.71,
+      "Total Cost": 228043721.96,
+      "Plan Rows": 6502500,
+      "Plan Width": 56,
+      "Actual Startup Time": 829.589,
+      "Actual Total Time": 829.614,
+      "Actual Rows": 1000,
+      "Actual Loops": 1,
+      "Sort Key": [
+        "aod.as_of_date"
+      ],
+      "Sort Method": "quicksort",
+      "Sort Space Used": 79,
+      "Sort Space Type": "Memory",
+      "Plans": [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Inner",
+          "Startup Cost": 485.39,
+          "Total Cost": 226847117.5,
+          "Plan Rows": 6502500,
+          "Plan Width": 56,
+          "Actual Startup Time": 125.024,
+          "Actual Total Time": 829.321,
+          "Actual Rows": 1000,
+          "Actual Loops": 1,
+          "Inner Unique": false,
+          "Plans": [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "as_of_dates",
+              "Alias": "aod",
+              "Startup Cost": 0.0,
+              "Total Cost": 35.5,
+              "Plan Rows": 2550,
+              "Plan Width": 4,
+              "Actual Startup Time": 0.004,
+              "Actual Total Time": 0.008,
+              "Actual Rows": 1,
+              "Actual Loops": 1
+            },
+            {
+              "Node Type": "Hash Join",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Join Type": "Right",
+              "Startup Cost": 485.39,
+              "Total Cost": 88934.14,
+              "Plan Rows": 2550,
+              "Plan Width": 52,
+              "Actual Startup Time": 125.018,
+              "Actual Total Time": 829.217,
+              "Actual Rows": 1000,
+              "Actual Loops": 1,
+              "Inner Unique": false,
+              "Hash Cond": "(c_transform.pid = p.pid)",
+              "Plans": [
+                {
+                  "Node Type": "Seq Scan",
+                  "Parent Relationship": "InitPlan",
+                  "Subplan Name": "CTE c_transform",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Relation Name": "c",
+                  "Alias": "c",
+                  "Startup Cost": 0.0,
+                  "Total Cost": 197.29,
+                  "Plan Rows": 8829,
+                  "Plan Width": 72,
+                  "Actual Startup Time": 0.01,
+                  "Actual Total Time": 0.839,
+                  "Actual Rows": 20000,
+                  "Actual Loops": 1
+                },
+                {
+                  "Node Type": "Aggregate",
+                  "Strategy": "Hashed",
+                  "Partial Mode": "Simple",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 220.72,
+                  "Total Cost": 88577.73,
+                  "Plan Rows": 200,
+                  "Plan Width": 52,
+                  "Actual Startup Time": 4.753,
+                  "Actual Total Time": 708.336,
+                  "Actual Rows": 1000,
+                  "Actual Loops": 1,
+                  "Group Key": [
+                    "c_transform.pid"
+                  ],
+                  "Planned Partitions": 0,
+                  "HashAgg Batches": 1,
+                  "Peak Memory Usage": 209,
+                  "Disk Usage": 0,
+                  "Plans": [
+                    {
+                      "Node Type": "CTE Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "CTE Name": "c_transform",
+                      "Alias": "c_transform",
+                      "Startup Cost": 0.0,
+                      "Total Cost": 198.65,
+                      "Plan Rows": 2943,
+                      "Plan Width": 40,
+                      "Actual Startup Time": 0.013,
+                      "Actual Total Time": 2.877,
+                      "Actual Rows": 20000,
+                      "Actual Loops": 1,
+                      "Filter": "(ts <= aod.as_of_date)",
+                      "Rows Removed by Filter": 0
+                    },
+                    {
+                      "Node Type": "Aggregate",
+                      "Strategy": "Plain",
+                      "Partial Mode": "Simple",
+                      "Parent Relationship": "SubPlan",
+                      "Subplan Name": "SubPlan 2",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Startup Cost": 441.77,
+                      "Total Cost": 441.78,
+                      "Plan Rows": 1,
+                      "Plan Width": 32,
+                      "Actual Startup Time": 0.704,
+                      "Actual Total Time": 0.704,
+                      "Actual Rows": 1,
+                      "Actual Loops": 1000,
+                      "Plans": [
+                        {
+                          "Node Type": "Nested Loop",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Join Type": "Inner",
+                          "Startup Cost": 220.77,
+                          "Total Cost": 441.65,
+                          "Plan Rows": 15,
+                          "Plan Width": 64,
+                          "Actual Startup Time": 0.523,
+                          "Actual Total Time": 0.701,
+                          "Actual Rows": 20,
+                          "Actual Loops": 1000,
+                          "Inner Unique": false,
+                          "Plans": [
+                            {
+                              "Node Type": "Aggregate",
+                              "Strategy": "Plain",
+                              "Partial Mode": "Simple",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Startup Cost": 220.77,
+                              "Total Cost": 220.78,
+                              "Plan Rows": 1,
+                              "Plan Width": 32,
+                              "Actual Startup Time": 0.347,
+                              "Actual Total Time": 0.347,
+                              "Actual Rows": 1,
+                              "Actual Loops": 1000,
+                              "Plans": [
+                                {
+                                  "Node Type": "CTE Scan",
+                                  "Parent Relationship": "Outer",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "CTE Name": "c_transform",
+                                  "Alias": "m_sub",
+                                  "Startup Cost": 0.0,
+                                  "Total Cost": 220.73,
+                                  "Plan Rows": 15,
+                                  "Plan Width": 32,
+                                  "Actual Startup Time": 0.172,
+                                  "Actual Total Time": 0.345,
+                                  "Actual Rows": 20,
+                                  "Actual Loops": 1000,
+                                  "Filter": "((ts <= aod.as_of_date) AND (pid = c_transform.pid))",
+                                  "Rows Removed by Filter": 19980
+                                }
+                              ]
+                            },
+                            {
+                              "Node Type": "CTE Scan",
+                              "Parent Relationship": "Inner",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "CTE Name": "c_transform",
+                              "Alias": "sub",
+                              "Startup Cost": 0.0,
+                              "Total Cost": 220.73,
+                              "Plan Rows": 15,
+                              "Plan Width": 32,
+                              "Actual Startup Time": 0.176,
+                              "Actual Total Time": 0.353,
+                              "Actual Rows": 20,
+                              "Actual Loops": 1000,
+                              "Filter": "((ts <= aod.as_of_date) AND (pid = c_transform.pid))",
+                              "Rows Removed by Filter": 19980
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Node Type": "Hash",
+                  "Parent Relationship": "Inner",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 35.5,
+                  "Total Cost": 35.5,
+                  "Plan Rows": 2550,
+                  "Plan Width": 4,
+                  "Actual Startup Time": 120.253,
+                  "Actual Total Time": 120.253,
+                  "Actual Rows": 1000,
+                  "Actual Loops": 1,
+                  "Hash Buckets": 4096,
+                  "Original Hash Buckets": 4096,
+                  "Hash Batches": 1,
+                  "Original Hash Batches": 1,
+                  "Peak Memory Usage": 68,
+                  "Plans": [
+                    {
+                      "Node Type": "Seq Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Relation Name": "p",
+                      "Alias": "p",
+                      "Startup Cost": 0.0,
+                      "Total Cost": 35.5,
+                      "Plan Rows": 2550,
+                      "Plan Width": 4,
+                      "Actual Startup Time": 0.004,
+                      "Actual Total Time": 0.042,
+                      "Actual Rows": 1000,
+                      "Actual Loops": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Planning Time": 0.288,
+    "Triggers": [],
+    "JIT": {
+      "Functions": 32,
+      "Options": {
+        "Inlining": true,
+        "Optimization": true,
+        "Expressions": true,
+        "Deforming": true
+      },
+      "Timing": {
+        "Generation": 0.494,
+        "Inlining": 37.711,
+        "Optimization": 44.853,
+        "Emission": 37.631,
+        "Total": 120.69
+      }
+    },
+    "Execution Time": 839.163
+  }
+]
