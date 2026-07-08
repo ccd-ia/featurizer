@@ -1,8 +1,20 @@
 # 0009 — Correlated-subquery aggregators do not scale to full-cohort materialization
 
-**Status:** Accepted (decision: spike-and-defer the remediation)
+**Status:** Accepted (decision: spike-and-defer the remediation) — **follow-up RESOLVED 2026-07-08**
 **Date:** 2026-07-06
 **Deciders:** Adolfo De Unánue
+
+> **Resolution (2026-07-08).** The deferred remediation is done. The spike
+> ([ADR-0010](0010-set-based-preaggregation.md)) chose set-based pre-aggregation
+> over the indexed-temp-table alternative and it was implemented across all 27
+> migratable subquery aggregators (plan:
+> `specs/correlated-subquery-aggregator-scaling.html`). The headline number is
+> fixed: the synthetic 10k-parent all-aggregator matrix went from **>300 s
+> (censored)** to **2.6 s**, with output names and values proven identical to
+> v0.5.2 by a golden-value harness. The "bounded cohorts" guidance below applies
+> now only to the special-config families still on the correlated path
+> (predicate / drift / spatial); the migrated advanced tier scales like the
+> default tier. See ADR-0010 for the decision and the before/after numbers.
 
 ## Context
 

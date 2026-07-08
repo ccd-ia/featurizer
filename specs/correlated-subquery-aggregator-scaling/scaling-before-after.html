@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>Correlated-subquery scaling — before/after (10k)</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1a2332}
+h1{font-size:1.4rem}table{border-collapse:collapse;width:100%;font-size:.85rem}
+th,td{border:1px solid #e2e4e0;padding:.4rem .55rem;text-align:left}th{background:#ccfbf1;color:#0f766e}
+td.n{text-align:right;font-family:monospace}td:first-child{font-family:monospace}
+.hl{background:#dcfce7}</style></head><body>
+<h1>Set-based pre-aggregation — 10k cohort, before vs after</h1>
+<p>Synthetic 10 000 parents × ~20 children. Before = correlated subquery (v0.5.2);
+after = set-based companion CTE (ADR-0010). Per-run timeout 300 s.</p>
+<table><tr><th>config</th><th>before (correlated)</th><th>after (set-based)</th></tr>
+<tr><td>narrow (control)</td><td class="n">0.264 s</td><td class="n">0.432 s</td></tr>
+<tr><td>all-agg</td><td class="n">>300 s (censored)</td><td class="n">2.568 s</td></tr>
+<tr><td>median_absolute_deviation</td><td class="n">94.977 s</td><td class="n">0.303 s</td></tr>
+<tr><td>trimmed_mean_10</td><td class="n">94.618 s</td><td class="n">0.268 s</td></tr>
+<tr><td>mean_deviation</td><td class="n">93.856 s</td><td class="n">0.241 s</td></tr>
+<tr><td>theil</td><td class="n">70.166 s</td><td class="n">0.45 s</td></tr>
+<tr><td>gap_stddev</td><td class="n">66.189 s</td><td class="n">0.29 s</td></tr>
+<tr><td>gap_min</td><td class="n">64.493 s</td><td class="n">0.274 s</td></tr>
+<tr><td>acf_1</td><td class="n">63.354 s</td><td class="n">0.279 s</td></tr>
+<tr><td>time_in_current_state</td><td class="n">63.058 s</td><td class="n">0.237 s</td></tr>
+<tr><td>rework_count</td><td class="n">62.427 s</td><td class="n">0.211 s</td></tr>
+<tr><td>recurrence_interval</td><td class="n">62.386 s</td><td class="n">0.252 s</td></tr>
+<tr><td>gap_mean</td><td class="n">62.346 s</td><td class="n">0.294 s</td></tr>
+<tr><td>state_volatility</td><td class="n">61.959 s</td><td class="n">0.225 s</td></tr>
+<tr><td>burstiness</td><td class="n">61.947 s</td><td class="n">0.305 s</td></tr>
+<tr><td>gap_max</td><td class="n">61.655 s</td><td class="n">0.291 s</td></tr>
+<tr><td>gap_cv</td><td class="n">61.654 s</td><td class="n">0.297 s</td></tr>
+<tr><td>gini</td><td class="n">49.422 s</td><td class="n">0.27 s</td></tr>
+<tr><td>longest_streak</td><td class="n">48.842 s</td><td class="n">0.378 s</td></tr>
+<tr><td>variance_ratio</td><td class="n">48.788 s</td><td class="n">0.242 s</td></tr>
+<tr><td>hhi</td><td class="n">48.452 s</td><td class="n">0.23 s</td></tr>
+<tr><td>cosinor_amplitude_weekly</td><td class="n">48.289 s</td><td class="n">0.316 s</td></tr>
+<tr><td>ngram_3_freq</td><td class="n">48.198 s</td><td class="n">0.285 s</td></tr>
+<tr><td>ngram_2_freq</td><td class="n">48.105 s</td><td class="n">0.256 s</td></tr>
+<tr><td>markov_conditional_entropy</td><td class="n">47.878 s</td><td class="n">0.339 s</td></tr>
+<tr><td>transition_matrix_summary</td><td class="n">47.563 s</td><td class="n">0.275 s</td></tr>
+<tr><td>entropy</td><td class="n">46.931 s</td><td class="n">0.255 s</td></tr>
+<tr><td>max_transition_prob</td><td class="n">46.766 s</td><td class="n">0.283 s</td></tr>
+<tr><td>sequence_entropy</td><td class="n">46.436 s</td><td class="n">0.292 s</td></tr></table>
+<p><strong>all-agg matrix: &gt;300 s (censored) → 2.6 s.</strong> Worst families
+improved ~150–390×; the default/narrow control tier is unchanged. Values and
+output column names identical to v0.5.2 (golden-value harness).</p>
+</body></html>

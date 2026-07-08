@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>Subquery aggregator scaling — after-10k</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:820px;margin:2rem auto;padding:0 1rem;color:#1a2332}
+table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{border:1px solid #e2e4e0;padding:.35rem .5rem;text-align:left}
+th{background:#ccfbf1;color:#0f766e}td:first-child{font-family:monospace}h1{font-size:1.4rem}</style></head>
+<body><h1>Subquery aggregator scaling — after-10k</h1>
+<p>Wall-clock per config at each parent-count scale (~20 children/parent). Timeout 300.0s.</p>
+<table><tr><th>config</th><th>10k</th></tr>
+<tr><td>narrow (control)</td><td>0.432s</td></tr>
+<tr><td><strong>all-agg</strong></td><td>2.568s</td></tr>
+<tr><td>acf_1</td><td>0.279s</td></tr>
+<tr><td>burstiness</td><td>0.305s</td></tr>
+<tr><td>cosinor_amplitude_weekly</td><td>0.316s</td></tr>
+<tr><td>entropy</td><td>0.255s</td></tr>
+<tr><td>gap_cv</td><td>0.297s</td></tr>
+<tr><td>gap_max</td><td>0.291s</td></tr>
+<tr><td>gap_mean</td><td>0.294s</td></tr>
+<tr><td>gap_min</td><td>0.274s</td></tr>
+<tr><td>gap_stddev</td><td>0.29s</td></tr>
+<tr><td>gini</td><td>0.27s</td></tr>
+<tr><td>hhi</td><td>0.23s</td></tr>
+<tr><td>longest_streak</td><td>0.378s</td></tr>
+<tr><td>markov_conditional_entropy</td><td>0.339s</td></tr>
+<tr><td>max_transition_prob</td><td>0.283s</td></tr>
+<tr><td>mean_deviation</td><td>0.241s</td></tr>
+<tr><td>median_absolute_deviation</td><td>0.303s</td></tr>
+<tr><td>ngram_2_freq</td><td>0.256s</td></tr>
+<tr><td>ngram_3_freq</td><td>0.285s</td></tr>
+<tr><td>recurrence_interval</td><td>0.252s</td></tr>
+<tr><td>rework_count</td><td>0.211s</td></tr>
+<tr><td>sequence_entropy</td><td>0.292s</td></tr>
+<tr><td>state_volatility</td><td>0.225s</td></tr>
+<tr><td>theil</td><td>0.45s</td></tr>
+<tr><td>time_in_current_state</td><td>0.237s</td></tr>
+<tr><td>transition_matrix_summary</td><td>0.275s</td></tr>
+<tr><td>trimmed_mean_10</td><td>0.268s</td></tr>
+<tr><td>variance_ratio</td><td>0.242s</td></tr>
+</table></body></html>

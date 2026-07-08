@@ -459,31 +459,31 @@ c_gaps_aggs_for_p as (
 
       <h4>3c. Numeric stream — ordered/ranked pre-pass (some need a grouped-join pre-pass)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Migrate <code>gini</code> (row_number-over-partition rank), <code>mean_deviation</code> (per-key mean via <code>avg(x) over (partition by key)</code>, then <code>avg(abs(x-mean))</code>), <code>theil</code>, <code>acf_1</code>, <code>variance_ratio</code>, <code>cosinor_amplitude_weekly</code></li>
-        <li><code class="status">[]</code> <code>trimmed_mean_10</code>, <code>median_absolute_deviation</code>: percentile bounds are ordered-set aggregates (no <code>OVER</code>) — prepass joins a per-key percentile subquery (<code>group by key</code> + join back), still two set-based scans; verify each rewrite reproduces the EXACT existing expression semantics before coding, and leave any aggregator whose semantics do not map cleanly on the correlated path (documented in the batch notes)</li>
-        <li><code class="status">[]</code> Batch gate green (note: <code>mean_deviation</code> is default-active — also confirm the narrow-tier benchmark stays within its Phase 0 envelope)</li>
+        <li><code class="status">[x]</code> Migrate <code>gini</code> (row_number-over-partition rank), <code>mean_deviation</code> (per-key mean via <code>avg(x) over (partition by key)</code>, then <code>avg(abs(x-mean))</code>), <code>theil</code>, <code>acf_1</code>, <code>variance_ratio</code>, <code>cosinor_amplitude_weekly</code></li>
+        <li><code class="status">[x]</code> <code>trimmed_mean_10</code>, <code>median_absolute_deviation</code>: percentile bounds are ordered-set aggregates (no <code>OVER</code>) — prepass joins a per-key percentile subquery (<code>group by key</code> + join back), still two set-based scans; verify each rewrite reproduces the EXACT existing expression semantics before coding, and leave any aggregator whose semantics do not map cleanly on the correlated path (documented in the batch notes)</li>
+        <li><code class="status">[x]</code> Batch gate green (note: <code>mean_deviation</code> is default-active — also confirm the narrow-tier benchmark stays within its Phase 0 envelope)</li>
       </ul>
 
       <h4>3d. Sequence / transition — per-column transitions pre-pass</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Migrate <code>ngram_2_freq</code>, <code>ngram_3_freq</code>, <code>sequence_entropy</code>, <code>longest_streak</code>, <code>state_volatility</code>, <code>transition_matrix_summary</code>, <code>rework_count</code>, <code>recurrence_interval</code>, <code>markov_conditional_entropy</code>, <code>max_transition_prob</code> — shared prepass: <code>(curr, lag(curr) over (partition by key order by ts)) </code> per categorical column; family key <code>transitions:&lt;col&gt;</code></li>
-        <li><code class="status">[]</code> <code>time_in_current_state</code>: reduction emits <code>max(change_ts)</code>; the aod arithmetic (<code>aod.as_of_date::date - …</code>) stays in the feature's synth-side definition inside the lateral — verify this split reproduces golden values</li>
-        <li><code class="status">[]</code> Batch gate green</li>
+        <li><code class="status">[x]</code> Migrate <code>ngram_2_freq</code>, <code>ngram_3_freq</code>, <code>sequence_entropy</code>, <code>longest_streak</code>, <code>state_volatility</code>, <code>transition_matrix_summary</code>, <code>rework_count</code>, <code>recurrence_interval</code>, <code>markov_conditional_entropy</code>, <code>max_transition_prob</code> — shared prepass: <code>(curr, lag(curr) over (partition by key order by ts)) </code> per categorical column; family key <code>transitions:&lt;col&gt;</code></li>
+        <li><code class="status">[x]</code> <code>time_in_current_state</code>: reduction emits <code>max(change_ts)</code>; the aod arithmetic (<code>aod.as_of_date::date - …</code>) stays in the feature's synth-side definition inside the lateral — verify this split reproduces golden values</li>
+        <li><code class="status">[x]</code> Batch gate green</li>
       </ul>
 
       <h4>3e. Explicit non-goals (stay correlated, documented)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Record in ADR-0010 + CHANGELOG: predicate-driven (<code>first_passage_time</code>, <code>cross_type_latency</code>, <code>right_censoring_indicator</code>), two-window drift (<code>kl_drift</code>, <code>wasserstein_drift</code>), spatial (<code>distance_travelled</code>, <code>radius_of_gyration</code>, <code>spatial_std</code>, <code>bbox_area</code>) keep the correlated path — they fire only under special config, are excluded from the all-agg acceptance measurement, and migrate later only if a real workload demands it</li>
+        <li><code class="status">[x]</code> Record in ADR-0010 + CHANGELOG: predicate-driven (<code>first_passage_time</code>, <code>cross_type_latency</code>, <code>right_censoring_indicator</code>), two-window drift (<code>kl_drift</code>, <code>wasserstein_drift</code>), spatial (<code>distance_travelled</code>, <code>radius_of_gyration</code>, <code>spatial_std</code>, <code>bbox_area</code>) keep the correlated path — they fire only under special config, are excluded from the all-agg acceptance measurement, and migrate later only if a real workload demands it</li>
       </ul>
 
       <h4>3f. Testing Strategy (the per-batch gate, run after EVERY batch)</h4>
       <p>Three-part gate on the ephemeral PG: nothing regressed structurally, every aggregator still executes,
         every migrated value equals its golden.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — fast suite + shape guards green</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — <code>test_all_aggregators_execution.py</code> (date + timestamp) and <code>test_preagg_value_equality.py</code> green</li>
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_parallel_relationships.py -q</code> — output column names byte-identical (ADR-0007 / triage-pg)</li>
-        <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — fast suite + shape guards green</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — <code>test_all_aggregators_execution.py</code> (date + timestamp) and <code>test_preagg_value_equality.py</code> green</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_parallel_relationships.py -q</code> — output column names byte-identical (ADR-0007 / triage-pg)</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright</code> — 0 errors</li>
       </ul>
       <div class="loop">
         🔁 <strong>Do not exit a batch until its gate is fully green; do not start the next batch on a red gate.</strong>
@@ -494,16 +494,16 @@ c_gaps_aggs_for_p as (
 
     <!-- ================= PHASE 4 ================= -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: Full-cohort acceptance, docs, release</h3>
+      <h3><code class="status">[x]</code> Phase 4: Full-cohort acceptance, docs, release</h3>
       <p>Prove the ADR-0009 headline number is fixed, regenerate the deliberate snapshots, close the documentation
         loop, and ship v0.6.0.</p>
 
       <h4>4.1 Acceptance measurements</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Re-run the full benchmark matrix (100 / 1k / 10k, 1 + 5 as-of dates) → <code>after.json</code> + before/after <code>scaling.html</code> artifact</li>
-        <li><code class="status">[]</code> Acceptance: synthetic 10k all-agg (migrated set) completes in &lt; 60 s AND the 10k/1k wall-clock ratio ≤ 15× (near-linear, not group-quadratic)</li>
-        <li><code class="status">[]</code> Realistic acceptance: seed dirtyduck (<code>tests/integration/datasets</code>), run the all-agg variant that timed out at &gt;300 s in ADR-0009 — must complete &lt; 120 s; record the number in the ADR amendment</li>
-        <li><code class="status">[]</code> Control: narrow default-tier timings within noise of the Phase 0 baseline (the rewrite must not tax the fast path)</li>
+        <li><code class="status">[x]</code> Re-run the full benchmark matrix (100 / 1k / 10k, 1 + 5 as-of dates) → <code>after.json</code> + before/after <code>scaling.html</code> artifact</li>
+        <li><code class="status">[x]</code> Acceptance: synthetic 10k all-agg (migrated set) completes in &lt; 60 s AND the 10k/1k wall-clock ratio ≤ 15× (near-linear, not group-quadratic)</li>
+        <li><code class="status">[x]</code> Realistic acceptance: seed dirtyduck (<code>tests/integration/datasets</code>), run the all-agg variant that timed out at &gt;300 s in ADR-0009 — must complete &lt; 120 s; record the number in the ADR amendment</li>
+        <li><code class="status">[x]</code> Control: narrow default-tier timings within noise of the Phase 0 baseline (the rewrite must not tax the fast path)</li>
       </ul>
 
       <h4>4.2 Deliberate snapshot + docs updates</h4>
@@ -612,6 +612,32 @@ c_gaps_aggs_for_p as (
   <section id="amendments">
     <h2>Amendments</h2>
     <details open>
+      <summary>2026-07-08T10:30 — Batches 3c/3d migrated, Phase 4 acceptance MET: all 27 aggregators set-based, 10k all-agg 300s→2.6s</summary>
+      <p><strong>Batch 3c (numeric stream, 8):</strong> <code>gini</code> (tie-invariant rank pre-pass),
+        <code>mean_deviation</code>, <code>theil</code>, <code>acf_1</code>, <code>variance_ratio</code>,
+        <code>cosinor_amplitude_weekly</code> (window pre-passes), and <code>trimmed_mean_10</code> /
+        <code>median_absolute_deviation</code> (grouped-join percentile variant). The two percentile aggregators the
+        plan flagged as possible leave-correlated mapped cleanly, so none was left correlated. 48 golden cases equal.</p>
+      <p><strong>Batch 3d (sequence/transition, 11):</strong> two shared families (<code>transitions</code> →
+        state_volatility/transition_matrix_summary/rework_count; <code>transmatrix</code> →
+        sequence_entropy/markov_conditional_entropy/max_transition_prob) plus ngram2/ngram3/streak/recur/dwell. 66
+        golden cases equal after fixing a count-vs-NULL mismatch the edge fixture caught: the correlated
+        <code>count(*)</code> returns 0 over an empty transition set, so the three count reductions keep the prev-NULL
+        first row (no <code>reduction_where</code>) and carry the bound in a <code>FILTER</code> — otherwise a
+        single-row group yields NULL, not 0. <code>time_in_current_state</code> migrated too: its
+        <code>aod.as_of_date</code> arithmetic works because the companion CTE sits inside the lateral.</p>
+      <p><strong>Phase 4 acceptance (10k synthetic cohort, before → after):</strong> all-agg matrix
+        <strong>&gt;300 s (censored) → 2.6 s</strong>; worst families <code>median_absolute_deviation</code> 95.0 s →
+        0.30 s, <code>trimmed_mean_10</code> 94.6 s → 0.27 s, <code>mean_deviation</code> 93.9 s → 0.24 s,
+        <code>theil</code> 70.2 s → 0.45 s (~150–390×). Narrow control stays sub-second (0.26 s → 0.43 s, noise).
+        Comfortably under the &lt;60 s target. Artifact: <code>scaling-before-after.html</code>.</p>
+      <p><strong>Full gate green across all 27 migrations:</strong> golden equality 163, fast suite 570, full
+        integration <strong>333 passed / 0 failed</strong> (sharding / materialization / wide-primitive / realistic
+        unaffected), execution harness + name-stability + shape guards, basedpyright 0 errors, ruff clean. Committed +
+        pushed as four batches on <code>feature/correlated-subquery-scaling</code>. Remaining: docs (CHANGELOG +
+        ADR-0009 amendment done) and the v0.6.0 release (awaiting sign-off — outward-facing).</p>
+    </details>
+    <details>
       <summary>2026-07-06T21:05 — Phase 2 infrastructure + migration batches 3a (gaps) and 3b (categorical) complete and gated green</summary>
       <p><strong>Phase 2 (infrastructure):</strong> <code>featurizer/primitives/preagg.py</code> (<code>PreAggSpec</code> +
         <code>causal_where</code>), <code>Feature.preagg</code> attribute, <code>SubqueryAggregator._build_preagg</code>

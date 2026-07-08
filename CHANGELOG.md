@@ -6,6 +6,54 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+Set-based pre-aggregation for the correlated-subquery aggregator tier — the
+performance follow-up ADR-0009 deferred. Removes the full-cohort scaling cliff
+while preserving output column names (ADR-0007) and values exactly.
+
+### Added
+
+- **Set-based pre-aggregation path (ADR-0010).** Each of the 27 migratable
+  subquery aggregators now emits one *companion CTE* — a single window (or
+  grouped-join) pre-pass over the child stream reduced by a plain `GROUP BY` —
+  instead of a scalar correlated subquery evaluated once per target row. Cost
+  drops from `O(target_rows × subqueries × child_scan)` to one `O(N log N)` pass
+  per family. Opt-in per aggregator via `SubqueryAggregator._build_preagg`; the
+  companion CTE reuses the existing join / synth-pruning / sharding /
+  materialization machinery unchanged.
+- **Golden-value regression harness.**
+  `tests/integration/test_preagg_value_equality.py` +
+  `tests/fixtures/preagg_golden_values.json` freeze the v0.5.2 correlated values
+  (162 cases) and assert every migrated aggregator reproduces them exactly.
+  `tests/test_preagg_shape.py` adds DB-free companion-CTE shape guards. A
+  `benchmarks/` package (outside the wheel) measures the scaling curve.
+
+### Changed
+
+- **Advanced-aggregator full-cohort materialization is now practical.** Measured
+  on a synthetic 10k-parent cohort, the all-aggregator matrix went from **>300 s
+  (timeout, censored)** to **2.6 s**; the worst individual families improved
+  ~150–390× (`mean_deviation` 93.9 s → 0.24 s, `trimmed_mean_10` 94.6 s →
+  0.27 s, `theil` 70.2 s → 0.45 s). The default-active tier is unchanged. Output
+  column names and values are byte-/value-identical to v0.5.2 (proven by the
+  golden harness + the ADR-0007 name-stability snapshot).
+- Families migrated: gap (`gap_mean/stddev/min/max`, `gap_cv`, `burstiness`),
+  categorical (`entropy`, `hhi`), numeric-stream (`gini`, `mean_deviation`,
+  `theil`, `acf_1`, `variance_ratio`, `cosinor_amplitude_weekly`,
+  `trimmed_mean_10`, `median_absolute_deviation`), and sequence/transition
+  (`ngram_2_freq`, `ngram_3_freq`, `sequence_entropy`, `longest_streak`,
+  `state_volatility`, `transition_matrix_summary`, `rework_count`,
+  `recurrence_interval`, `markov_conditional_entropy`, `max_transition_prob`,
+  `time_in_current_state`).
+
+### Not migrated (intentional)
+
+- The special-config families keep the correlated path: predicate-driven
+  (`first_passage_time`, `cross_type_latency`, `right_censoring_indicator`),
+  two-window drift (`kl_drift`, `wasserstein_drift`), and spatial
+  (`distance_travelled`, `radius_of_gyration`, `spatial_std`, `bbox_area`). They
+  fire only under special config and are out of the full-cohort scope; they
+  migrate later only if a real workload demands it.
+
 ## [0.5.2] - 2026-07-06
 
 Advanced-aggregator hardening: full-registry execution coverage (closing the
