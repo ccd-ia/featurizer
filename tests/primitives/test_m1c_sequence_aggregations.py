@@ -41,6 +41,13 @@ def _feat(child, name):
     return next(f for f in child.features if f.name == name)
 
 
+def _full_sql(result):
+    """Definition plus, for a migrated (pre-agg) aggregator, its shared pre-pass
+    — where the ordering / transition-matrix / causal-bound SQL now lives."""
+    prepass = result.preagg.prepass_sql if result.preagg is not None else ""
+    return f"{result.definition} {prepass}"
+
+
 @pytest.mark.parametrize("name", SEQUENCE + ["first_passage_time"])
 def test_registered(name):
     assert name in list_aggregations()
@@ -52,7 +59,7 @@ def test_sequence_fires_and_is_causally_bounded(name):
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feat(child, "plain_cat"), relationship=rel)
     assert result is not None and result.definition is not None
-    assert "<= aod.as_of_date" in result.definition
+    assert "<= aod.as_of_date" in _full_sql(result)
 
 
 @pytest.mark.parametrize("name", SEQUENCE)
@@ -63,9 +70,10 @@ def test_sequence_interval_variant_uses_daterange(name):
         parent, child, _feat(child, "plain_cat"), interval="P1W", relationship=rel
     )
     assert result is not None
-    assert "daterange" in result.definition and "P1W" in result.definition
+    full = _full_sql(result)
+    assert "daterange" in full and "P1W" in full
     # Bug #7 guard: the event column inside the window is date-cast.
-    assert "@> sub.ts::date" in result.definition
+    assert "@>" in full and "ts::date" in full
 
 
 @pytest.mark.parametrize("name", SEQUENCE)
@@ -94,8 +102,13 @@ def test_recurrence_interval_partitions_by_state():
     parent, child, rel = _setup()
     agg = get_aggregations(["recurrence_interval"])["recurrence_interval"]
     result = agg(parent, child, _feat(child, "plain_cat"), relationship=rel)
-    assert "PARTITION BY sub.plain_cat ORDER BY sub.ts" in result.definition
-    assert "AVG(gap)" in result.definition
+    # Set-based (ADR-0010): the same-state LAG partitions by (child key, value).
+    full = _full_sql(result).lower()
+    assert (
+        "partition by events_transform.customer_id, events_transform.plain_cat" in full
+    )
+    assert "order by events_transform.ts" in full
+    assert "avg(gap)" in result.definition.lower()
 
 
 def test_markov_conditional_entropy_uses_conditional_probability():
@@ -103,9 +116,11 @@ def test_markov_conditional_entropy_uses_conditional_probability():
     agg = get_aggregations(["markov_conditional_entropy"])["markov_conditional_entropy"]
     result = agg(parent, child, _feat(child, "plain_cat"), relationship=rel)
     # joint weight p(i,j) times log of the *conditional* p(j|i)
-    assert "freq::float / total" in result.definition
-    assert "LN(freq::float / row_total)" in result.definition
-    assert "PARTITION BY t.prev" in result.definition
+    full = _full_sql(result)
+    assert "freq::float / total" in full
+    assert "LN(freq::float / row_total)" in full
+    # row-conditional total is the per-(key, prev) partition in the pre-pass
+    assert "partition by customer_id, prev" in full.lower()
 
 
 def test_max_transition_prob_reduces_conditional_matrix():

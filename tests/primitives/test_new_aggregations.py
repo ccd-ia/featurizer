@@ -731,13 +731,13 @@ class TestNgramFrequency:
         result = agg(parent, child, feature, relationship=rel)
         assert isinstance(result, Feature)
 
-    def test_ngram_2_definition_contains_lag(self):
+    def test_ngram_2_sql_contains_lag(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = _get_feature(child, "category")
         agg = get_aggregations(["ngram_2_freq"])["ngram_2_freq"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "LAG" in result.definition
+        assert "lag" in _feature_sql(result).lower()
 
     def test_ngram_3_returns_feature(self):
         parent, child = _make_parent_entity(), _make_child_entity()
@@ -774,13 +774,16 @@ class TestSequenceEntropy:
         result = agg(parent, child, feature, relationship=rel)
         assert isinstance(result, Feature)
 
-    def test_definition_contains_transitions(self):
+    def test_sql_builds_transition_matrix(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = _get_feature(child, "category")
         agg = get_aggregations(["sequence_entropy"])["sequence_entropy"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "transitions" in result.definition
+        # Set-based (ADR-0010): reduces the (prev, curr) transition-frequency
+        # matrix built by the shared pre-pass.
+        full = _feature_sql(result).lower()
+        assert "lag" in full and "prev" in full and "curr" in full
 
 
 class TestLongestStreak:

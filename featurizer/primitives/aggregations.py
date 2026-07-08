@@ -1039,6 +1039,35 @@ class Gini(SubqueryAggregator):
 gini = Gini()
 
 
+def _transitions_inner(feature, child, relationship, interval):
+    """Inner ``(child_key, curr, prev)`` transition rows for a categorical
+    sequence, ordered within each child key (ADR-0010 set-based pre-pass)."""
+    ck = relationship.child_key
+    ct = f"{child.alias}_transform"
+    col = feature.name
+    ts = feature.entity.temporal_ix.name
+    where = _num_causal_where(feature, child, interval)
+    return (
+        f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, "
+        f"lag({ct}.{col}) over (partition by {ct}.{ck} order by {ct}.{ts}) as prev "
+        f"from {ct} {where}"
+    )
+
+
+def _transmatrix_prepass(feature, child, relationship, interval):
+    """Grouped (prev, curr) transition-frequency matrix per child key, with the
+    joint total and the row-conditional total — shared by the joint/conditional
+    entropy and max-transition-probability reductions."""
+    ck = relationship.child_key
+    inner = _transitions_inner(feature, child, relationship, interval)
+    return (
+        f"select {ck}, prev, curr, count(*) as freq, "
+        f"sum(count(*)) over (partition by {ck}) as total, "
+        f"sum(count(*)) over (partition by {ck}, prev) as row_total "
+        f"from ({inner}) t where prev is not null group by {ck}, prev, curr"
+    )
+
+
 class NgramFrequency(SubqueryAggregator):
     """Most common N-gram frequency for sequence features.
 
@@ -1055,6 +1084,30 @@ class NgramFrequency(SubqueryAggregator):
             return None
         return super().__call__(
             parent, child, feature, interval=interval, relationship=relationship
+        )
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        lag_cols = ", ".join(
+            f"lag({ct}.{col}, {i}) over "
+            f"(partition by {ct}.{ck} order by {ct}.{ts}) as lag_{i}"
+            for i in range(1, self.n)
+        )
+        lag_names = ", ".join(f"lag_{i}" for i in range(1, self.n))
+        inner = f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, {lag_cols} from {ct} {where}"
+        prepass = (
+            f"select {ck}, count(*) as cnt from ({inner}) ngrams "
+            f"where lag_1 is not null group by {ck}, curr, {lag_names}"
+        )
+        return PreAggSpec(
+            family_key=f"ngram{self.n}:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="MAX(cnt)",
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
@@ -1099,6 +1152,14 @@ class SequenceEntropy(SubqueryAggregator):
             parent, child, feature, interval=interval, relationship=relationship
         )
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transmatrix:{feature.name}",
+            interval=interval,
+            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
+            reduction="-SUM((freq::float / total) * LN(freq::float / total))",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
@@ -1130,6 +1191,33 @@ class LongestStreak(SubqueryAggregator):
             return None
         return super().__call__(
             parent, child, feature, interval=interval, relationship=relationship
+        )
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        # Consecutive-run identity: rows of the same value in one run share a
+        # constant (global rank - per-value rank). Group by (value, run) to get
+        # run lengths, then MAX. Both ranks partitioned by child key.
+        inner = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"row_number() over (partition by {ct}.{ck} order by {ct}.{ts}) - "
+            f"row_number() over "
+            f"(partition by {ct}.{ck}, {ct}.{col} order by {ct}.{ts}) as grp "
+            f"from {ct} {where}"
+        )
+        prepass = (
+            f"select {ck}, count(*) as streak_len from ({inner}) streaks "
+            f"group by {ck}, val, grp"
+        )
+        return PreAggSpec(
+            family_key=f"streak:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="MAX(streak_len)",
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
@@ -1333,6 +1421,20 @@ class StateVolatility(_SequenceReduction):
     def __init__(self):
         super().__init__(name="state_volatility")
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transitions:{feature.name}",
+            interval=interval,
+            prepass_sql=_transitions_inner(feature, child, relationship, interval),
+            # No reduction_where: keep the prev-NULL first row so a group with no
+            # transitions still yields a row and COUNT returns 0 (not NULL, which
+            # a filtered-empty group would give). The FILTER carries the bound.
+            reduction=(
+                "count(*) FILTER (WHERE prev IS DISTINCT FROM curr "
+                "AND prev IS NOT NULL)"
+            ),
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         transitions = self._transitions(feature, child, relationship, interval)
         return (
@@ -1349,6 +1451,14 @@ class TransitionMatrixSummary(_SequenceReduction):
 
     def __init__(self):
         super().__init__(name="transition_matrix_summary")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transitions:{feature.name}",
+            interval=interval,
+            prepass_sql=_transitions_inner(feature, child, relationship, interval),
+            reduction="count(DISTINCT (prev, curr)) FILTER (WHERE prev IS NOT NULL)",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         transitions = self._transitions(feature, child, relationship, interval)
@@ -1367,6 +1477,15 @@ class ReworkCount(_SequenceReduction):
     def __init__(self):
         super().__init__(name="rework_count")
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transitions:{feature.name}",
+            interval=interval,
+            prepass_sql=_transitions_inner(feature, child, relationship, interval),
+            # prev = curr is already false when prev is NULL, so no extra guard.
+            reduction="count(*) FILTER (WHERE prev = curr)",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         transitions = self._transitions(feature, child, relationship, interval)
         return f"(SELECT count(*) FROM ({transitions}) t WHERE t.prev = t.curr)"
@@ -1380,6 +1499,31 @@ class TimeInCurrentState(_SequenceReduction):
 
     def __init__(self):
         super().__init__(name="time_in_current_state")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        # The companion CTE sits inside the lateral, so aod.as_of_date is in
+        # scope for the reduction (as it is for every causal bound). Days since
+        # the most recent state change; the first row (prev NULL) counts as a
+        # change, matching the correlated ``prev IS DISTINCT FROM curr``.
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{ts} as ts, {ct}.{col} as curr, "
+            f"lag({ct}.{col}) over (partition by {ct}.{ck} order by {ct}.{ts}) as prev "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"dwell:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction=(
+                "aod.as_of_date::date - "
+                "(MAX(ts) FILTER (WHERE prev IS DISTINCT FROM curr))::date"
+            ),
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1411,6 +1555,27 @@ class RecurrenceInterval(_SequenceReduction):
 
     def __init__(self):
         super().__init__(name="recurrence_interval")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        # LAG partitioned by (child key, value): days between consecutive
+        # occurrences of the SAME state (not any two events, unlike gap_mean).
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{ts}::date - lag({ct}.{ts}::date) over "
+            f"(partition by {ct}.{ck}, {ct}.{col} order by {ct}.{ts}) as gap "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"recur:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="AVG(gap)",
+            reduction_where="gap is not null",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1461,6 +1626,14 @@ class MarkovConditionalEntropy(_TransitionMatrixReduction):
     def __init__(self):
         super().__init__(name="markov_conditional_entropy")
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transmatrix:{feature.name}",
+            interval=interval,
+            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
+            reduction="-SUM((freq::float / total) * LN(freq::float / row_total))",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         matrix = self._matrix(feature, child, relationship, interval)
         return (
@@ -1481,6 +1654,14 @@ class MaxTransitionProbability(_TransitionMatrixReduction):
 
     def __init__(self):
         super().__init__(name="max_transition_prob")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transmatrix:{feature.name}",
+            interval=interval,
+            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
+            reduction="MAX(freq::float / row_total)",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         matrix = self._matrix(feature, child, relationship, interval)
