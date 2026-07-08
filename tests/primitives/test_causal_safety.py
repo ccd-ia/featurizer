@@ -1,15 +1,28 @@
 """Causal-safety regression tests for SubqueryAggregators.
 
-A correlated subquery reads `<child>_transform` directly, so it must carry its
+A subquery aggregator reads `<child>_transform` directly, so it must carry its
 own backward bound (`<= aod.as_of_date`, or the daterange window) — the outer
-aggregation WHERE does not reach into the subquery. These tests lock that in for
-every subquery aggregator (the prior leak was the missing non-interval bound).
+aggregation WHERE does not reach into it. These tests lock that in for every
+subquery aggregator (the prior leak was the missing non-interval bound).
+
+Set-based (pre-agg) aggregators (ADR-0010) carry the bound in the shared window
+pre-pass rather than the correlated definition, so the check looks at whichever
+SQL fragment carries the causal cut for that aggregator.
 """
 
 import pytest
 
 from featurizer.primitives.abstractions import Entity, Relationship
 from featurizer.primitives.utils import get_aggregations
+
+
+def _causal_sql(result):
+    """The fragment that must carry the causal bound: the pre-pass for a
+    set-based aggregator, else the correlated definition."""
+    if result.preagg is not None:
+        return result.preagg.prepass_sql
+    return result.definition
+
 
 SUBQUERY_AGGS = [
     ("gap_mean", "temporal"),
@@ -57,7 +70,7 @@ def test_subquery_bounded_without_interval(name, kind):
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), relationship=rel)
     assert result is not None and result.definition is not None
-    assert "<= aod.as_of_date" in result.definition
+    assert "<= aod.as_of_date" in _causal_sql(result)
 
 
 @pytest.mark.parametrize("name,kind", SUBQUERY_AGGS)
@@ -67,5 +80,6 @@ def test_subquery_bounded_with_interval(name, kind):
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), interval="P1W", relationship=rel)
     assert result is not None and result.definition is not None
-    assert "daterange" in result.definition
-    assert "P1W" in result.definition
+    causal_sql = _causal_sql(result)
+    assert "daterange" in causal_sql
+    assert "P1W" in causal_sql

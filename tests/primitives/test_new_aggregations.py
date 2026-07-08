@@ -58,6 +58,14 @@ def _get_feature(entity, name):
     return next(ft for ft in entity.features if ft.name == name)
 
 
+def _feature_sql(result):
+    """Full generated SQL for a feature: definition plus, for a set-based
+    (pre-agg) aggregator (ADR-0010), its shared window pre-pass — which is where
+    the GROUP BY / child-table references live after migration."""
+    prepass = result.preagg.prepass_sql if result.preagg is not None else ""
+    return f"{result.definition} {prepass}"
+
+
 # =========================================================================
 # 1. Registry tests
 # =========================================================================
@@ -429,41 +437,51 @@ class TestGapMean:
         result = agg(parent, child, feature, relationship=rel)
         assert isinstance(result, Feature)
 
-    def test_definition_contains_child_table_alias(self):
+    # gap_mean is a set-based (pre-agg) aggregator (ADR-0010): its window LAG,
+    # child table/key, and interval window live in the shared pre-pass; the
+    # definition is the plain reduction ``AVG(gap)``. These check the full
+    # generated SQL for the feature (definition + pre-pass).
+    @staticmethod
+    def _full_sql(result):
+        prepass = result.preagg.prepass_sql if result.preagg is not None else ""
+        return f"{result.definition} {prepass}"
+
+    def test_sql_contains_child_table_alias(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = child.temporal_ix
         agg = get_aggregations(["gap_mean"])["gap_mean"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "orders_transform" in result.definition
+        assert "orders_transform" in self._full_sql(result)
 
-    def test_definition_contains_child_key(self):
+    def test_sql_contains_child_key(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = child.temporal_ix
         agg = get_aggregations(["gap_mean"])["gap_mean"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "customer_id" in result.definition
+        assert "customer_id" in self._full_sql(result)
 
-    def test_definition_contains_lag_and_avg(self):
+    def test_sql_contains_lag_and_avg(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = child.temporal_ix
         agg = get_aggregations(["gap_mean"])["gap_mean"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "LAG" in result.definition
-        assert "AVG" in result.definition
+        full = self._full_sql(result)
+        assert "LAG" in full
+        assert "AVG" in full
 
-    def test_with_interval_definition_contains_daterange(self):
+    def test_with_interval_sql_contains_daterange(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = child.temporal_ix
         agg = get_aggregations(["gap_mean"])["gap_mean"]
         result = agg(parent, child, feature, interval="P1W", relationship=rel)
         assert isinstance(result, Feature)
-        assert result.definition is not None
-        assert "daterange" in result.definition
-        assert "P1W" in result.definition
+        full = self._full_sql(result)
+        assert "daterange" in full
+        assert "P1W" in full
 
 
 class TestGapStddev:
@@ -567,13 +585,14 @@ class TestEntropy:
         result = agg(parent, child, feature, relationship=rel)
         assert result is None
 
-    def test_definition_contains_group_by(self):
+    def test_sql_groups_by_category(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = _get_feature(child, "category")
         agg = get_aggregations(["entropy"])["entropy"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "GROUP BY sub.category" in result.definition
+        assert "orders_transform.category" in _feature_sql(result)
+        assert "group by" in _feature_sql(result).lower()
 
     def test_definition_contains_ln(self):
         parent, child = _make_parent_entity(), _make_child_entity()
@@ -589,7 +608,7 @@ class TestEntropy:
         feature = _get_feature(child, "category")
         agg = get_aggregations(["entropy"])["entropy"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "orders_transform" in result.definition
+        assert "orders_transform" in _feature_sql(result)
 
     def test_returns_none_without_relationship(self):
         parent, child = _make_parent_entity(), _make_child_entity()
@@ -616,13 +635,14 @@ class TestHHI:
         result = agg(parent, child, feature, relationship=rel)
         assert result is None
 
-    def test_definition_contains_group_by(self):
+    def test_sql_groups_by_category(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = _get_feature(child, "category")
         agg = get_aggregations(["hhi"])["hhi"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "GROUP BY sub.category" in result.definition
+        assert "orders_transform.category" in _feature_sql(result)
+        assert "group by" in _feature_sql(result).lower()
 
     def test_definition_contains_power(self):
         parent, child = _make_parent_entity(), _make_child_entity()
@@ -638,7 +658,7 @@ class TestHHI:
         feature = _get_feature(child, "category")
         agg = get_aggregations(["hhi"])["hhi"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "orders_transform" in result.definition
+        assert "orders_transform" in _feature_sql(result)
 
 
 # =========================================================================

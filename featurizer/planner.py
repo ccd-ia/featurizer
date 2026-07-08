@@ -8,7 +8,17 @@ CTE definitions/joins that the SQL renderer expects.
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Set, Tuple
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 from icecream import ic
 from loguru import logger
@@ -1103,7 +1113,26 @@ class FeaturePlanner:
         self._features[source.alias].update(aggregation_set)
         self._features[target.alias].update(aggregation_set)
 
-        self._build_aggregations_cte(target, source, relationship, sorted_aggs)
+        # Partition into the correlated / plain-GROUP-BY path (unchanged) and the
+        # set-based pre-aggregation path (ADR-0010). Un-migrated aggregators have
+        # ``preagg is None`` and stay entirely in the first group, so this is a
+        # no-op until a family opts in.
+        plain_aggs = [f for f in sorted_aggs if getattr(f, "preagg", None) is None]
+        preagg_aggs = [f for f in sorted_aggs if getattr(f, "preagg", None) is not None]
+
+        self._build_aggregations_cte(target, source, relationship, plain_aggs)
+
+        # One companion CTE per (family_key, interval): all members share a
+        # pre-pass, so they reduce together in a single GROUP BY.
+        preagg_groups: Dict[Tuple[str, Optional[str]], List[Feature]] = {}
+        for feature in preagg_aggs:
+            spec = feature.preagg
+            assert spec is not None  # filtered above; narrows for the type checker
+            preagg_groups.setdefault((spec.family_key, spec.interval), []).append(
+                feature
+            )
+        for (family_key, interval), feats in preagg_groups.items():
+            self._build_preagg_cte(target, relationship, family_key, interval, feats)
 
     @staticmethod
     def _qualify_direct_feature(feature: Feature, rel_name: str) -> Feature:
@@ -1361,6 +1390,105 @@ class FeaturePlanner:
         # the materializer acts only on oversized ones.
         self._materialization_keys[cte_name] = MaterializationKey(
             join_key=relationship.child_key,
+            join_statement=join_statement,
+        )
+
+    def _build_preagg_cte(
+        self,
+        target: Entity,
+        relationship: Relationship,
+        family_key: str,
+        interval: Optional[str],
+        features: List[Feature],
+    ) -> None:
+        """Emit one companion pre-aggregation CTE for a (family, interval) group.
+
+        The shape is a single window pre-pass reduced by a plain ``GROUP BY``
+        (ADR-0010): ``select <child_key>, <reductions> from (<pre-pass>) g [where
+        <reduction_where>] group by <child_key>``. Every member shares the
+        pre-pass and family-level filter (asserted); they differ only in their
+        reduction, which is the feature's own ``definition``. Registration
+        mirrors :meth:`_build_aggregations_cte` exactly — join, synth-column
+        source, ``ShardableCTE``, and ``MaterializationKey`` — so the sharding
+        and oversized-child machinery apply to companion CTEs unchanged.
+        """
+        agg_features = [feature for feature in features if feature.type not in ["key"]]
+        if not agg_features:
+            return
+
+        spec0 = agg_features[0].preagg
+        assert spec0 is not None  # only preagg features reach this builder
+        prepass = spec0.prepass_sql
+        reduction_where = spec0.reduction_where
+        for feature in agg_features:
+            assert feature.preagg is not None
+            assert (
+                feature.preagg.prepass_sql == prepass
+            ), f"pre-agg family {family_key!r} has inconsistent pre-passes"
+            assert (
+                feature.preagg.reduction_where == reduction_where
+            ), f"pre-agg family {family_key!r} has inconsistent reduction filters"
+
+        child_key = relationship.child_key
+        # 63-byte-capped, parallel-relationship-safe (naming_alias), interval- and
+        # family-scoped so two families / intervals never collide on one CTE.
+        interval_token = interval if interval else "all"
+        # Family keys may carry a column qualifier (e.g. ``catfreq:cat``); fold
+        # any non-word char to ``_`` so the CTE name is a bare identifier
+        # (pg_identifier only quotes/hash-caps — it does not sanitize interior
+        # punctuation, and a stripped quoted name with a ``:`` is invalid SQL).
+        family_token = re.sub(r"\W+", "_", family_key)
+        cte_name = pg_identifier(
+            f"{relationship.naming_alias}_{family_token}_{interval_token}"
+            f"_preaggs_for_{target.alias}"
+        ).strip('"')
+        join_statement = (
+            f" {cte_name} on {cte_name}.{child_key} = "
+            f"{relationship.parent.table}.{relationship.parent_key} "
+        )
+        rendered_features = [feature.query for feature in agg_features]
+        where_line = f"        where {reduction_where}\n" if reduction_where else ""
+
+        cte_query = f"""
+        -- Pre-aggregation for {target.alias} ({family_key}{f", {interval}" if interval else ""})
+        {cte_name} as (
+        select
+        {child_key},
+        {",".join(rendered_features)}
+        from ({prepass}) g
+{where_line}        group by {child_key}
+        )
+        """
+        self._joins[target.alias].append(join_statement)
+
+        # Sharding metadata: the pre-pass rides in the suffix so a rebuilt group
+        # projects only its kept reductions (plus the always-kept join key).
+        prefix = (
+            f"\n        -- Pre-aggregation for {target.alias} "
+            f"({family_key}{f', {interval}' if interval else ''})\n"
+            f"        {cte_name} as (\n        select\n        "
+        )
+        suffix = (
+            f"\n        from ({prepass}) g\n{where_line}"
+            f"        group by {child_key}\n        )\n        "
+        )
+        columns = [ColumnSpec(name=f.name, projection=f.query) for f in agg_features]
+        shard_spec = ShardableCTE(
+            name=cte_name,
+            kind="aggs",
+            prefix=prefix,
+            suffix=suffix,
+            key_columns=[child_key],
+            columns=columns,
+            rendered=cte_query,
+        )
+        self._emit_shardable(shard_spec, cte_query)
+
+        target_sources = self._synth_column_source.setdefault(target.alias, {})
+        for feature in agg_features:
+            target_sources[feature.name] = (cte_name, join_statement)
+        self._materialization_keys[cte_name] = MaterializationKey(
+            join_key=child_key,
             join_statement=join_statement,
         )
 

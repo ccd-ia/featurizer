@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+
+if TYPE_CHECKING:
+    from .preagg import PreAggSpec
 
 # Canonical feature-type vocabulary. The user-declarable variable types
 # (numeric, categorical, text, boolean, date, timestamp, vector) are kept in
@@ -380,6 +383,11 @@ class Feature:
         # (``"<rel>.<column>"``): the original source-side column name the
         # transfer CTE must read. None for every other feature.
         self.direct_source: Optional[str] = None
+        # For subquery aggregators that opted into the set-based rewrite: the
+        # pre-aggregation spec routing this feature into a companion CTE instead
+        # of a correlated subquery (ADR-0010). None for every correlated /
+        # plain-GROUP-BY feature. Does not participate in hashing/equality.
+        self.preagg: Optional["PreAggSpec"] = None
         self.stack_depth: int = stack_depth
         self.entity: Optional[Entity] = entity
         self.parents: Optional[List[Feature]] = (

@@ -29,6 +29,7 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 
 from ..boundary import causal_predicate, daterange_window
 from .abstractions import Feature, SpatialIx, pg_identifier
+from .preagg import PreAggSpec, causal_where
 from .utils import register_aggregation
 
 
@@ -635,12 +636,19 @@ class SubqueryAggregator(Aggregator):
             return None
         if relationship is None:
             return None
-        definition = self._build_subquery_expression(
-            feature, child, relationship, interval
+        # Opt-in set-based path (ADR-0010): when an aggregator returns a
+        # PreAggSpec, the feature's definition is the plain reduction and the
+        # planner routes it into a companion CTE. Otherwise the correlated
+        # subquery path is unchanged (byte-identical to before the rewrite).
+        spec = self._build_preagg(feature, child, relationship, interval)
+        definition = (
+            spec.reduction
+            if spec is not None
+            else self._build_subquery_expression(feature, child, relationship, interval)
         )
         if definition is None:
             return None
-        return Feature(
+        result = Feature(
             name=self._build_name(
                 self.name, feature, interval=interval, alias=relationship.naming_alias
             ),
@@ -653,6 +661,18 @@ class SubqueryAggregator(Aggregator):
                 self.name, feature, interval=interval, alias=relationship.naming_alias
             ),
         )
+        result.preagg = spec
+        return result
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        """Opt-in hook for the set-based rewrite (ADR-0010).
+
+        Return a :class:`~featurizer.primitives.preagg.PreAggSpec` to route this
+        feature through a companion pre-aggregation CTE, or ``None`` (the base
+        default) to keep the correlated subquery. Migrated families override
+        this; every un-migrated aggregator keeps the correlated path unchanged.
+        """
+        return None
 
     @staticmethod
     def _causal_filter(feature, interval, *, alias="sub"):
@@ -680,12 +700,32 @@ class SubqueryAggregator(Aggregator):
         raise NotImplementedError
 
 
-class GapStatAggregator(SubqueryAggregator):
-    """Inter-event gap statistics via correlated subquery with LAG().
+def _gap_prepass(feature, child, relationship, interval):
+    """Shared window pre-pass for the gap family (ADR-0010).
 
-    Computes intervals between consecutive events, then applies an
-    aggregate function (AVG, STDDEV, MIN, MAX) to those gaps.
-    Only fires on temporal_ix features.
+    One inter-event gap per child row, computed once with a partitioned ``LAG``
+    instead of a per-target-row correlated subquery. The causal / interval
+    filter is applied *before* the window function (WHERE precedes window
+    evaluation), so each partition's first in-window event has a NULL gap —
+    exactly the correlated form's boundary semantics. Byte-identical across all
+    six gap aggregators, so they reduce together in one companion CTE.
+    """
+    ck = relationship.child_key
+    ct = f"{child.alias}_transform"
+    ecol = feature.name
+    lag = f"LAG({ct}.{ecol}) OVER (PARTITION BY {ct}.{ck} ORDER BY {ct}.{ecol})"
+    gap = _epoch_day_span(f"{ct}.{ecol}", lag)
+    where = causal_where(feature, interval, column=f"{ct}.{ecol}")
+    return f"select {ct}.{ck} as {ck}, {gap} as gap from {ct} {where}"
+
+
+class GapStatAggregator(SubqueryAggregator):
+    """Inter-event gap statistics (AVG / STDDEV / MIN / MAX of consecutive gaps).
+
+    Only fires on temporal_ix features. Routed through the set-based
+    pre-aggregation path (ADR-0010): a shared gap pre-pass reduced by this
+    instance's aggregate. Falls back to the correlated subquery only if the
+    pre-agg path is disabled.
     """
 
     def __init__(self, name, gap_aggregate):
@@ -699,6 +739,15 @@ class GapStatAggregator(SubqueryAggregator):
             return None
         return super().__call__(
             parent, child, feature, interval=interval, relationship=relationship
+        )
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key="gaps",
+            interval=interval,
+            prepass_sql=_gap_prepass(feature, child, relationship, interval),
+            reduction=f"{self.gap_aggregate}(gap)",
+            reduction_where="gap is not null",
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
@@ -765,6 +814,15 @@ class GapCV(SubqueryAggregator):
             parent, child, feature, interval=interval, relationship=relationship
         )
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key="gaps",
+            interval=interval,
+            prepass_sql=_gap_prepass(feature, child, relationship, interval),
+            reduction="STDDEV(gap) / NULLIF(AVG(gap), 0)",
+            reduction_where="gap is not null",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
@@ -797,6 +855,15 @@ class Burstiness(SubqueryAggregator):
             parent, child, feature, interval=interval, relationship=relationship
         )
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key="gaps",
+            interval=interval,
+            prepass_sql=_gap_prepass(feature, child, relationship, interval),
+            reduction="(STDDEV(gap) - AVG(gap)) / NULLIF(STDDEV(gap) + AVG(gap), 0)",
+            reduction_where="gap is not null",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
@@ -814,11 +881,42 @@ class Burstiness(SubqueryAggregator):
 burstiness = Burstiness()
 
 
+def _catfreq_prepass(feature, child, relationship, interval):
+    """Shared per-category frequency pre-pass (ADR-0010).
+
+    One row per ``(child_key, category)`` with the category ``freq`` and the
+    per-key ``total`` (``SUM(COUNT(*)) OVER (PARTITION BY child_key)``), computed
+    once instead of a correlated ``GROUP BY <col>`` per target row. The causal /
+    interval bound is on the temporal index (not the category column), matching
+    the correlated form. Byte-identical for entropy and hhi on the same column,
+    so they reduce together in one companion CTE.
+    """
+    ck = relationship.child_key
+    ct = f"{child.alias}_transform"
+    col = feature.name
+    tix = feature.entity.temporal_ix if feature.entity else None
+    tcol = f"{ct}.{tix.name}" if tix is not None else None
+    where = causal_where(feature, interval, column=tcol)
+    return (
+        f"select {ct}.{ck} as {ck}, count(*) as freq, "
+        f"sum(count(*)) over (partition by {ct}.{ck}) as total "
+        f"from {ct} {where} group by {ct}.{ck}, {ct}.{col}"
+    )
+
+
 class Entropy(SubqueryAggregator):
     """Shannon entropy of categorical distributions."""
 
     def __init__(self):
         super().__init__(name="entropy", input_types=["categorical"])
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"catfreq:{feature.name}",
+            interval=interval,
+            prepass_sql=_catfreq_prepass(feature, child, relationship, interval),
+            reduction="-SUM(freq::float / total * LN(freq::float / total))",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -841,6 +939,14 @@ class HHI(SubqueryAggregator):
 
     def __init__(self):
         super().__init__(name="hhi", input_types=["categorical"])
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"catfreq:{feature.name}",
+            interval=interval,
+            prepass_sql=_catfreq_prepass(feature, child, relationship, interval),
+            reduction="SUM(POWER(freq::float / NULLIF(total, 0), 2))",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key

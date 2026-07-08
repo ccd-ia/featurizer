@@ -56,14 +56,29 @@ def test_span_aggs_extract_epoch_per_side_in_days():
         assert "EXTRACT(EPOCH FROM max(ts) - min(ts))" not in d, (name, d)
 
 
+def _gap_sql(name):
+    """SQL carrying the gap computation: the shared pre-pass for a migrated gap
+    aggregator (ADR-0010), else the correlated definition."""
+    parent, child, rel = _graph()
+    result = get_aggregations([name])[name](
+        parent, child, child.temporal_ix, relationship=rel
+    )
+    if result.preagg is not None:
+        return result.preagg.prepass_sql
+    return result.definition
+
+
 def test_gap_aggs_difference_epoch_days():
+    # The gap family is set-based (ADR-0010): the epoch-day gap now lives in the
+    # shared window pre-pass, differencing the partitioned LAG — still epoch-days
+    # (never a raw interval), which is the property this regression guards.
     for name in GAP_AGGS:
-        d = _agg(name, "ts")
-        assert "EXTRACT(EPOCH FROM sub.ts)" in d, (name, d)
-        assert "EXTRACT(EPOCH FROM LAG(sub.ts) OVER (ORDER BY sub.ts))" in d, (name, d)
+        d = _gap_sql(name)
+        assert "EXTRACT(EPOCH FROM ord_transform.ts)" in d, (name, d)
+        assert "EXTRACT(EPOCH FROM LAG(ord_transform.ts)" in d, (name, d)
         assert "/ 86400.0" in d, (name, d)
         # No raw temporal subtraction left to yield an interval.
-        assert "sub.ts - LAG(sub.ts)" not in d, (name, d)
+        assert "ord_transform.ts - LAG" not in d, (name, d)
 
 
 def test_geometric_mean_is_positive_domain_natural_log():
