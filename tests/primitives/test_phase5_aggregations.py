@@ -40,6 +40,13 @@ def _feature(child, kind):
     return next(f for f in child.features if f.name == name)
 
 
+def _full_sql(result):
+    """Definition plus, for a migrated (pre-agg) aggregator, its shared pre-pass
+    — where the causal bound / window / percentile SQL lives after ADR-0010."""
+    prepass = result.preagg.prepass_sql if result.preagg is not None else ""
+    return f"{result.definition} {prepass}"
+
+
 @pytest.mark.parametrize("name", PHASE5)
 def test_registered(name):
     assert name in list_aggregations()
@@ -51,7 +58,7 @@ def test_fires_and_is_causally_bounded(name, kind):
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), relationship=rel)
     assert result is not None and result.definition is not None
-    assert "<= aod.as_of_date" in result.definition
+    assert "<= aod.as_of_date" in _full_sql(result)
 
 
 @pytest.mark.parametrize("name,kind", PHASE5.items())
@@ -60,7 +67,8 @@ def test_interval_variant_uses_daterange(name, kind):
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), interval="P1W", relationship=rel)
     assert result is not None and result.definition is not None
-    assert "daterange" in result.definition and "P1W" in result.definition
+    full = _full_sql(result)
+    assert "daterange" in full and "P1W" in full
 
 
 @pytest.mark.parametrize("name,kind", PHASE5.items())
@@ -76,7 +84,7 @@ def test_requires_relationship(name, kind):
     [
         ("theil", "LN(val / m)"),
         ("trimmed_mean_10", "between"),
-        ("median_absolute_deviation", "abs(q.val - b.med)"),
+        ("median_absolute_deviation", "abs(v.val - b.med)"),
         ("state_volatility", "IS DISTINCT FROM"),
         ("transition_matrix_summary", "count(DISTINCT (t.prev, t.curr))"),
         ("rework_count", "t.prev = t.curr"),
@@ -91,7 +99,7 @@ def test_signature_sql_fragment(name, fragment):
     kind = PHASE5[name]
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), relationship=rel)
-    assert fragment.lower() in result.definition.lower()
+    assert fragment.lower() in _full_sql(result).lower()
 
 
 def test_numeric_aggs_reject_categorical():

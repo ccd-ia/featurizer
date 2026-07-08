@@ -57,11 +57,27 @@ def test_perrow_aggregators_are_dropped_entirely():
         assert name not in registered, name
 
 
-def test_mean_deviation_restored_as_subquery_reduction():
+def test_mean_deviation_is_set_based_two_pass():
     from featurizer.primitives.aggregations import SubqueryAggregator
 
-    assert "mean_deviation" in DEFAULT_AGGREGATIONS  # back in the default set
+    assert "mean_deviation" in DEFAULT_AGGREGATIONS  # in the default set
     agg = get_aggregations(["mean_deviation"])["mean_deviation"]
-    assert isinstance(agg, SubqueryAggregator)  # two-pass, no nested aggregates
-    d = _num_agg("mean_deviation")
-    assert "SELECT AVG(m_sub.num)" in d and "AVG(ABS(sub.num - m.mean_val))" in d
+    assert isinstance(agg, SubqueryAggregator)
+    # Migrated to the set-based path (ADR-0010): still a two-pass MAD (per-key
+    # window mean, then avg of absolute deviations), now without a correlated
+    # subquery — the mean is a window in the pre-pass, the deviation-average the
+    # plain reduction.
+    parent = Entity(alias="p", table="p", id="pid")
+    child = Entity(
+        alias="c",
+        table="c",
+        id="cid",
+        temporal_ix="ts",
+        variables={"num": {"type": "numeric"}},
+    )
+    rel = Relationship(parent=parent, child=child, parent_key="pid", child_key="cid")
+    num = next(f for f in child.features if f.name == "num")
+    result = agg(parent, child, num, relationship=rel)
+    assert result.preagg is not None
+    assert "AVG(ABS(val - mean_val))" in result.definition
+    assert "over (partition by c_transform.cid)" in result.preagg.prepass_sql

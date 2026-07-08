@@ -683,13 +683,14 @@ class TestGini:
         result = agg(parent, child, feature, relationship=rel)
         assert result is None
 
-    def test_definition_contains_row_number(self):
+    def test_sql_contains_row_number(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = _get_feature(child, "amount")
         agg = get_aggregations(["gini"])["gini"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "ROW_NUMBER" in result.definition
+        # gini is set-based (ADR-0010): the rank window lives in the pre-pass.
+        assert "row_number" in _feature_sql(result).lower()
 
     def test_definition_contains_sum_rn_val(self):
         parent, child = _make_parent_entity(), _make_child_entity()

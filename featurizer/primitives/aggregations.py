@@ -782,6 +782,23 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
     def __init__(self):
         super().__init__(name="mean_deviation")  # input_types defaults to numeric
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"avg({ct}.{col}) over (partition by {ct}.{ck}) as mean_val "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"meandev:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="AVG(ABS(val - mean_val))",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         ct = f"{child.alias}_transform"
@@ -964,6 +981,16 @@ class HHI(SubqueryAggregator):
 hhi = HHI()
 
 
+def _num_causal_where(feature, child, interval):
+    """The causal/interval WHERE for a numeric pre-pass, bound on the temporal
+    index (qualified to the child transform CTE). ``""`` when there is no
+    temporal_ix — matching the correlated ``_causal_filter``."""
+    ct = f"{child.alias}_transform"
+    tix = feature.entity.temporal_ix if feature.entity else None
+    tcol = f"{ct}.{tix.name}" if tix is not None else None
+    return causal_where(feature, interval, column=tcol)
+
+
 class Gini(SubqueryAggregator):
     """Gini coefficient of numeric distributions.
 
@@ -973,6 +1000,26 @@ class Gini(SubqueryAggregator):
 
     def __init__(self):
         super().__init__(name="gini", input_types=["numeric"])
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"row_number() over (partition by {ct}.{ck} order by {ct}.{col}) as rn "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"gini:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction=(
+                "(2.0 * SUM(rn * val)) / NULLIF(COUNT(*) * SUM(val), 0) "
+                "- (COUNT(*) + 1.0) / NULLIF(COUNT(*), 0)"
+            ),
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1114,6 +1161,26 @@ class Theil(SubqueryAggregator):
     def __init__(self):
         super().__init__(name="theil", input_types=["numeric"])
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        where = _num_causal_where(feature, child, interval)
+        # Positive-domain filter (mirrors the correlated ``AND col > 0``) applied
+        # before the window mean, so ``m`` is the mean of positive values only.
+        pos = f"{'and' if where else 'where'} {ct}.{col} > 0"
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"avg({ct}.{col}) over (partition by {ct}.{ck}) as m "
+            f"from {ct} {where} {pos}"
+        )
+        return PreAggSpec(
+            family_key=f"theil:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="AVG((val / m) * LN(val / m))",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
@@ -1138,6 +1205,30 @@ class TrimmedMean(SubqueryAggregator):
         super().__init__(name=name, input_types=["numeric"])
         self.lower = lower
         self.upper = upper
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        # Percentiles are ordered-set aggregates (no OVER), so this is the
+        # grouped-join variant (ADR-0010): per-key bounds via GROUP BY joined
+        # back to the value rows — two set-based scans, not a per-target rescan.
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select v.{ck} as {ck}, v.val from "
+            f"(select {ct}.{ck} as {ck}, {ct}.{col} as val from {ct} {where}) v "
+            f"join (select {ct}.{ck} as bk, "
+            f"percentile_cont({self.lower}) within group (order by {ct}.{col}) as lo, "
+            f"percentile_cont({self.upper}) within group (order by {ct}.{col}) as hi "
+            f"from {ct} {where} group by {ct}.{ck}) b on v.{ck} = b.bk "
+            f"where v.val between b.lo and b.hi"
+        )
+        return PreAggSpec(
+            family_key=f"trimmedmean_{int(self.lower * 100)}_{int(self.upper * 100)}:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="AVG(val)",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1164,6 +1255,28 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
 
     def __init__(self):
         super().__init__(name="median_absolute_deviation", input_types=["numeric"])
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        # Grouped-join variant: per-key median via GROUP BY joined to the value
+        # rows to form the per-row deviation; the median-of-deviations is a plain
+        # ordered-set aggregate in the reduction.
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select v.{ck} as {ck}, abs(v.val - b.med) as dev from "
+            f"(select {ct}.{ck} as {ck}, {ct}.{col} as val from {ct} {where}) v "
+            f"join (select {ct}.{ck} as bk, "
+            f"percentile_cont(0.5) within group (order by {ct}.{col}) as med "
+            f"from {ct} {where} group by {ct}.{ck}) b on v.{ck} = b.bk"
+        )
+        return PreAggSpec(
+            family_key=f"mad:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="percentile_cont(0.5) within group (order by dev)",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1436,6 +1549,26 @@ class AutoCorrelation(_NumericStreamReduction):
         super().__init__(name=f"acf_{k}")
         self.k = k
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"lag({ct}.{col}, {self.k}) over "
+            f"(partition by {ct}.{ck} order by {ct}.{ts}) as lagk "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"acf{self.k}:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="corr(val, lagk)",
+            reduction_where="lagk is not null",
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
@@ -1460,6 +1593,25 @@ class VarianceRatio(_NumericStreamReduction):
 
     def __init__(self):
         super().__init__(name="variance_ratio")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"{ct}.{col} - lag({ct}.{col}) over "
+            f"(partition by {ct}.{ck} order by {ct}.{ts}) as d "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"varratio:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="var_samp(val) / NULLIF(var_samp(d), 0)",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
@@ -1492,6 +1644,24 @@ class CosinorAmplitude(_NumericStreamReduction):
     def __init__(self, name="cosinor_amplitude_weekly", period_seconds=7 * 86400):
         super().__init__(name=name)
         self.period_seconds = period_seconds
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        ts = feature.entity.temporal_ix.name
+        where = _num_causal_where(feature, child, interval)
+        omega = f"2 * pi() * extract(epoch from {ct}.{ts}) / {self.period_seconds}"
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"sin({omega}) as s, cos({omega}) as c from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"cosinor{self.period_seconds}:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2))",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
