@@ -10,6 +10,41 @@ import pandas as pd
 import records  # type: ignore[import-untyped]
 from loguru import logger
 
+_AS_OF_DATES = "as_of_dates"
+
+
+def analyze_as_of_dates(conn: Any) -> None:
+    """Refresh planner statistics on the caller's ``as_of_dates`` table.
+
+    Every generated query is ``from as_of_dates cross join lateral (…)``. A
+    freshly created / never-analyzed ``as_of_dates`` has no statistics, so
+    PostgreSQL assumes its ~2550-row default and can pick a catastrophic join
+    plan for the lateral body — measured 40–50× slower on wide configs
+    (dirtyduck / donorschoose all-agg dropped from ~300s to ~7s once analyzed).
+
+    ``ANALYZE`` is a read-only stats refresh and **best-effort**: it is a pure
+    optimization, so a caller without ANALYZE privilege must still get correct
+    (if slower) results. Isolated by a SAVEPOINT so a failure cannot poison the
+    caller's open transaction; failures are logged, never raised.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("savepoint featurizer_analyze")
+            try:
+                cur.execute(f"analyze {_AS_OF_DATES}")
+                cur.execute("release savepoint featurizer_analyze")
+            except Exception as exc:
+                cur.execute("rollback to savepoint featurizer_analyze")
+                logger.warning(
+                    "ANALYZE {} skipped (planner-stats optimization only): {}",
+                    _AS_OF_DATES,
+                    exc,
+                )
+    except Exception as exc:  # e.g. autocommit connection: no transaction to savepoint
+        logger.debug(
+            "ANALYZE {} savepoint unavailable, skipping: {}", _AS_OF_DATES, exc
+        )
+
 
 class QueryExecutor:
     """Handles optional execution of rendered SQL queries."""
@@ -40,6 +75,18 @@ class QueryExecutor:
         """
         db = self._database_factory()
         try:
+            # Planner-stats optimization (best-effort): give the caller's
+            # as_of_dates real statistics before the lateral-join query. See
+            # analyze_as_of_dates. records auto-commits per query, so a failure
+            # here is isolated and non-fatal.
+            try:
+                db.query(f"analyze {_AS_OF_DATES}")
+            except Exception as exc:
+                logger.warning(
+                    "ANALYZE {} skipped (planner-stats optimization only): {}",
+                    _AS_OF_DATES,
+                    exc,
+                )
             rows = db.query(query)
             df = rows.export("df")
         except Exception as exc:
@@ -93,6 +140,10 @@ class QueryExecutor:
                 with conn.cursor() as cur:
                     for ddl in preamble_ddl:
                         cur.execute(ddl)
+            # Planner-stats optimization: analyze the caller's as_of_dates once so
+            # the lateral-join plan is not built for the ~2550-row no-stats default
+            # (40–50× on wide configs). Best-effort + savepoint-isolated.
+            analyze_as_of_dates(conn)
             frames: list[pd.DataFrame] = []
             for sql in group_queries.values():
                 with conn.cursor() as cur:

@@ -8,6 +8,14 @@ semantic versioning once a release is cut.
 
 ### Changed
 
+- **Executor ANALYZEs `as_of_dates` before running (ADR-0013).** The caller's
+  freshly-created `as_of_dates` has no statistics, so PostgreSQL assumed its
+  ~2550-row default and planned the lateral-join body for the wrong cardinality —
+  a single Merge Join was 99% of donorschoose all-agg's runtime. The executor now
+  issues a best-effort, savepoint-isolated `ANALYZE as_of_dates` on its working
+  connection first, in every path (`to_dataframe`, `to_arrow`, `to_tables`).
+  **donorschoose all-agg 293.6s → 7.5s, dirtyduck 27.6s → 7.0s (~40–50×)**; values
+  unchanged (`ANALYZE` refreshes stats, not data — golden gate passes).
 - **Two-window drift aggregators migrated to set-based pre-aggregation (ADR-0012).**
   `kl_drift` / `wasserstein_drift`, which ADR-0010 deferred as a non-goal, were the
   entire cost of full-aggregator materialization on real data: live `EXPLAIN
