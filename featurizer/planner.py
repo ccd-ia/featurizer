@@ -1438,10 +1438,22 @@ class FeaturePlanner:
         # (pg_identifier only quotes/hash-caps — it does not sanitize interior
         # punctuation, and a stripped quoted name with a ``:`` is invalid SQL).
         family_token = re.sub(r"\W+", "_", family_key)
-        cte_name = pg_identifier(
-            f"{relationship.naming_alias}_{family_token}_{interval_token}"
-            f"_preaggs_for_{target.alias}"
-        ).strip('"')
+        # This CTE name is interpolated *bare* into the SQL (like every other CTE
+        # in this file), so it must be a valid unquoted identifier. When the name
+        # exceeds 63 bytes, ``pg_identifier`` hash-caps it with a ``~`` separator
+        # (safe only inside quotes — column names are always quoted); stripping
+        # the quotes here would leave a bare ``~``, which PostgreSQL parses as an
+        # operator (SyntaxError). Fold the cap separator to ``_`` so the bare name
+        # stays valid. CTE names are internal-only, so this does not touch the
+        # ADR-0007 output-column naming contract.
+        cte_name = (
+            pg_identifier(
+                f"{relationship.naming_alias}_{family_token}_{interval_token}"
+                f"_preaggs_for_{target.alias}"
+            )
+            .strip('"')
+            .replace("~", "_")
+        )
         join_statement = (
             f" {cte_name} on {cte_name}.{child_key} = "
             f"{relationship.parent.table}.{relationship.parent_key} "

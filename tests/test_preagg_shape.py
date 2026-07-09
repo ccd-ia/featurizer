@@ -43,6 +43,31 @@ class _StubPreAgg(SubqueryAggregator):
         )
 
 
+class _LongNamePreAgg(SubqueryAggregator):
+    """Like ``_StubPreAgg`` but with a family key long enough (column-qualified)
+    to push the companion CTE name past PostgreSQL's 63-byte identifier limit,
+    forcing the hash-cap path."""
+
+    def __init__(self):
+        super().__init__(name="long_preagg")
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        prepass = (
+            f"select {ck}, {feature.name} as v from {ct} "
+            f"{causal_where(feature, interval)}"
+        )
+        return PreAggSpec(
+            # Colon-qualified + long → family_token forces the CTE name over 63B.
+            family_key="transitionmatrix:a_long_categorical_column_name",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="avg(v)",
+            reduction_where="v is not null",
+        )
+
+
 @pytest.fixture
 def stub_agg():
     """Register the stub only for the duration of a test (never leaks)."""
@@ -51,6 +76,29 @@ def stub_agg():
         yield
     finally:
         utils._AGGREGATIONS.pop("stub_preagg", None)
+
+
+@pytest.fixture
+def long_agg():
+    """Register the long-name stub only for the duration of a test."""
+    utils._AGGREGATIONS["long_preagg"] = _LongNamePreAgg()
+    try:
+        yield
+    finally:
+        utils._AGGREGATIONS.pop("long_preagg", None)
+
+
+def _long_config():
+    cfg = _config([])
+    cfg["aggregations"] = ["long_preagg", "count"]
+    return cfg
+
+
+def _long_featurizer():
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(_long_config(), handle)
+        path = handle.name
+    return Featurizer(path, validate=False)
 
 
 def _config(intervals):
@@ -140,3 +188,33 @@ def test_preagg_registers_with_sharding_and_materialization(stub_agg):
     assert plan.cte_specs[cte_name].key_columns == ["customer_id"]
     assert cte_name in plan.materialization_keys
     assert plan.materialization_keys[cte_name].join_key == "customer_id"
+
+
+def test_preagg_cte_name_over_63_bytes_is_a_valid_bare_identifier(long_agg):
+    """Regression: a companion-CTE name past PostgreSQL's 63-byte limit is
+    hash-capped, but it is interpolated *bare* into the SQL, so the cap must
+    NOT leave a ``~`` (which PostgreSQL parses as an operator → SyntaxError,
+    seen live as ``syntax error at or near "~"`` on the food-inspections DB).
+    The bare cap separator must be ``_``. This guard fails on the pre-fix code.
+    """
+    plan = _long_featurizer()._plan
+    # The companion CTE is the aggs-kind spec that is NOT the plain count CTE.
+    # (Its name is hash-capped, so "preaggs_for" is truncated away — identify it
+    # structurally, not by substring.)
+    companions = [
+        n
+        for n, spec in plan.cte_specs.items()
+        if spec.kind == "aggs" and n != "orders_aggs_for_customers"
+    ]
+    assert companions, "the long-name stub should emit a companion CTE"
+    cte_name = companions[0]
+    # The raw name overflowed 63 bytes → must be hash-capped ...
+    assert len(cte_name.encode()) == 63
+    assert re.search(r"_[0-9a-f]{8}$", cte_name), cte_name
+    # ... and remain a valid *unquoted* identifier (no ``~`` / ``:`` / quotes).
+    assert re.fullmatch(r"[A-Za-z0-9_]+", cte_name), cte_name
+    # The generated SQL must carry no bare ``~`` from a capped relation name.
+    sql = _long_featurizer().query
+    assert "~" not in sql
+    # Name is consistent between the plan registration and the emitted DDL.
+    assert f"{cte_name} as (" in sql
