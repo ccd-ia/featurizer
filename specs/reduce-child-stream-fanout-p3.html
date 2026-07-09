@@ -63,7 +63,7 @@ ul li{margin:.25rem 0}
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-07-09T03:38 America/Mexico_City</dd>
-        <dt>modified</dt>     <dd>2026-07-09T03:38, 2026-07-09T11:45</dd>
+        <dt>modified</dt>     <dd>2026-07-09T03:38, 2026-07-09T11:45, 2026-07-09T15:35</dd>
         <dt>commits</dt>      <dd>—</dd>
         <dt>agent name</dt>   <dd>claude-opus-4-8[1m]</dd>
         <dt>session id</dt>   <dd>41bc70d5-fdfa-4e98-9697-a637fad3401d</dd>
@@ -107,6 +107,44 @@ ul li{margin:.25rem 0}
     </svg>
     <figcaption>P3 at a glance: from ~100 independent child-stream scans (merge-joined into a ~100-way join) to one pre-pass per window signature per interval.</figcaption>
   </figure>
+
+  <section id="solution-actual">
+    <div class="note good">
+      <h2 style="margin-top:.2rem">✅ SOLVED — the actual solution (2026-07-09)</h2>
+      <p>This plan's fan-out premise was <b>wrong</b> (see Amendments). Running <code>EXPLAIN
+      (ANALYZE)</code> — which names the real cost by self-time — found <b>two</b> distinct causes, and
+      the fix was <b>two small changes</b>, not the fan-out rearchitecture this plan scoped:</p>
+      <ol>
+        <li><b>Correlated two-window drift (ADR-0012).</b> <code>kl_drift</code>/<code>wasserstein_drift</code>,
+        deferred by ADR-0010, fired on categorical columns and ran as O(target×children) correlated
+        subqueries (9 SubPlans at <code>loops=18909</code> = the whole 343s on dirtyduck). Migrated to
+        set-based companion CTEs; values proven identical by the golden gate.</li>
+        <li><b>No-stats <code>as_of_dates</code> (ADR-0013).</b> The caller's freshly-created
+        <code>as_of_dates</code> had no statistics, so PostgreSQL assumed ~2550 rows and built a
+        catastrophic join plan (one Merge Join = 99% of donorschoose's 294s). The executor now runs a
+        best-effort <code>ANALYZE as_of_dates</code> before every query — <b>DB-agnostic, in the
+        executor, so it applies to every database automatically</b>.</li>
+      </ol>
+      <p><b>Measured on all three live triage DBs (via the real featurizer path, auto-ANALYZE):</b></p>
+      <div class=scroll><table>
+      <thead><tr><th>DB</th><th>narrow</th><th>all-agg (was)</th><th>wide (was)</th></tr></thead>
+      <tbody>
+      <tr><td class=mono>dirtyduck</td><td class=mono>2.5s</td><td class=mono>7.1s (356.8s)</td><td class=mono>61.5s (ln crash)</td></tr>
+      <tr><td class=mono>chicago311</td><td class=mono>0.8s</td><td class=mono>5.8s (10.1s)</td><td class=mono>49.0s (ln crash)</td></tr>
+      <tr><td class=mono>donorschoose</td><td class=mono>0.6s</td><td class=mono>7.8s (281s)</td><td class=mono>backend crash — scale, open</td></tr>
+      </tbody></table></div>
+      <p><b>all-agg is now uniformly ~6–8s across every DB</b> (was 10–357s). <code>wide</code> (all-agg
+      × 14 transformers — an extreme config) now <em>completes</em> on dirtyduck/chicago311 where it
+      previously crashed on <code>ln</code> (the ADR-0011 domain guard + ANALYZE together);
+      donorschoose <code>wide</code> — the largest config — still crashes the backend, a separate
+      scale/OOM issue tracked on its own. Correctness held throughout: golden gate 233, integration 435,
+      DB-free 576, output column names unchanged.</p>
+      <p style="font-size:.85rem;color:var(--muted)"><b>The lesson (now the first step in any perf
+      work): run <code>EXPLAIN (ANALYZE)</code> first</b> and read the max self-time × loops node. It
+      named both real causes in one measurement each; the fan-out hypothesis below cost hours and was a
+      red herring. The Phase-1 fan-out harness survives as a useful metric; Phases 2–3 were not needed.</p>
+    </div>
+  </section>
 
   <section id="purpose">
     <h2>Purpose</h2>
@@ -440,10 +478,13 @@ ul li{margin:.25rem 0}
       (vs 356.8s). The set-based fan-out is cheap (66-CTE group = 5s). So neither P3 (fan-out) nor the
       union-pivot idea is the fix — <b>migrating the 2 correlated drift families to set-based (the
       ADR-0010 pattern) is</b>, and it is far smaller than this whole plan. This plan's premise is
-      retired; see the new direction below. <b>RESOLVED (2026-07-09): the 2 drift families were
-      migrated to set-based (ADR-0012, option b) — dirtyduck all-agg 356.8s → 27.6s (~13×), all 272
-      features kept, values proven identical by the golden gate (233 passed). The fan-out harness from
-      Phase 1 stays as a useful metric; the rest of this plan is not needed.</b></p>
+      retired; see the new direction below. <b>RESOLVED (2026-07-09) in two parts: (1) the 2 drift
+      families migrated to set-based (ADR-0012) — dirtyduck all-agg 356.8s → 27.6s; (2) EXPLAIN ANALYZE
+      of donorschoose then found a SECOND cause — the no-stats <code>as_of_dates</code> cardinality —
+      fixed by a best-effort executor <code>ANALYZE as_of_dates</code> (ADR-0013), universal across DBs.
+      Combined all-agg: dirtyduck 7.1s / chicago311 5.8s / donorschoose 7.8s; wide now completes on
+      dirtyduck/chicago311 (were ln crashes). See the SOLVED banner at the top for the full matrix.
+      Values identical throughout (golden 233). Phase-1 harness stays; Phases 2–3 not needed.</b></p>
       <p><b>Retired direction (kept for the record):</b>
       (a) <b>Partial merge</b> — implement the composable contract and merge the compatible clusters
       (gini/meandev-style); modest, well-understood, golden-gated win. Or

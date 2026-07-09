@@ -64,7 +64,12 @@ pure fan-out" was <b>wrong</b>. The real fix is migrating the 2 drift families t
 ADR-0010 pattern), or dropping them from the default-active set — far smaller than P2/P3. The analysis
 below is kept for the record but is superseded on this point.
 <b>DONE (2026-07-09): both drift families migrated to set-based (ADR-0012) — dirtyduck all-agg
-356.8s → 27.6s (~13×), all 272 features kept, values proven identical by the golden gate.</b></div>
+356.8s → 27.6s (~13×), all 272 features kept, values proven identical by the golden gate. A SECOND
+cause then surfaced via EXPLAIN ANALYZE of donorschoose — the no-stats <code>as_of_dates</code>
+cardinality — fixed by a best-effort executor <code>ANALYZE as_of_dates</code> (ADR-0013, universal
+across DBs). Combined, all-agg is now ~6–8s on every live DB (dirtyduck 7.1s / chicago311 5.8s /
+donorschoose 7.8s), and <code>wide</code> completes on dirtyduck/chicago311 (were ln crashes). Full
+matrix + narrative: <code>specs/reduce-child-stream-fanout-p3.html</code>.</b></div>
 <p>Each aggregator <b>family</b> was materialized on the full dirtyduck cohort <em>in
 isolation</em>. Every one is fast:</p>
 <div class=scroll><table>
