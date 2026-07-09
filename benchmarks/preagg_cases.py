@@ -34,8 +34,9 @@ NEEDS_SPECIAL_CONFIG = frozenset(
         "first_passage_time",
         "cross_type_latency",
         "right_censoring_indicator",
-        "kl_drift",
-        "wasserstein_drift",
+        # kl_drift / wasserstein_drift are now migrated to the set-based path
+        # (two-window distributional drift) and golden-verified via the P3M cases
+        # below — they no longer stay correlated.
     }
 )
 
@@ -187,6 +188,12 @@ _CASE_MATRIX: List[Tuple[str, str, str | None]] = [
     ("dense", "timestamp", None),
     ("dense", "date", "P1M"),
     ("dense", "timestamp", "P1M"),
+    # P3M over the dense fixture straddles the early spread (Jul..Sep) and the
+    # December cluster, so a two-window drift metric sees a NON-empty recent AND
+    # baseline window for some keys (kl_drift/wasserstein_drift are 0 under P1M —
+    # baseline empty — and only exercise their real math here).
+    ("dense", "date", "P3M"),
+    ("dense", "timestamp", "P3M"),
 ]
 
 
