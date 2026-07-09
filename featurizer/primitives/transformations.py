@@ -139,13 +139,47 @@ class Transformer:
         )
 
 
+class DomainGuardedTransformer(Transformer):
+    """A unary transformer whose SQL function has a restricted real domain.
+
+    ``ln``/``log`` (defined only for x > 0) and ``sqrt`` (x >= 0) raise a hard
+    PostgreSQL error on out-of-domain input — ``cannot take logarithm of a
+    negative number`` / ``... of zero``. Applied blindly across a feature matrix
+    (e.g. to a z-score, a difference, a deviation — all legitimately signed),
+    that one bad row aborts the *entire* materialization. Wrapping the call in
+    ``case when <domain> then fn(x) end`` yields SQL ``NULL`` for out-of-domain
+    rows instead: an honest "undefined here" that never crashes the matrix, and
+    that a downstream imputer/encoder already handles like any other NULL. This
+    is not swallowing an error — a non-positive input to ``ln`` is a domain
+    condition, not a bug.
+
+    Only ``_build_transformer_call`` changes; ``name``/``label`` still derive
+    from ``self.name``, so the ADR-0007 output-column naming contract is
+    byte-for-byte unchanged.
+    """
+
+    def __init__(self, name, *, domain, transformer=None, **kwargs):
+        super().__init__(name, transformer=transformer, **kwargs)
+        # ``domain`` is a predicate template over ``{x}`` (the argument SQL).
+        self.domain = domain
+
+    def _build_transformer_call(self, feature):
+        x = feature.name
+        return (
+            f""" case when {self.domain.format(x=x)} """
+            f"""then {self.transformer}({x}) end """
+        )
+
+
 abs = Transformer(name="abs")
 exp = Transformer(name="exp")
-ln = Transformer(name="ln")
-log = Transformer(name="log")
+# Domain-guarded: ln/log are defined for x > 0, sqrt for x >= 0. Out-of-domain
+# rows render SQL NULL instead of aborting the whole matrix (see the class docstring).
+ln = DomainGuardedTransformer(name="ln", domain="{x} > 0")
+log = DomainGuardedTransformer(name="log", domain="{x} > 0")
 # log2 = log(2, x)
 # power = power(a, b) # a^b
-sqrt = Transformer(name="sqrt")
+sqrt = DomainGuardedTransformer(name="sqrt", domain="{x} >= 0")
 cbrt = Transformer(name="cbrt")
 sign = Transformer(name="sign")
 num_chars = Transformer(
