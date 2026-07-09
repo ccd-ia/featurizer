@@ -1909,6 +1909,38 @@ class KLDrift(TwoWindowDriftAggregator):
     def __init__(self):
         super().__init__(name="kl_drift", input_types=["categorical"])
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        # Set-based equivalent of the correlated two-subquery JOIN (ADR-0010): one
+        # scan of the child stream bounded to the two windows, ``count(*) FILTER``
+        # deriving the recent/baseline count per (group, category) in a single
+        # pass — so the shared-support KL sum needs no self-join. ``rp``/``bp`` are
+        # the per-window shares (``count / SUM(count) OVER (PARTITION BY key)``),
+        # and the ``FILTER (rp>0 AND bp>0)`` reproduces the INNER JOIN's shared
+        # support exactly.
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        recent, baseline = self._windows(feature, interval)
+        prepass = (
+            f"select {ck}, "
+            f"rc::float / NULLIF(sum(rc) over (partition by {ck}), 0) as rp, "
+            f"bc::float / NULLIF(sum(bc) over (partition by {ck}), 0) as bp "
+            f"from (select sub.{ck} as {ck}, "
+            f"count(*) filter (where {recent}) as rc, "
+            f"count(*) filter (where {baseline}) as bc "
+            f"from {ct} sub where ({recent}) or ({baseline}) "
+            f"group by sub.{ck}, sub.{col}) per_cat"
+        )
+        return PreAggSpec(
+            family_key=f"kldrift:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction=(
+                "COALESCE(SUM(rp * LN(rp / NULLIF(bp, 0))) "
+                "FILTER (WHERE rp > 0 AND bp > 0), 0)"
+            ),
+        )
+
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
@@ -1939,6 +1971,36 @@ class WassersteinDrift(TwoWindowDriftAggregator):
 
     def __init__(self):
         super().__init__(name="wasserstein_drift", input_types=["numeric"])
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        # Set-based equivalent of the correlated cross-join (ADR-0010): one scan of
+        # the child stream bounded to the two windows, each row tagged
+        # recent/baseline, and the per-window quantiles taken with ordered-set
+        # ``percentile_cont … FILTER``. An empty window → NULL percentile → NULL
+        # term, matching the correlated form's NULL-on-empty behaviour exactly.
+        ck = relationship.child_key
+        ct = f"{child.alias}_transform"
+        col = feature.name
+        recent, baseline = self._windows(feature, interval)
+        prepass = (
+            f"select sub.{ck} as {ck}, sub.{col} as val, "
+            f"({recent}) as is_recent, ({baseline}) as is_baseline "
+            f"from {ct} sub where ({recent}) or ({baseline})"
+        )
+
+        def q(frac):
+            return (
+                f"percentile_cont({frac}) within group (order by val) "
+                f"filter (where is_recent) - percentile_cont({frac}) "
+                f"within group (order by val) filter (where is_baseline)"
+            )
+
+        return PreAggSpec(
+            family_key=f"wsdrift:{col}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction=f"ABS({q('0.1')}) + ABS({q('0.5')}) + ABS({q('0.9')})",
+        )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         ck = relationship.child_key

@@ -18,7 +18,7 @@ from loguru import logger
 
 from .boundary import DEFAULT_BOUNDARY, AsOfBoundary
 from .categoricals import ROLE_CATEGORICAL, resolve_vocabulary
-from .executor import QueryExecutor
+from .executor import QueryExecutor, analyze_as_of_dates
 from .planner import FeaturePlanner, PlannerResult
 from .primitives import Entity, ERGraph, Feature, Variable
 from .primitives.utils import (
@@ -593,6 +593,8 @@ class Featurizer:
                     cur.execute(f'create schema if not exists "{schema}"')
                 for ddl in preamble:
                     cur.execute(ddl)
+            analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
+            with conn.cursor() as cur:
                 for gid, sql in grouped.queries.items():
                     name = f'"{schema}"."{stem}_{gid}"'
                     cur.execute(f"drop table if exists {name}")
@@ -723,6 +725,7 @@ class Featurizer:
                 with conn.cursor() as cur:
                     for ddl in preamble:
                         cur.execute(ddl)
+            analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
 
             tables: "OrderedDict[str, Any]" = _OrderedDict()
             for gid, sql in grouped.queries.items():

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Live-DB revalidation — v0.6.0 + companion-CTE cap fix</title>
+<style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;--bad:#b91c1c;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;
+--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;margin:0}
+main{max-width:1000px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.75rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.25rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+h3{font-size:1rem;margin:1.2rem 0 .4rem;color:var(--accent)}
+p{margin:.5rem 0}.lede{color:var(--muted);font-size:1.05rem}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;overflow-x:auto;
+font-family:var(--mono);font-size:.78rem;line-height:1.45}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.4rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono,code.mono{font-family:var(--mono)}
+.scroll{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.1em .5em;border-radius:5px}
+.chip.ok{background:#dcfce7;color:#15803d}.chip.bad{background:#fee2e2;color:#b91c1c}.chip.warn{background:#fef3c7;color:#b45309}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem;margin:1rem 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.1rem}
+.card a{color:var(--accent);font-weight:700;text-decoration:none;font-size:1.05rem}
+.card p{font-size:.82rem;color:var(--muted);margin:.35rem 0 0}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+.good{background:#dcfce7;border-left:4px solid var(--ok)}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+</style>
+</head>
+<body><main>
+<h1>Live-DB revalidation — v0.6.0 + companion-CTE cap fix</h1>
+<p class=lede>Running featurizer's tests against the three live triage databases
+(<code>dirtyduck</code>, <code>chicago311</code>, <code>donorschoose</code>) after the
+v0.6.0 set-based pre-aggregation release — 2026-07-08.</p>
+
+<div class="note good"><b>Headline.</b> v0.6.0 shipped with a latent SQL-generation bug:
+an over-63-byte set-based <em>companion-CTE</em> name was hash-capped with a <code>~</code>
+separator and emitted <em>unquoted</em>. PostgreSQL parses <code>~</code> as an operator, so
+the whole all-aggregator config <b>failed with <code>syntax error at or near "~"</code></b> on any
+data whose categorical column names are long (e.g. the food-inspections
+<code>transition_matrix_summary(inspection_type)</code> stream). The DB-free tests and the
+pre-v0.6.0 live stress test never hit it — only running the tests against the live DBs did.
+<b>Fixed</b> in <code>planner.py</code> (cap separator folded to <code>_</code> for the bare
+CTE identifier), with a DB-free regression guard.</div>
+
+<h2>1 · Test results</h2>
+<div class=scroll><table>
+<thead><tr><th>tier</th><th>command</th><th>result</th></tr></thead>
+<tbody>
+<tr><td>DB-free</td><td class=mono>just test-fast</td><td><span class="chip ok">571 passed</span> (added the cap regression test; 7 viz skips need the <code>[viz]</code> extra)</td></tr>
+<tr><td>Integration (seeded)</td><td class=mono>just test-integration</td><td><span class="chip ok">365 passed, 0 failed</span> — was <span class="chip bad">8 failed</span> (food-inspections) before the fix</td></tr>
+</tbody></table></div>
+
+<h2>2 · Live full-cohort materialization (measured)</h2>
+<p>Each config materialized through featurizer's grouped/TEMP-shard path
+(<code>to_dataframe(connection=…)</code>) at one as-of date, read-only, in a child process with a
+360&nbsp;s timeout. <b>narrow</b> = the triage config's own primitives; <b>all-agg</b> = the full
+67-aggregator default set with <code>identity</code>; <b>wide</b> = all-agg × 14 transformers.</p>
+<div class=scroll><table>
+<thead><tr><th>database</th><th>variant</th><th>features</th><th>rows</th><th>seconds</th><th>status</th></tr></thead>
+<tbody>
+<tr><td class=mono>dirtyduck</td><td class=mono>narrow</td><td class=mono>147</td><td class=mono>22169</td><td class=mono>3.4</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>dirtyduck</td><td class=mono>all-agg</td><td class=mono>272</td><td class=mono>22169</td><td class=mono>356.8</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>dirtyduck</td><td class=mono>wide</td><td class=mono colspan=2>—</td><td class=mono>—</td><td><span class="chip bad">ln of negative</span></td></tr>
+<tr><td class=mono>chicago311</td><td class=mono>narrow</td><td class=mono>28</td><td class=mono>30654</td><td class=mono>1.0</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>chicago311</td><td class=mono>all-agg</td><td class=mono>191</td><td class=mono>30654</td><td class=mono>10.1</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>chicago311</td><td class=mono>wide</td><td class=mono colspan=2>—</td><td class=mono>—</td><td><span class="chip bad">ln of zero</span></td></tr>
+<tr><td class=mono>donorschoose</td><td class=mono>narrow</td><td class=mono>175</td><td class=mono>3000</td><td class=mono>1.5</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>donorschoose</td><td class=mono>all-agg</td><td class=mono>1063</td><td class=mono>3000</td><td class=mono>281.1</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td class=mono>donorschoose</td><td class=mono>wide</td><td class=mono colspan=2>—</td><td class=mono>—</td><td><span class="chip warn">timeout &gt;360s</span></td></tr>
+</tbody></table></div>
+
+<div class=note><b>Read this honestly.</b> The <code>~</code> fix means <b>all-agg now
+materializes on every live DB</b> (it errored or would not finish before) — a real correctness
+win. But the advanced tier is <b>still heavy on the larger streams</b>: dirtyduck all-agg is
+356.8&nbsp;s and donorschoose all-agg 281.1&nbsp;s — far above ADR-0010's synthetic
+&lt;120&nbsp;s acceptance target. That target was never actually executed against the real
+dirtyduck DB (the config SyntaxError'd), so v0.6.0's real-data acceptance was synthetic-only.
+chicago311 all-agg is a healthy 10.1&nbsp;s. The <b>wide</b> variant is unrelated to v0.6.0 — it
+trips <em>unguarded</em> <code>ln</code>/<code>sqrt</code> on negative/zero inputs (applying every
+transformer to every signed feature), the known math-hardening follow-up.</div>
+
+<h2>3 · Per-database detail</h2>
+<div class=cards>
+<div class=card><a href="live-db-revalidation-v060/dirtyduck.html">dirtyduck →</a>
+<p>Food-inspection failure risk. facilities ← inspections (as-of). 272 all-agg features; the config that surfaced the <code>~</code> bug.</p></div>
+<div class=card><a href="live-db-revalidation-v060/chicago311.html">chicago311 →</a>
+<p>311 service-request modeling. 191 all-agg features; the fast case (10.1&nbsp;s).</p></div>
+<div class=card><a href="live-db-revalidation-v060/donorschoose.html">donorschoose →</a>
+<p>Classroom-project funding. 1063 all-agg features over 3k rows.</p></div>
+</div>
+
+<h2>4 · Follow-ups (surfaced, not yet actioned)</h2>
+<ul>
+<li><b>Advanced-tier performance on real data.</b> dirtyduck / donorschoose all-agg run 5–6&nbsp;min
+vs chicago311's 10&nbsp;s. Worth profiling which families dominate (the non-migrated correlated
+special-config families, or the categorical/sequence tier over long per-group event streams) and
+whether ADR-0010's acceptance should be re-stated against real DBs, not synthetic.</li>
+<li><b>Unguarded <code>ln</code> / <code>sqrt</code> transformers.</b> They raise on
+negative/zero inputs. Either guard them (<code>ln(nullif(greatest(x,0),0))</code> → NULL) or
+document that math transformers are opt-in only for non-negative features. Needs a semantic
+decision (possibly an ADR).</li>
+</ul>
+
+<footer>Generated 2026-07-08. Read-only validation against the live triage containers
+(dirtyduck :5440, chicago311 :5438, donorschoose :5441). Supersedes the Jul-6 per-DB snapshot in
+<code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/</code>, whose "all-agg/wide does not
+materialize" footnote the v0.6.0 rewrite + this fix have now moved past for all-agg.</footer>
+</main></body></html>

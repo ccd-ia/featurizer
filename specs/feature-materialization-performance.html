@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Feature-materialization performance — plan</title>
+<style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;--bad:#b91c1c;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;margin:0}
+main{max-width:1000px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.75rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.25rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+h3{font-size:1.02rem;margin:1.3rem 0 .4rem;color:var(--accent)}
+p{margin:.5rem 0}.lede{color:var(--muted);font-size:1.05rem}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.45}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.4rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono,code.mono{font-family:var(--mono)}
+.scroll{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.1em .5em;border-radius:5px}
+.chip.a{background:#fee2e2;color:#b91c1c}.chip.b{background:#fef3c7;color:#b45309}.chip.c{background:#e0e7ff;color:#4338ca}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+.good{background:#dcfce7;border-left:4px solid var(--ok)}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+ul{margin:.4rem 0 .4rem 0}li{margin:.25rem 0}
+</style>
+</head>
+<body><main>
+<h1>Feature-materialization performance — plan</h1>
+<p class=lede>Why the full-aggregator matrix is slow on real data, what actually causes it,
+and the ordered program to fix it. Grounded in live-DB measurement (dirtyduck / chicago311 /
+donorschoose), 2026-07-08.</p>
+
+<h2>1 · Symptom</h2>
+<p>After the v0.6.0 set-based rewrite + the companion-CTE cap fix, the all-aggregator config
+now materializes on every live DB — but slowly on the larger event streams:</p>
+<div class=scroll><table>
+<thead><tr><th>DB</th><th>rows</th><th>all-agg features</th><th>all-agg seconds</th></tr></thead>
+<tbody>
+<tr><td class=mono>dirtyduck</td><td class=mono>22169</td><td class=mono>272</td><td class=mono>356.8</td></tr>
+<tr><td class=mono>chicago311</td><td class=mono>30654</td><td class=mono>191</td><td class=mono>10.1</td></tr>
+<tr><td class=mono>donorschoose</td><td class=mono>3000</td><td class=mono>1063</td><td class=mono>281.1</td></tr>
+</tbody></table></div>
+<p>chicago311 (more rows) is 35× faster than dirtyduck — so it is neither row count nor feature
+count alone. dirtyduck's config differs by using longer windows (P1M/P3M/P6M vs P7D/P30D/P90D)
+over 3 child categoricals (result/risk/type).</p>
+
+<h2>2 · Root cause (measured, not guessed)</h2>
+<div class="note" style="background:#fee2e2;border-left:4px solid #b91c1c">
+<b>CORRECTION (2026-07-09, superseding the fan-out analysis below).</b> An
+<code>EXPLAIN (ANALYZE)</code> of the slow column-group — run late — shows the 343s is <b>9 correlated
+<code>SubPlan</code>s over <code>inspections_transform</code> at <code>loops=18909</code></b>
+(correlated subqueries re-executed once per target row), <b>not</b> the fan-out this section
+originally blamed. They are the two-window drift families <code>kl_drift</code> /
+<code>wasserstein_drift</code> — which <b>ADR-0010 explicitly deferred</b> as a non-goal but which
+<em>fire on dirtyduck's 3 categorical columns × 3 intervals</em> (2×3×3 = 18 correlated subqueries).
+<b>Proof: dirtyduck all-agg MINUS those two families = 25.2s</b> (vs 356.8s); the set-based fan-out is
+cheap (a 66-CTE group = 5s). The earlier claim here that "no correlated subqueries remain / the cost is
+pure fan-out" was <b>wrong</b>. The real fix is migrating the 2 drift families to set-based (the
+ADR-0010 pattern), or dropping them from the default-active set — far smaller than P2/P3. The analysis
+below is kept for the record but is superseded on this point.
+<b>DONE (2026-07-09): both drift families migrated to set-based (ADR-0012) — dirtyduck all-agg
+356.8s → 27.6s (~13×), all 272 features kept, values proven identical by the golden gate. A SECOND
+cause then surfaced via EXPLAIN ANALYZE of donorschoose — the no-stats <code>as_of_dates</code>
+cardinality — fixed by a best-effort executor <code>ANALYZE as_of_dates</code> (ADR-0013, universal
+across DBs). Combined, all-agg is now ~6–8s on every live DB (dirtyduck 7.1s / chicago311 5.8s /
+donorschoose 7.8s), and <code>wide</code> completes on dirtyduck/chicago311 (were ln crashes). Full
+matrix + narrative: <code>specs/reduce-child-stream-fanout-p3.html</code>.</b></div>
+<p>Each aggregator <b>family</b> was materialized on the full dirtyduck cohort <em>in
+isolation</em>. Every one is fast:</p>
+<div class=scroll><table>
+<thead><tr><th>bucket</th><th>features</th><th>seconds</th></tr></thead>
+<tbody>
+<tr><td class=mono>count_only</td><td class=mono>43</td><td class=mono>1.0</td></tr>
+<tr><td class=mono>plain31 (sum/mean/stddev/percentiles/…)</td><td class=mono>95</td><td class=mono>2.2</td></tr>
+<tr><td class=mono>categorical (entropy/hhi/gini)</td><td class=mono>67</td><td class=mono>2.0</td></tr>
+<tr><td class=mono>gap (gap_*/burstiness/recurrence)</td><td class=mono>79</td><td class=mono>2.3</td></tr>
+<tr><td class=mono>sequence (ngram/transition/streak/markov)</td><td class=mono>151</td><td class=mono>8.2</td></tr>
+<tr><td class=mono>misc_stream (acf/variance_ratio/cosinor/…)</td><td class=mono>55</td><td class=mono>1.6</td></tr>
+</tbody></table></div>
+<div class="note good"><b>The buckets sum to ~17&nbsp;s; the combined all-agg is 356.8&nbsp;s — a
+~20× super-linear blowup.</b> So the cost is <b>not a slow primitive</b>. It is the
+<b>monolithic single-query assembly</b>: the full config emits ~38 CTEs (each set-based family ×
+interval × categorical column is its own companion CTE — a window pre-pass over the child stream),
+all LEFT-JOINed into one synth CTE inside a lateral over <code>as_of_dates</code>. Aggregator
+coverage confirms it is not the correlated tier: 31 aggregators are plain <code>GROUP BY</code>,
+27 are set-based companion CTEs (ADR-0010), and the 9 still-correlated ones are spatial/predicate/
+drift families that <em>do not fire</em> on dirtyduck.</div>
+<p>Two mechanisms produce the super-linearity, both fixable:</p>
+<ul>
+<li><b>Planner (dominant).</b> A ~38-way join exceeds PostgreSQL's default
+<code>join_collapse_limit</code> (8) and <code>geqo_threshold</code> (12), so join order is chosen by
+the genetic optimizer (GEQO) — effectively random — instead of cost-based search. A bad join order on
+wide intermediates is easily 10–100×. Crucially, you <b>cannot</b> just turn GEQO off: forcing
+exhaustive cost-based search over ~38 relations is super-exponential and killed the backend mid-plan
+(measured). The only durable escape is <em>fewer relations per join</em> — i.e. P2/P3.</li>
+<li><b>Memory.</b> Each companion CTE auto-materializes (referenced by the synth join), and the
+multi-way hash join of many wide intermediates spills to disk when <code>work_mem</code> (default
+4&nbsp;MB) is small.</li>
+</ul>
+
+<h3>2a · Does PostgreSQL tuning actually move it? (measured)</h3>
+<p>Full dirtyduck all-agg, same query, two connections — server defaults vs a tuned session
+(<code>work_mem=256MB</code>, <code>join_collapse_limit=from_collapse_limit=30</code>,
+<code>geqo=off</code>):</p>
+<div class=scroll><table>
+<thead><tr><th>session</th><th>seconds</th><th>vs baseline</th></tr></thead>
+<tbody>
+<tr><td class=mono>baseline (server defaults, work_mem 4MB)</td><td class=mono>359.3</td><td class=mono>1×</td></tr>
+<tr><td class=mono>aggressive (work_mem 256MB, collapse 30, geqo OFF)</td><td class=mono>backend killed</td><td class=mono>planning blowup</td></tr>
+<tr><td class=mono>conservative (work_mem 64MB, collapse 20, geqo ON)</td><td class=mono>259.9</td><td class=mono>1.38×</td></tr>
+</tbody></table></div>
+<p class=note><b>Verdict: tuning is a real but partial lever, and only when conservative.</b>
+Modest <code>work_mem</code> (64&nbsp;MB) buys ~1.4× by cutting hash-join spills — safe, cheap, worth
+shipping as an executor default. But it gets nowhere near the ~17&nbsp;s the isolated buckets prove is
+achievable, because the dominant cost is <b>GEQO picking a poor order for the ~38-way join</b>, which
+more memory cannot fix. Worse, the naive "crank everything" (256&nbsp;MB + <code>geqo=off</code>) was
+<b>actively harmful</b>: <code>geqo=off</code> forces exhaustive dynamic-programming join search over ~38
+relations and the backend was <b>killed mid-plan</b> — and since the host is 128&nbsp;GiB and the
+container is uncapped, this was <em>planning</em> explosion, not execution OOM. <b>Conclusion:</b> ship
+conservative tuning as a supporting default (P1), but the actual "must" is the structural fix (P2/P3) —
+bound joins-per-query so the count drops under <code>geqo_threshold</code> and cost-based planning
+returns, then run the resulting independent shards in parallel.</p>
+
+<h2>3 · The program (ordered)</h2>
+
+<h3><span class="chip a">P1</span> PostgreSQL planner/memory tuning as an executor default</h3>
+<p>The cheapest, highest-leverage lever, and the one to answer first because it is a config change,
+not an architecture change. featurizer's executor / <code>to_dataframe</code> / <code>to_tables</code>
+should issue a small set of <code>SET LOCAL</code> GUCs on <b>its own</b> connections before running
+the group queries: a modest <code>work_mem</code> bump (measured ~1.4× at 64&nbsp;MB) and a small
+raise to <code>join_collapse_limit</code> / <code>from_collapse_limit</code>. <b>Leave GEQO on</b> —
+disabling it (or raising the threshold above the join count) makes exhaustive planning of a wide join
+explode and crashed the backend in testing. Constraints:</p>
+<ul>
+<li>Only ever <code>SET LOCAL</code> (transaction-scoped) and only on connections featurizer opens
+itself. When the caller passes <code>connection=</code>, featurizer <b>must not</b> mutate their
+session — expose the recommended settings and let them opt in.</li>
+<li>Values are advisory defaults with an override hook; <code>work_mem</code> is per-sort/hash-node,
+so it is bounded, not global.</li>
+</ul>
+
+<h3><span class="chip a" style="background:#e2e4e0;color:#5b6472">P2 — REFUTED</span> Parallelize + always-shard the assembly</h3>
+<div class="note"><b>Validated before building — the premise does not hold.</b> The plan was: shard
+below 1664 columns to cap CTEs-per-query, then run the independent groups in parallel. Measured on
+dirtyduck all-agg:
+<div class=scroll><table>
+<thead><tr><th>test</th><th>result</th><th>implication</th></tr></thead>
+<tbody>
+<tr><td class=mono>shard into 3 / 6 / 12 col-groups (serial)</td><td class=mono>347.7 / 351.5 / 349.5s</td><td>total work CONSTANT — sharding doesn't reduce it</td></tr>
+<tr><td class=mono>per-group timing (3 groups)</td><td class=mono>343.0 / 5.0 / 2.2s</td><td>one group holds it all → parallel wall-clock ≈ 343s</td></tr>
+<tr><td class=mono>ANALYZE as_of_dates (fix no-stats estimate)</td><td class=mono>376.7s</td><td>the 2550-row misestimate was not the runtime cost</td></tr>
+</tbody></table></div>
+<b>Why:</b> the <code>EXPLAIN</code> + string counts show the child event stream
+<code>inspections_transform</code> is scanned directly <b>~101 times</b> across <b>105 CTEs</b> (303
+companion <code>_for_</code> references) — each companion CTE an independent set-based pre-pass — all
+merge-joined into a ~100-way join. <b>No correlated per-target-row subqueries remain</b> (ADR-0010's
+migration is complete; the <code>sub</code> aliases in the plan are the pre-pass subqueries, not
+correlated scans). That fan-out is intrinsic to the plan shape: column-sharding just
+<em>relocates</em> the heavy columns into one group, and parallelism cannot split a single group's
+serial 100-way merge-join / scan chain. The tuning win (P1, 1.4×) is real join-ordering headroom on
+top, but the dominant cost is the fan-out, which only <b>P3</b> addresses. <b>P2 is therefore not
+implemented.</b></div>
+<div class="note"><b>Is this dirtyduck-specific? No — it is general.</b> The fan-out was measured
+DB-free across all three configs:
+<div class=scroll><table>
+<thead><tr><th>DB</th><th>features</th><th>companion CTEs</th><th>child-stream refs</th><th>measured all-agg</th></tr></thead>
+<tbody>
+<tr><td class=mono>chicago311</td><td class=mono>191</td><td class=mono>126</td><td class=mono>324</td><td class=mono>10.1s</td></tr>
+<tr><td class=mono>dirtyduck</td><td class=mono>272</td><td class=mono>303</td><td class=mono>813</td><td class=mono>356.8s</td></tr>
+<tr><td class=mono>donorschoose</td><td class=mono>1063</td><td class=mono>582</td><td class=mono>2091</td><td class=mono>281.1s</td></tr>
+</tbody></table></div>
+The fan-out is present in <em>every</em> config and grows multiplicatively with (families × columns ×
+intervals); 2 of the 3 real DBs are already slow. chicago311 is fast only because it sits at the low
+end of every axis (fewest CTEs, smallest event stream, 7–90-day windows vs 1–6-month), not because it
+escapes the mechanism. Cost ≈ (#&nbsp;companion CTEs) × (child-stream size) × (join-width penalty) —
+and all three grow on a larger / richer DB, so this <b>worsens with scale</b>. It is a structural
+property of emitting the full aggregator set as one query, not a dirtyduck quirk.</div>
+<p class=note><b>Metadata under sharding (the question that motivated P2 — answered, still true
+even though P2 is shelved).</b> Nothing breaks. The manifest is built once from the <em>logical</em>
+plan (<code>plan.target_output_features</code>), so it always covers <b>every</b> output column no
+matter how many data shards there are — sharding splits <em>values</em>, never metadata. There is
+exactly one <code>&lt;stem&gt;_manifest</code> table; each row carries a <code>feature_group</code>
+column pointing to the <code>&lt;stem&gt;_group_NNN</code> shard its values live in, and the
+short-name (63-byte cap) is computed identically on both sides so they join by column name. One
+hardening item survives regardless: <code>_write_manifest_table</code> defaults an unmatched column
+to <code>group_000</code> — a silent mis-tag if the manifest and <code>column_groups()</code> ever
+disagree; add an assertion + test.</p>
+
+<h3><span class="chip a">P3 (promoted to the primary fix)</span> Reduce child-stream fan-out</h3>
+<p>The measurement above makes this the real lever, not an afterthought — and it is a single clean
+change (no correlated-subquery migration needed; ADR-0010 already did that). Today the child stream is
+scanned ~100× because a companion CTE is emitted per <code>(family, column, interval)</code>, each
+independently scanning it. <b>Share one interval-scoped pre-pass across families/columns</b> — one
+ordered scan of the child stream feeding many reductions — instead of ~300 near-identical
+companion-CTE references. That cuts both the scan count and the ~100-way merge-join width, the two
+compounding factors. Architectural change to companion-CTE generation; needs its own spec and the
+golden-value equality gate (values/names preserved by construction, ADR-0007/0010).</p>
+
+<h3><span class="chip b" style="background:#dcfce7;color:#15803d">P4 — DONE</span> Guard <code>ln</code> / <code>sqrt</code> / <code>log</code> against out-of-domain inputs</h3>
+<p>Separate correctness bug surfaced by the <code>wide</code> variant: <code>ln</code>/<code>log</code>/
+<code>sqrt</code> raised <code>cannot take logarithm of a negative/zero</code> on signed features
+(z-scores, diffs, deviations), aborting the whole matrix. <b>Shipped Option A</b> (NULL out of domain)
+as <code>DomainGuardedTransformer</code> — <code>case when x &gt; 0 then ln(x) end</code>
+(<code>&gt;= 0</code> for sqrt) — recorded in <b>ADR-0011</b>. Names/labels unchanged (ADR-0007).
+Verified end-to-end: DB-free 574 passed (+3 guard tests); live-PG semantics probe (NULL for x≤0,
+<code>sqrt(0)=0</code>); and chicago311 <code>wide</code> — which crashed before — now materializes
+30654 × 909 cols in 49.2s.</p>
+
+<h3><span class="chip c">P5</span> Re-baseline ADR-0010 acceptance on real DBs</h3>
+<p>The ADR-0010 &lt;120&nbsp;s dirtyduck all-agg target was measured on synthetic 10k data and was
+never actually executable on the real DB (the config SyntaxError'd pre-fix). Re-state acceptance with
+real numbers after P1–P3 land: targets per DB, not one synthetic figure.</p>
+
+<h2>4 · Sequencing rationale (revised after measurement)</h2>
+<p><b>P4 — DONE</b> (independent correctness fix, shipped). <b>P2 — REFUTED and shelved</b>: measured
+before building, sharding+parallelism cannot help this bottleneck (the cost is one group's 811×
+child-stream fan-out, not a distributable wide join). <b>P3 is now the primary structural fix</b> and
+the recommended next build: kill the 18 residual correlated subqueries, then share one child-stream
+pre-pass across families. <b>P1</b> (conservative <code>work_mem</code>/collapse tuning, ~1.4×) is a
+cheap supporting default worth shipping alongside P3, GEQO left on. <b>P5</b> re-baselines acceptance
+once P3 lands. The lesson: validate the premise on real data before building the infrastructure — the
+"obvious" parallel-sharding win evaporated under measurement.</p>
+
+<footer>Grounded in live-DB profiling against the triage containers (read-only). Sibling docs:
+<code>specs/live-db-revalidation-v060.html</code> (the run that surfaced this),
+<code>docs/adr/0010-set-based-preaggregation.md</code>, <code>docs/adr/0005-column-group-sharding.md</code>.</footer>
+</main></body></html>

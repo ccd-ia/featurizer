@@ -42,35 +42,45 @@ def test_interval_only(name, col):
 
 @pytest.mark.parametrize("name,col", DRIFT.items())
 def test_two_windows_both_backward(name, col):
+    """Since ADR-0011-era migration the drift families are set-based: the two
+    windows live in the companion pre-pass (``result.preagg.prepass_sql``), not
+    in a correlated ``definition``."""
     parent, child, rel = _setup()
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, col), interval="P1W", relationship=rel)
-    assert result is not None and result.definition is not None
-    # recent + baseline windows
-    assert result.definition.count("daterange") == 2
+    assert result is not None and result.preagg is not None
+    prepass = result.preagg.prepass_sql
+    # recent + baseline windows (each referenced in its FILTER and the WHERE)
+    assert prepass.count("daterange") >= 2
     # baseline window is the doubled-back range; both reference the as-of date
-    assert "2 * interval 'P1W'" in result.definition
-    assert "aod.as_of_date" in result.definition
+    assert "2 * interval 'P1W'" in prepass
+    assert "aod.as_of_date" in prepass
 
 
 def test_kl_drift_is_kl_over_shared_support():
+    """Set-based KL: ``count(*) FILTER`` derives recent/baseline shares per
+    category in one pass, and the reduction's ``FILTER (rp>0 AND bp>0)``
+    reproduces the correlated INNER JOIN's shared support (no self-join)."""
     parent, child, rel = _setup()
     agg = get_aggregations(["kl_drift"])["kl_drift"]
     result = agg(
         parent, child, _feature(child, "category"), interval="P1W", relationship=rel
     )
-    assert "LN(r.p / NULLIF(b.p, 0))" in result.definition
-    assert "JOIN" in result.definition.upper()
+    assert "LN(rp / NULLIF(bp, 0))" in result.definition
+    assert "FILTER (WHERE rp > 0 AND bp > 0)" in result.definition
 
 
 def test_wasserstein_uses_constant_quantiles():
+    """Set-based Wasserstein proxy: per-window quantiles via ordered-set
+    ``percentile_cont … FILTER`` (an empty window → NULL, as before)."""
     parent, child, rel = _setup()
     agg = get_aggregations(["wasserstein_drift"])["wasserstein_drift"]
     result = agg(
         parent, child, _feature(child, "amount"), interval="P1W", relationship=rel
     )
     assert "percentile_cont(0.1)" in result.definition
-    assert "ABS(r.q10 - b.q10)" in result.definition
+    assert "filter (where is_recent)" in result.definition
+    assert "filter (where is_baseline)" in result.definition
 
 
 def test_type_gating():

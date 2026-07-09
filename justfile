@@ -78,6 +78,10 @@ bench-capture-golden:
 bench-inventory:
     uv run python -m benchmarks inventory
 
+# Report companion-CTE fan-out for a synthetic all-agg config (no database; plan P3).
+bench-fanout:
+    uv run python -m benchmarks.fanout_report
+
 # Scaling benchmark for the subquery-aggregator tier (requires `just db-up`).
 # SCALE is one of 100 / 1k / 10k; artifacts land under
 # specs/correlated-subquery-aggregator-scaling/.

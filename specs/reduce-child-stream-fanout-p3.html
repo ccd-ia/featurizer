@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Reduce child-stream fan-out (P3)</title>
+<style>
+:root{
+  --bg:#fafaf8; --surface:#ffffff; --fg:#1a2332; --muted:#5b6472;
+  --accent:#0f766e; --accent-soft:#ccfbf1; --accent-2:#b45309; --accent-2-soft:#fef3c7;
+  --ok:#15803d; --ok-soft:#dcfce7; --bad:#b91c1c; --bad-soft:#fee2e2;
+  --border:#e2e4e0; --code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.58;margin:0}
+main{max-width:1000px;margin:0 auto;padding:2.2rem 1.3rem 5rem}
+h1{font-size:1.85rem;margin:0 0 .3rem;letter-spacing:-.02em}
+h2{font-size:1.3rem;margin:2.4rem 0 .7rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+h3{font-size:1.08rem;margin:1.5rem 0 .5rem}
+h4{font-size:.98rem;margin:1.1rem 0 .35rem;color:var(--accent)}
+p{margin:.55rem 0}
+a{color:var(--accent)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.75rem .95rem;overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.5}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.42rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono,code.mono{font-family:var(--mono)}
+.scroll{overflow-x:auto;border:1px solid var(--border);border-radius:8px}
+header details.meta{margin-top:.5rem;font-size:.8rem;color:var(--muted)}
+header details.meta dl{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .9rem;margin:.5rem 0}
+header details.meta dt{font-weight:700;color:var(--accent)}
+header details.meta dd{margin:0;font-family:var(--mono)}
+figure{margin:1.2rem 0;text-align:center}
+figure svg{max-width:100%;height:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+figcaption{font-size:.8rem;color:var(--muted);margin-top:.45rem}
+.tag{display:inline-block;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.08em .5em;border-radius:5px}
+.tag.existing{background:var(--accent-soft);color:var(--accent)}
+.tag.new{background:var(--accent-2-soft);color:var(--accent-2)}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:.6rem 1.1rem 1.1rem;margin:1.1rem 0}
+.checklist{list-style:none;padding-left:.2rem}
+.checklist li{margin:.3rem 0}
+.status{font-weight:700;color:var(--muted)}
+.loop{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;padding:.55rem .8rem;margin:.7rem 0 .2rem;font-size:.85rem}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+.good{background:var(--ok-soft);border-left:4px solid var(--ok)}
+.lede{color:var(--muted);font-size:1.05rem}
+ul li{margin:.25rem 0}
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Plan: Reduce child-stream fan-out (P3)</h1>
+    <p class="lede">Collapse the ~100 per-family companion-CTE scans of the child event stream into a
+    handful of merged pre-passes — the only lever that actually fixes full-aggregator materialization
+    on real data — with zero change to output values or names, gated by the frozen golden-value harness.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-09T03:38 America/Mexico_City</dd>
+        <dt>modified</dt>     <dd>2026-07-09T03:38, 2026-07-09T11:45, 2026-07-09T15:35</dd>
+        <dt>commits</dt>      <dd>—</dd>
+        <dt>agent name</dt>   <dd>claude-opus-4-8[1m]</dd>
+        <dt>session id</dt>   <dd>41bc70d5-fdfa-4e98-9697-a637fad3401d</dd>
+        <dt>back refs</dt>    <dd>specs/feature-materialization-performance.html, specs/live-db-revalidation-v060.html, docs/adr/0010-set-based-preaggregation.md, docs/adr/0009-correlated-subquery-aggregator-scaling.md, specs/correlated-subquery-aggregator-scaling.html</dd>
+        <dt>forward refs</dt> <dd>—</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 900 250" role="img" aria-label="Before: 100 CTEs each scan one child stream. After: a few merged pre-passes.">
+      <text x="20" y="28" font-family="var(--sans)" font-size="15" font-weight="700" fill="#b91c1c">BEFORE — fan-out</text>
+      <rect x="20" y="42" width="150" height="42" rx="6" fill="#ccfbf1" stroke="#0f766e"/>
+      <text x="95" y="61" text-anchor="middle" font-size="12" font-family="monospace" fill="#0f766e">child_transform</text>
+      <text x="95" y="76" text-anchor="middle" font-size="10" font-family="monospace" fill="#5b6472">74k rows</text>
+      <g stroke="#b91c1c" stroke-width="1" opacity="0.5">
+        <line x1="170" y1="63" x2="300" y2="20"/><line x1="170" y1="63" x2="300" y2="35"/>
+        <line x1="170" y1="63" x2="300" y2="50"/><line x1="170" y1="63" x2="300" y2="65"/>
+        <line x1="170" y1="63" x2="300" y2="80"/><line x1="170" y1="63" x2="300" y2="95"/>
+        <line x1="170" y1="63" x2="300" y2="110"/>
+      </g>
+      <rect x="300" y="12" width="120" height="108" rx="6" fill="#fee2e2" stroke="#b91c1c" stroke-dasharray="3 2"/>
+      <text x="360" y="60" text-anchor="middle" font-size="11" fill="#b91c1c">~100 companion</text>
+      <text x="360" y="76" text-anchor="middle" font-size="11" fill="#b91c1c">CTEs, each a</text>
+      <text x="360" y="92" text-anchor="middle" font-size="11" fill="#b91c1c">separate scan</text>
+      <text x="360" y="146" text-anchor="middle" font-size="12" font-weight="700" fill="#b91c1c">356.8s</text>
+
+      <text x="500" y="28" font-family="var(--sans)" font-size="15" font-weight="700" fill="#15803d">AFTER — merged</text>
+      <rect x="500" y="42" width="150" height="42" rx="6" fill="#ccfbf1" stroke="#0f766e"/>
+      <text x="575" y="61" text-anchor="middle" font-size="12" font-family="monospace" fill="#0f766e">child_transform</text>
+      <text x="575" y="76" text-anchor="middle" font-size="10" font-family="monospace" fill="#5b6472">scanned ~N_interval×</text>
+      <g stroke="#15803d" stroke-width="1.5">
+        <line x1="650" y1="63" x2="740" y2="45"/><line x1="650" y1="63" x2="740" y2="70"/><line x1="650" y1="63" x2="740" y2="95"/>
+      </g>
+      <rect x="740" y="30" width="140" height="80" rx="6" fill="#dcfce7" stroke="#15803d"/>
+      <text x="810" y="60" text-anchor="middle" font-size="11" fill="#15803d">one pre-pass per</text>
+      <text x="810" y="76" text-anchor="middle" font-size="11" fill="#15803d">(window sig, interval)</text>
+      <text x="810" y="92" text-anchor="middle" font-size="11" fill="#15803d">→ all reductions</text>
+      <text x="810" y="146" text-anchor="middle" font-size="12" font-weight="700" fill="#15803d">target: ≪ 356.8s</text>
+      <text x="450" y="200" text-anchor="middle" font-size="12" font-style="italic" fill="#5b6472">Same values. Same column names. Fewer scans, narrower join.</text>
+    </svg>
+    <figcaption>P3 at a glance: from ~100 independent child-stream scans (merge-joined into a ~100-way join) to one pre-pass per window signature per interval.</figcaption>
+  </figure>
+
+  <section id="solution-actual">
+    <div class="note good">
+      <h2 style="margin-top:.2rem">✅ SOLVED — the actual solution (2026-07-09)</h2>
+      <p>This plan's fan-out premise was <b>wrong</b> (see Amendments). Running <code>EXPLAIN
+      (ANALYZE)</code> — which names the real cost by self-time — found <b>two</b> distinct causes, and
+      the fix was <b>two small changes</b>, not the fan-out rearchitecture this plan scoped:</p>
+      <ol>
+        <li><b>Correlated two-window drift (ADR-0012).</b> <code>kl_drift</code>/<code>wasserstein_drift</code>,
+        deferred by ADR-0010, fired on categorical columns and ran as O(target×children) correlated
+        subqueries (9 SubPlans at <code>loops=18909</code> = the whole 343s on dirtyduck). Migrated to
+        set-based companion CTEs; values proven identical by the golden gate.</li>
+        <li><b>No-stats <code>as_of_dates</code> (ADR-0013).</b> The caller's freshly-created
+        <code>as_of_dates</code> had no statistics, so PostgreSQL assumed ~2550 rows and built a
+        catastrophic join plan (one Merge Join = 99% of donorschoose's 294s). The executor now runs a
+        best-effort <code>ANALYZE as_of_dates</code> before every query — <b>DB-agnostic, in the
+        executor, so it applies to every database automatically</b>.</li>
+      </ol>
+      <p><b>Measured on all three live triage DBs (via the real featurizer path, auto-ANALYZE):</b></p>
+      <div class=scroll><table>
+      <thead><tr><th>DB</th><th>narrow</th><th>all-agg (was)</th><th>wide (was)</th></tr></thead>
+      <tbody>
+      <tr><td class=mono>dirtyduck</td><td class=mono>2.5s</td><td class=mono>7.1s (356.8s)</td><td class=mono>61.5s (ln crash)</td></tr>
+      <tr><td class=mono>chicago311</td><td class=mono>0.8s</td><td class=mono>5.8s (10.1s)</td><td class=mono>49.0s (ln crash)</td></tr>
+      <tr><td class=mono>donorschoose</td><td class=mono>0.6s</td><td class=mono>7.8s (281s)</td><td class=mono>backend crash — scale, open</td></tr>
+      </tbody></table></div>
+      <p><b>all-agg is now uniformly ~6–8s across every DB</b> (was 10–357s). <code>wide</code> (all-agg
+      × 14 transformers — an extreme config) now <em>completes</em> on dirtyduck/chicago311 where it
+      previously crashed on <code>ln</code> (the ADR-0011 domain guard + ANALYZE together);
+      donorschoose <code>wide</code> — the largest config — still crashes the backend, a separate
+      scale/OOM issue tracked on its own. Correctness held throughout: golden gate 233, integration 435,
+      DB-free 576, output column names unchanged.</p>
+      <p style="font-size:.85rem;color:var(--muted)"><b>The lesson (now the first step in any perf
+      work): run <code>EXPLAIN (ANALYZE)</code> first</b> and read the max self-time × loops node. It
+      named both real causes in one measurement each; the fan-out hypothesis below cost hours and was a
+      red herring. The Phase-1 fan-out harness survives as a useful metric; Phases 2–3 were not needed.</p>
+    </div>
+  </section>
+
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Make featurizer's full-aggregator (all-agg) feature matrix materialize in practical time on
+    real entity-event data. Today it is dominated by <b>child-stream fan-out</b>: the planner emits one
+    companion CTE per <code>(family, column, interval)</code>, each independently scanning the child
+    <code>&lt;child&gt;_transform</code> stream, all merge-joined into a ~100-way join. This plan makes
+    the set-based pre-aggregation pre-passes <b>composable</b> and <b>merges</b> those that share a
+    window signature, so the child stream is scanned a handful of times and the join width collapses —
+    without changing a single output value or column name (ADR-0007 / ADR-0010 contract), proven by the
+    frozen golden-value gate.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Measured on the live triage DBs (see <code>specs/feature-materialization-performance.html</code>):
+    dirtyduck all-agg = <b>356.8s</b>, donorschoose = <b>281.1s</b>. Diagnostics proved this is
+    <b>not</b> a slow primitive (every family in isolation runs in 1–8s), <b>not</b> a planner-collapse
+    tuning problem (conservative tuning bought only 1.4×; aggressive tuning crashed the backend),
+    <b>not</b> fixable by column-sharding or parallelism (one column-group holds 343 of 350s), and
+    <b>not</b> the <code>as_of_dates</code> cardinality estimate (ANALYZE did nothing). The
+    <code>EXPLAIN</code> + string counts show the cause directly, and it is <b>general</b>, not a
+    dirtyduck quirk — the fan-out grows with config richness on every DB:</p>
+    <div class="scroll"><table>
+    <thead><tr><th>DB</th><th>features</th><th>total CTEs</th><th>companion CTEs</th><th>child-stream refs</th><th>all-agg time</th></tr></thead>
+    <tbody>
+    <tr><td class="mono">chicago311</td><td class="mono">191</td><td class="mono">48</td><td class="mono">126</td><td class="mono">324</td><td class="mono">10.1s</td></tr>
+    <tr><td class="mono">dirtyduck</td><td class="mono">272</td><td class="mono">105</td><td class="mono">303</td><td class="mono">813</td><td class="mono">356.8s</td></tr>
+    <tr><td class="mono">donorschoose</td><td class="mono">1063</td><td class="mono">279</td><td class="mono">582</td><td class="mono">2091</td><td class="mono">281.1s</td></tr>
+    </tbody></table></div>
+    <p>There are <b>zero</b> residual correlated subqueries (ADR-0010's migration is complete). The cost
+    is <b>pure fan-out</b>: cost ≈ (# companion CTEs) × (child-stream size) × (join-width penalty), and
+    all three factors grow with entities, events, history depth, categorical columns, intervals, and the
+    aggregator set. chicago311 is fast only because it sits at the low end of every axis.</p>
+    <figure>
+      <svg viewBox="0 0 900 300" role="img" aria-label="Fan-out: many family CTEs over the same stream, keyed per (family, column, interval).">
+        <rect x="360" y="20" width="180" height="46" rx="6" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="450" y="40" text-anchor="middle" font-size="13" font-family="monospace" fill="#0f766e">inspections_transform</text>
+        <text x="450" y="57" text-anchor="middle" font-size="11" font-family="monospace" fill="#5b6472">the child event stream</text>
+        <g font-size="10.5" font-family="monospace" fill="#1a2332">
+          <rect x="30"  y="110" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="105" y="131" text-anchor="middle">catfreq:result · P1M</text>
+          <rect x="30"  y="152" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="105" y="173" text-anchor="middle">gini:result · P1M</text>
+          <rect x="30"  y="194" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="105" y="215" text-anchor="middle">transmatrix:result · P1M</text>
+          <rect x="200" y="110" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="275" y="131" text-anchor="middle">catfreq:risk · P1M</text>
+          <rect x="200" y="152" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="275" y="173" text-anchor="middle">streak:type · P3M</text>
+          <rect x="200" y="194" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="275" y="215" text-anchor="middle">ngram2:result · P6M</text>
+          <rect x="550" y="110" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="625" y="131" text-anchor="middle">gaps · P1M</text>
+          <rect x="550" y="152" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="625" y="173" text-anchor="middle">gaps · P3M</text>
+          <rect x="550" y="194" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="625" y="215" text-anchor="middle">theil:score · P6M</text>
+          <rect x="720" y="152" width="150" height="34" rx="5" fill="#fef3c7" stroke="#b45309"/><text x="795" y="173" text-anchor="middle">… ~100 total</text>
+        </g>
+        <g stroke="#b45309" stroke-width="1" opacity="0.45">
+          <line x1="360" y1="55" x2="180" y2="127"/><line x1="360" y1="55" x2="180" y2="169"/><line x1="360" y1="55" x2="180" y2="211"/>
+          <line x1="400" y1="66" x2="275" y2="110"/><line x1="420" y1="66" x2="275" y2="152"/><line x1="440" y1="66" x2="275" y2="194"/>
+          <line x1="540" y1="55" x2="625" y2="110"/><line x1="540" y1="55" x2="625" y2="152"/><line x1="540" y1="55" x2="625" y2="194"/>
+          <line x1="540" y1="66" x2="795" y2="152"/>
+        </g>
+        <text x="450" y="270" text-anchor="middle" font-size="12" fill="#b91c1c" font-weight="700">Each box = one companion CTE = one independent scan of the stream. All merge-joined on the group key.</text>
+      </svg>
+      <figcaption>The fan-out: one companion CTE per <code>(family, column, interval)</code>, each re-scanning the same child stream.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Give every set-based aggregator a <b>composable pre-pass</b> contract: instead of an opaque
+    full <code>prepass_sql</code> subquery, a family declares (1) a <b>window signature</b> — the child
+    stream, the <code>PARTITION BY</code> group key, the <code>ORDER BY</code>, and the interval — and
+    (2) the <b>derived per-row columns</b> it needs (its window/scalar expressions, uniquely aliased).
+    The planner then groups every family sharing a signature and emits <b>one pre-pass per (signature,
+    interval)</b> that computes the union of all derived columns in a single windowed scan, wrapped by
+    <b>one <code>GROUP BY</code></b> producing every family's reduction. Reductions are unchanged, so the
+    output columns are byte-identical; the fixed golden values still hold. Fan-out drops from ~100 scans
+    to roughly one per window signature per interval.</p>
+    <figure>
+      <svg viewBox="0 0 900 320" role="img" aria-label="Solution: families grouped by window signature into one merged pre-pass per interval.">
+        <rect x="360" y="14" width="180" height="44" rx="6" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+        <text x="450" y="33" text-anchor="middle" font-size="13" font-family="monospace" fill="#0f766e">inspections_transform</text>
+        <text x="450" y="49" text-anchor="middle" font-size="10.5" font-family="monospace" fill="#5b6472">scanned once per signature×interval</text>
+
+        <rect x="40" y="110" width="240" height="150" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+        <text x="160" y="130" text-anchor="middle" font-size="11.5" font-weight="700" fill="#15803d">merged pre-pass — sig(result, P1M)</text>
+        <text x="160" y="150" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">partition by grp order by ts</text>
+        <text x="160" y="170" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">freq, lag(cat), rank, run_len…</text>
+        <line x1="60" y1="182" x2="260" y2="182" stroke="#15803d" stroke-dasharray="2 2"/>
+        <text x="160" y="200" text-anchor="middle" font-size="10.5" fill="#15803d">group by grp → reductions:</text>
+        <text x="160" y="218" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">entropy, hhi, gini,</text>
+        <text x="160" y="234" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">transmatrix, ngram2, streak</text>
+
+        <rect x="330" y="110" width="230" height="150" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="1.5"/>
+        <text x="445" y="130" text-anchor="middle" font-size="11.5" font-weight="700" fill="#15803d">merged pre-pass — sig(gaps, P1M)</text>
+        <text x="445" y="150" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">partition by grp order by ts</text>
+        <text x="445" y="170" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">gap = ts − lag(ts)</text>
+        <line x1="350" y1="182" x2="540" y2="182" stroke="#15803d" stroke-dasharray="2 2"/>
+        <text x="445" y="200" text-anchor="middle" font-size="10.5" fill="#15803d">group by grp → reductions:</text>
+        <text x="445" y="218" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">gap_mean, gap_stddev,</text>
+        <text x="445" y="234" text-anchor="middle" font-size="10" font-family="monospace" fill="#1a2332">gap_cv, burstiness, recurrence</text>
+
+        <rect x="610" y="110" width="250" height="150" rx="8" fill="#f1f3f0" stroke="#5b6472" stroke-dasharray="3 3"/>
+        <text x="735" y="150" text-anchor="middle" font-size="11" fill="#5b6472">… one per remaining</text>
+        <text x="735" y="168" text-anchor="middle" font-size="11" fill="#5b6472">(signature, interval):</text>
+        <text x="735" y="188" text-anchor="middle" font-size="11" fill="#5b6472">a handful, not ~100</text>
+
+        <g stroke="#15803d" stroke-width="1.3">
+          <line x1="410" y1="58" x2="160" y2="110"/><line x1="440" y1="58" x2="445" y2="110"/><line x1="490" y1="58" x2="720" y2="110"/>
+        </g>
+        <text x="450" y="298" text-anchor="middle" font-size="12" fill="#15803d" font-weight="700">Un-migrated families keep their own CTE — opt-in, incremental, golden-gated at every step.</text>
+      </svg>
+      <figcaption>Families grouped by window signature; one merged pre-pass + one GROUP BY per (signature, interval) yields every reduction with identical values.</figcaption>
+    </figure>
+  </section>
+
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/preagg.py</code> — <code>PreAggSpec</code> (family_key/interval/prepass_sql/reduction/reduction_where) + <code>causal_where</code>; extend to a composable contract (window signature + derived columns).</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code> — the 27 <code>_build_preagg</code> implementations (gaps, catfreq, gini, ngram, transmatrix, streak, theil, trimmedmean, mad, transitions, meandev, …); migrate each to the composable contract.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> — <code>_build_aggregations</code> grouping loop (~L1120–1135) and <code>_build_preagg_cte</code> (~L1396); add the signature-grouped merge builder.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> — <code>ShardableCTE</code> / <code>MaterializationKey</code> registration; merged CTEs must register identically (per-column pruning still works).</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_preagg_shape.py</code> — DB-free companion-CTE shape guards; add merged-CTE shape guards.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_preagg_value_equality.py</code> + <code>tests/fixtures/preagg_golden_values.json</code> — the <b>correctness gate</b> (162 cases, frozen v0.5.2 values). Never edit the golden file.</li>
+      <li><span class="tag existing">existing</span> <code>benchmarks/</code> + <code>just bench-aggs</code> — scaling benchmark; extend to report fan-out (CTE / child-scan counts) and merged-vs-baseline times.</li>
+      <li><span class="tag existing">existing</span> <code>specs/feature-materialization-performance.html</code> — parent perf spec; P3 is its promoted primary fix. Update on completion.</li>
+    </ul>
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>docs/adr/0012-shared-prepass-preaggregation.md</code> — records the composable-pre-pass / signature-merge decision and its trade-offs.</li>
+      <li><span class="tag new">new</span> <code>benchmarks/fanout_report.py</code> (or a <code>bench-fanout</code> recipe) — DB-free per-config fan-out metrics (CTEs, child-stream scans) across the three triage configs, the acceptance yardstick.</li>
+    </ul>
+  </section>
+
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Baseline, harness &amp; guardrails (no behavior change)</h3>
+      <p>Freeze the yardstick before touching the planner. Establish the fan-out + timing baseline, confirm the golden gate is green, and add a DB-free fan-out metric so every later phase can be measured and can never regress correctness silently.</p>
+      <h4>1. Capture the baseline</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Record current fan-out per triage config (chicago311/dirtyduck/donorschoose): total CTEs, companion CTEs, child-stream references (the table in <a href="#problem">Problem</a> is the starting point).</li>
+        <li><code class="status">[x]</code> Record current live-DB all-agg wall-clock per config (dirtyduck 356.8s / chicago311 10.1s / donorschoose 281.1s) as the before-numbers.</li>
+        <li><code class="status">[x]</code> Confirm the golden fixture exists and the gate passes unchanged: <code>just db-up &amp;&amp; just test-realistic</code> includes <code>test_preagg_value_equality.py</code>.</li>
+      </ul>
+      <h4>2. Add the DB-free fan-out report</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Add <code>benchmarks/fanout_report.py</code> (+ a <code>just bench-fanout</code> recipe) that builds each triage config's <code>Featurizer.query</code> and prints companion-CTE count + child-stream scan count — no database needed.</li>
+        <li><code class="status">[x]</code> Assert-style guard: a lightweight DB-free test that the dirtyduck all-agg config emits ≤ a documented CTE budget, so later phases prove the reduction and future regressions trip it.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p>Prove the harness round-trips and the baseline is reproducible before any change.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just seed &amp;&amp; just test-integration</code> — 365 pass / 0 fail (current green).</li>
+        <li><code class="status">[x]</code> <code>just bench-fanout</code> — prints the baseline fan-out table (numbers match Problem section).</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — DB-free suite green (574+).</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Shared per-interval windowed base (Option A — contained first win)</h3>
+      <p>Independently shippable, low-risk: emit one <code>&lt;child&gt;_win_&lt;interval&gt;_for_&lt;target&gt;</code> CTE per interval that applies the causal window once (<code>select * from &lt;child&gt;_transform where &lt;causal(interval)&gt;</code>), and rewrite each family's pre-pass to read the pre-filtered relation instead of re-scanning + re-filtering the full stream. Reduces the repeated full-stream filter/scan to one per interval. Does not yet reduce CTE count — it de-risks the scan cost and validates the plumbing before the bigger merge.</p>
+      <figure>
+        <!-- {{PHASE_IMAGE: one windowed-base CTE per interval feeding all family pre-passes for that interval}} -->
+        <figcaption>Optional: per-interval windowed base feeding every family pre-pass in that interval.</figcaption>
+      </figure>
+      <h4>1. Emit the windowed-base CTE</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> In <code>_build_aggregations</code>, before building companion CTEs, group preagg features by interval and emit one windowed-base CTE per interval that has ≥2 companion families (skip when a single family would be its own base — no gain).</li>
+        <li><code class="status">[]</code> Register the windowed-base CTE with the sharding/materialization machinery so PostgreSQL materializes it once and every family CTE reads it.</li>
+      </ul>
+      <h4>2. Point family pre-passes at the windowed base</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Extend <code>causal_where</code> / the pre-pass template so a family reads <code>from &lt;child&gt;_win_&lt;interval&gt;</code> (already causally bounded) instead of <code>from &lt;child&gt;_transform where …</code>. Keep the un-windowed (no-interval) path unchanged.</li>
+        <li><code class="status">[]</code> Verify the rewrite is a pure source substitution — derived columns, partitions, and reductions are byte-identical.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <p>Golden equality is the stop-the-line check; measure the scan-cost delta.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just test-realistic</code> — <code>test_preagg_value_equality.py</code> passes (exact values, byte-identical columns). A mismatch means fix the rewrite, never the golden file.</li>
+        <li><code class="status">[]</code> <code>just test-fast</code> — DB-free suite green; update <code>test_preagg_shape.py</code> for the windowed-base CTE.</li>
+        <li><code class="status">[]</code> Live-DB re-measure dirtyduck all-agg (the P3 driver script) — record the delta vs 356.8s.</li>
+        <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Composable pre-passes &amp; signature merge (Option B — the structural fix)</h3>
+      <p>The main event. Refactor the pre-agg contract so pre-passes are composable, then merge families that share a window signature into one pre-pass + one <code>GROUP BY</code> per (signature, interval). Opt-in per family and golden-gated after <em>each</em> family, exactly like ADR-0010's migration — never a big-bang.</p>
+      <h4>1. Extend the pre-agg contract to be composable</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> In <code>preagg.py</code>, add a composable form to <code>PreAggSpec</code>: a <code>window_signature</code> (child relation, partition key, order key, interval) and a list of <code>derived_columns</code> = <code>(alias, sql_expr)</code> the reduction reads — while keeping the legacy opaque <code>prepass_sql</code> path working (so un-migrated families are untouched).</li>
+        <li><code class="status">[]</code> Define the merge rule: two specs merge iff their <code>window_signature</code>s are equal; derived-column aliases are namespaced per family to avoid collisions; reductions are concatenated.</li>
+      </ul>
+      <h4>2. Planner: build one merged pre-pass per signature</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add <code>_build_merged_preagg_cte</code>: group composable specs by <code>(window_signature, interval)</code>; emit <code>select &lt;child_key&gt;, &lt;union of all derived columns&gt; from &lt;child&gt;_transform where &lt;causal&gt;</code> (windowed via Phase 2 base), wrapped by one <code>group by &lt;child_key&gt;</code> projecting every family's reduction.</li>
+        <li><code class="status">[]</code> Register the merged CTE with <code>ShardableCTE</code> + <code>MaterializationKey</code> exactly as today (per-column synth pruning must still drop unused reductions per shard).</li>
+        <li><code class="status">[]</code> Route <code>preagg is None</code> → correlated (n/a), legacy opaque spec → existing <code>_build_preagg_cte</code>, composable spec → <code>_build_merged_preagg_cte</code>. Three coexisting paths until every family migrates.</li>
+      </ul>
+      <h4>3. Migrate families to the composable contract, one at a time</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Start with the highest-fan-out cluster: the categorical/sequence families over a shared <code>partition by grp order by ts</code> window (catfreq, gini, transmatrix, ngram2/3, streak, transitions). Convert each <code>_build_preagg</code> to return derived columns + signature.</li>
+        <li><code class="status">[]</code> After EACH family: run the golden gate. Only proceed when it passes exactly.</li>
+        <li><code class="status">[]</code> Then migrate the numeric/gap-stream families (gaps, theil, mad, trimmedmean, meandev, variance_ratio, acf, cosinor…) grouped by their own signatures.</li>
+      </ul>
+      <h4>4. Testing Strategy</h4>
+      <p>Correctness is non-negotiable and checked after every family; measure the fan-out + time collapse at the end.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just test-realistic</code> — golden equality passes after every migrated family (162 cases, exact).</li>
+        <li><code class="status">[]</code> <code>just bench-fanout</code> — dirtyduck companion CTEs drop from ~100 toward ~(signatures × intervals); assert against the reduced budget guard.</li>
+        <li><code class="status">[]</code> Name-stability / collision snapshot (<code>tests/primitives/test_scaled_name_collisions.py</code>) — output column names byte-identical (ADR-0007).</li>
+        <li><code class="status">[]</code> Live-DB re-measure dirtyduck + donorschoose all-agg — record the wall-clock collapse.</li>
+        <li><code class="status">[]</code> <code>just test-integration</code> (365) + <code>uv run basedpyright</code> — green / 0 errors.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Acceptance re-baseline, ADR &amp; docs</h3>
+      <p>Lock in the result and record the decision. Folds in P5 (re-state ADR-0010 acceptance against real DBs, not synthetic 10k).</p>
+      <h4>1. Re-baseline &amp; document</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Re-run the live-DB timing across all three DBs; record before/after (target: dirtyduck all-agg well under 120s, matching ADR-0010's intent on <em>real</em> data).</li>
+        <li><code class="status">[]</code> Write <code>docs/adr/0012-shared-prepass-preaggregation.md</code> (composable pre-pass + signature merge; trade-offs: coexisting CTE paths, planner surface; invariants: golden values, ADR-0007 names).</li>
+        <li><code class="status">[]</code> Update <code>CHANGELOG.md</code> [Unreleased], <code>specs/feature-materialization-performance.html</code> (P3 → done, with numbers), and the CLAUDE.md perf note.</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Full suite green: <code>just test-fast</code> + <code>just db-up &amp;&amp; just seed &amp;&amp; just test-integration</code>.</li>
+        <li><code class="status">[]</code> <code>just bench-fanout</code> + live-DB timing — final numbers captured in the ADR + spec.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+  </section>
+
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>just test-fast</code> — DB-free suite green (incl. updated <code>test_preagg_shape.py</code> + fan-out budget guard).</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just seed &amp;&amp; just test-integration</code> — 365+ pass / 0 fail.</li>
+      <li><code class="status">[]</code> <code>just test-realistic</code> — <code>test_preagg_value_equality.py</code> passes: every migrated family reproduces the frozen golden values exactly, byte-identical column set.</li>
+      <li><code class="status">[]</code> <code>just bench-fanout</code> — dirtyduck companion CTEs materially reduced from ~100; the CTE-budget guard passes.</li>
+      <li><code class="status">[]</code> Live-DB re-measure — dirtyduck &amp; donorschoose all-agg wall-clock materially below the 356.8s / 281.1s baselines.</li>
+      <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      <li><code class="status">[]</code> <code>tests/primitives/test_scaled_name_collisions.py</code> — output names byte-identical (ADR-0007 preserved).</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely impossible, mark it <code>[f]</code> and move on if possible.</strong></div>
+  </section>
+
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Why not P1 / P2 (already measured, do not re-litigate)</h3>
+    <p>The parent spec <code>specs/feature-materialization-performance.html</code> records the full
+    evidence: P1 (conservative <code>work_mem</code>/collapse tuning) buys only ~1.4× and is a supporting
+    default at best (GEQO must stay ON — <code>geqo=off</code> crashed the backend). P2 (bounded-CTE
+    sharding + parallelism) was <b>refuted by measurement</b>: sharding keeps serial total constant
+    (~350s) and one column-group holds 343 of 350s, so parallelism can't help either. P3 is the only
+    lever that attacks the actual cost (the fan-out). This plan is P3.</p>
+
+    <h3>Design alternatives &amp; open decisions</h3>
+    <ul>
+      <li><b>Option A vs B sequencing.</b> A (shared windowed base, Phase 2) is a contained scan-cost win
+      that ships independently and de-risks the plumbing; B (signature merge, Phase 3) is the structural
+      collapse. If Phase 2's delta proves marginal on its own, it still stands as the pre-filter the merged
+      pre-passes read from — the two compose. Decision: keep both, A first.</li>
+      <li><b>Contract shape.</b> Preferred: families expose <code>(alias, sql_expr)</code> derived columns
+      + a signature (composable), so the planner can union them. Rejected: keeping opaque
+      <code>prepass_sql</code> and string-diffing to detect mergeable pre-passes — brittle and unauditable.</li>
+      <li><b>Incrementality.</b> Migrate family-by-family behind the golden gate (ADR-0010's proven
+      strategy). Three CTE paths (correlated / legacy-opaque / composable-merged) coexist until every
+      family migrates — never a big-bang cutover.</li>
+      <li><b>Merge boundary.</b> Only families with an <em>equal</em> window signature merge. Different
+      <code>PARTITION BY</code>/<code>ORDER BY</code> (e.g. a numeric-stream family vs a categorical family
+      over a different column) stay separate — correctness first, coverage second.</li>
+      <li><b>Interval nesting (future, out of scope).</b> Deriving narrower intervals from the widest
+      window in one pass is a further win but a separate effort; not in this plan.</li>
+    </ul>
+
+    <h3>Risks &amp; mitigations</h3>
+    <ul>
+      <li><b>Silent value drift</b> → the golden-value gate after <em>every</em> family (162 frozen cases, exact ints / FP-tol floats). A mismatch stops the line; fix the rewrite, never the fixture.</li>
+      <li><b>Name/contract drift (ADR-0007 / triage-pg)</b> → output column names come from unchanged <code>_build_name</code>/<code>_build_label</code>; the collision snapshot guards it. Merged-CTE names are internal only (and must be valid bare identifiers — mind the <code>~</code>-cap fix already in <code>planner.py</code>).</li>
+      <li><b>Sharding interaction</b> → merged CTEs register with <code>ShardableCTE</code>/<code>MaterializationKey</code> like today; per-column synth pruning must still drop a shard's unused reductions. Covered by <code>test_preagg_shape.py</code> + the sharding tests. (Also fold in the manifest <code>group_000</code>-fallback assertion noted in the parent spec.)</li>
+      <li><b>Planner complexity</b> → new merge surface in <code>planner.py</code>; keep the legacy path bit-for-bit so un-migrated families are provably untouched.</li>
+    </ul>
+
+    <h3>Acceptance target</h3>
+    <p>Dirtyduck all-agg materialization <b>well under 120s on the real DB</b> (ADR-0010's intent, which
+    was only ever met on synthetic 10k data), with the golden values unchanged and output column names
+    byte-identical. Companion-CTE count for dirtyduck reduced from ~100 toward ~(distinct signatures ×
+    intervals). Donorschoose (281s) and chicago311 (already 10s) improve or hold.</p>
+  </section>
+
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <p class="lede" style="font-size:.85rem">Append-only history of post-execution changes.</p>
+    <details open>
+      <summary>2026-07-09 — Phase 1 built &amp; green; Phase 3 premise revised mid-build (family heterogeneity)</summary>
+      <p><b>Phase 1 — DONE.</b> <code>benchmarks/fanout_report.py</code> + <code>just bench-fanout</code>
+      + the DB-free budget guard <code>tests/test_fanout_budget.py</code> (synthetic 3-categorical /
+      1-numeric all-agg config = <b>132 companion CTEs</b>, pinned). Golden gate confirmed green (163
+      passed) and DB-free suite green (576). The harness that de-risks the rest is in place.</p>
+      <p><b>Phase 2 — DEFERRED (evidence).</b> The per-group <code>EXPLAIN</code> shows the cost is the
+      ~100-way merge-join chain, not the per-scan filter. Option A (shared per-interval windowed base)
+      lowers per-scan cost but leaves join width unchanged, so it does not attack the measured
+      bottleneck. Not built.</p>
+      <p><b>Phase 3 — PREMISE REVISED, paused for a decision.</b> Reading the real family
+      <code>_build_preagg</code> bodies revealed the pre-passes are <b>genuinely heterogeneous</b>, so
+      "one merged pre-pass per (signature, interval)" cannot collapse ~100 CTEs to a handful:
+      <code>theil</code> filters to <code>col&gt;0</code> (different row-set); <code>mad</code> is a
+      join to a per-group median (different shape); <code>catfreq</code> is <code>GROUP BY category</code>
+      (different granularity); <code>gini</code> needs <code>order by val</code> while <code>meandev</code>
+      needs no order. Only families with an <em>identical</em> source + WHERE + granularity merge (e.g.
+      gini+meandev), yielding a <b>partial</b> fan-out reduction, not the dramatic collapse the plan
+      assumed. Since the join width ≈ number of companion CTEs and that number is only partly reducible,
+      pre-pass merging alone will not remove the join-width bottleneck.</p>
+      <p><b>DECISIVE CORRECTION (2026-07-09, later) — the fan-out was a red herring.</b> An
+      <code>EXPLAIN (ANALYZE)</code> of the 343s group (which I should have run first) shows the entire
+      cost is <b>9 correlated <code>SubPlan</code>s over <code>inspections_transform</code> at
+      <code>loops=18909</code></b> — i.e. correlated subqueries re-executed once per target row, ~34s
+      each. These are the <b>two-window drift families</b> (<code>kl_drift</code>,
+      <code>wasserstein_drift</code>) that <b>ADR-0010 explicitly deferred</b> as a non-goal — but they
+      <em>fire on dirtyduck's 3 categorical columns × 3 intervals</em> (2×3×3 = 18 correlated subqueries)
+      and dominate. <b>Measured proof: dirtyduck all-agg MINUS {kl_drift, wasserstein_drift} = 25.2s</b>
+      (vs 356.8s). The set-based fan-out is cheap (66-CTE group = 5s). So neither P3 (fan-out) nor the
+      union-pivot idea is the fix — <b>migrating the 2 correlated drift families to set-based (the
+      ADR-0010 pattern) is</b>, and it is far smaller than this whole plan. This plan's premise is
+      retired; see the new direction below. <b>RESOLVED (2026-07-09) in two parts: (1) the 2 drift
+      families migrated to set-based (ADR-0012) — dirtyduck all-agg 356.8s → 27.6s; (2) EXPLAIN ANALYZE
+      of donorschoose then found a SECOND cause — the no-stats <code>as_of_dates</code> cardinality —
+      fixed by a best-effort executor <code>ANALYZE as_of_dates</code> (ADR-0013), universal across DBs.
+      Combined all-agg: dirtyduck 7.1s / chicago311 5.8s / donorschoose 7.8s; wide now completes on
+      dirtyduck/chicago311 (were ln crashes). See the SOLVED banner at the top for the full matrix.
+      Values identical throughout (golden 233). Phase-1 harness stays; Phases 2–3 not needed.</b></p>
+      <p><b>Retired direction (kept for the record):</b>
+      (a) <b>Partial merge</b> — implement the composable contract and merge the compatible clusters
+      (gini/meandev-style); modest, well-understood, golden-gated win. Or
+      (b) <b>Eliminate the wide join</b> — restructure the ~100 <code>LEFT JOIN</code> companion CTEs
+      into a long-format <code>UNION ALL</code> of <code>(key, feature, value)</code> reduced by one
+      <code>GROUP BY</code> pivot, sidestepping the 100-way join entirely. Potentially the real win, but
+      a larger rearchitecture than this plan scoped. Recommend prototyping (b) on dirtyduck before
+      committing either.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

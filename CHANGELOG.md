@@ -6,6 +6,54 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **Executor ANALYZEs `as_of_dates` before running (ADR-0013).** The caller's
+  freshly-created `as_of_dates` has no statistics, so PostgreSQL assumed its
+  ~2550-row default and planned the lateral-join body for the wrong cardinality —
+  a single Merge Join was 99% of donorschoose all-agg's runtime. The executor now
+  issues a best-effort, savepoint-isolated `ANALYZE as_of_dates` on its working
+  connection first, in every path (`to_dataframe`, `to_arrow`, `to_tables`).
+  **donorschoose all-agg 293.6s → 7.5s, dirtyduck 27.6s → 7.0s (~40–50×)**; values
+  unchanged (`ANALYZE` refreshes stats, not data — golden gate passes).
+- **Two-window drift aggregators migrated to set-based pre-aggregation (ADR-0012).**
+  `kl_drift` / `wasserstein_drift`, which ADR-0010 deferred as a non-goal, were the
+  entire cost of full-aggregator materialization on real data: live `EXPLAIN
+  (ANALYZE)` showed 9 correlated `SubPlan`s over the child stream at `loops=18909`
+  (`kl_drift` firing on ordinary categorical columns × intervals, O(target×children)).
+  Rewritten as companion CTEs — recent/baseline counts via `count(*) FILTER` (KL,
+  no self-join) and per-window `percentile_cont … FILTER` (Wasserstein). **dirtyduck
+  all-agg 356.8s → 27.6s (~13×)**, all 272 features retained, values proven identical
+  by the golden-value gate (now 29 migratable aggregators / 232 frozen cases; P3M
+  cases added since drift is degenerate under P1M). Output column names unchanged
+  (ADR-0007). Companion-CTE budget guard 132 → 144.
+
+- **`ln` / `log` / `sqrt` transformers are now domain-guarded (ADR-0011).** They
+  render `case when x > 0 then ln(x) end` (`>= 0` for sqrt) instead of a bare
+  `ln(x)`, so an out-of-domain row becomes SQL `NULL` rather than aborting the
+  whole materialization with `cannot take logarithm of a negative number`. This
+  hard-broke any wide/all-transformer config the moment a transformer landed on a
+  signed feature (z-score, difference, deviation) — surfaced on the live-DB `wide`
+  variant. Output column names/labels are unchanged (ADR-0007). New
+  `DomainGuardedTransformer` base; guards covered by
+  `tests/primitives/test_transformations.py`.
+
+### Fixed
+
+- **Companion pre-aggregation CTE name over 63 bytes emitted an invalid bare
+  `~`.** A set-based companion CTE (ADR-0010) whose `<child>_<family>_<interval>_preaggs_for_<target>`
+  name exceeded PostgreSQL's 63-byte identifier limit was hash-capped by
+  `pg_identifier` with a `~` separator (safe only inside quotes — output columns
+  are always quoted), but `_build_preagg_cte` strips the quotes to interpolate
+  the name *bare*, leaving a `~` that PostgreSQL parses as an operator
+  (`syntax error at or near "~"`). This hard-broke the full-aggregator config on
+  any data with long categorical column names — invisible to the DB-free tests
+  and surfaced only by running the integration suite against the live
+  food-inspections / dirtyduck data (8 failing realistic tests). The cap
+  separator is now folded to `_` for the bare CTE identifier; CTE names are
+  internal-only, so the ADR-0007 output-column naming contract is untouched.
+  Regression guard: `tests/test_preagg_shape.py::test_preagg_cte_name_over_63_bytes_is_a_valid_bare_identifier`.
+
 ## [0.6.0] - 2026-07-08
 
 Set-based pre-aggregation for the correlated-subquery aggregator tier — the

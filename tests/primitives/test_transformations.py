@@ -39,6 +39,43 @@ def test_abs_transformer_creates_distinct_feature():
     assert result.definition.strip() == "abs(duration_minutes)"
 
 
+def test_ln_transformer_is_domain_guarded():
+    """ln is defined only for x > 0; the SQL must NULL out-of-domain rows rather
+    than raise (which would abort the whole matrix). Regression for the wide-variant
+    'cannot take logarithm of a negative/zero' crash seen on live data."""
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    result = get_transformers(["ln"])["ln"](entity, feature)
+
+    definition = result.definition.strip()
+    assert definition == "case when duration_minutes > 0 then ln(duration_minutes) end"
+    # The domain guard lives in the definition only — the output name is unchanged
+    # (ADR-0007 naming contract): still LN(...), never a 'case' identifier.
+    assert result.name.startswith('"LN(') or result.name.startswith("LN(")
+    assert "case" not in result.name
+
+
+def test_log_transformer_is_domain_guarded():
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    result = get_transformers(["log"])["log"](entity, feature)
+    assert (
+        result.definition.strip()
+        == "case when duration_minutes > 0 then log(duration_minutes) end"
+    )
+
+
+def test_sqrt_transformer_is_domain_guarded():
+    """sqrt is defined for x >= 0 (zero is in-domain, unlike ln)."""
+    entity = _make_numeric_entity()
+    feature = _get_feature(entity, "duration_minutes")
+    result = get_transformers(["sqrt"])["sqrt"](entity, feature)
+    assert (
+        result.definition.strip()
+        == "case when duration_minutes >= 0 then sqrt(duration_minutes) end"
+    )
+
+
 def test_identity_transformer_preserves_instance():
     entity = _make_numeric_entity()
     feature = _get_feature(entity, "duration_minutes")
