@@ -6,6 +6,26 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-10
+
+Performance release: the two root causes found by `EXPLAIN (ANALYZE)` on the
+live triage databases (correlated two-window drift → ADR-0012; no-stats
+`as_of_dates` cardinality → ADR-0013) plus conservative planner tuning as an
+executor default. Full-aggregator materialization on every live DB dropped from
+10–357s to ~6–8s; values proven unchanged by the golden gate throughout.
+
+### Known issues
+
+- **The `wide` variant (all 65 aggregators × 14 transformers) on the widest
+  configs can OOM the PostgreSQL backend during query *planning*.** Diagnosed
+  on live donorschoose (2026-07-10): ~14.9k output columns shard into 27 group
+  queries of up to ~979 CTEs / 1.8 MB SQL each; planning a single group takes
+  30–45s and spikes backend memory until the kernel OOM killer fires (observed
+  at a plain `EXPLAIN`, with a 3000-row cohort — data volume is irrelevant).
+  Wide-everything is an extreme, atypical config; mitigation directions
+  (CTE-bounded sharding, TEMP-materialized shared pre-passes, per-group
+  connections) are recorded in the project TODO.
+
 ### Changed
 
 - **Conservative PostgreSQL planner/memory tuning is now an executor default.**
