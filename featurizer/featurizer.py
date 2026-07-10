@@ -18,7 +18,7 @@ from loguru import logger
 
 from .boundary import DEFAULT_BOUNDARY, AsOfBoundary
 from .categoricals import ROLE_CATEGORICAL, resolve_vocabulary
-from .executor import QueryExecutor, analyze_as_of_dates
+from .executor import QueryExecutor, analyze_as_of_dates, apply_planner_tuning
 from .planner import FeaturePlanner, PlannerResult
 from .primitives import Entity, ERGraph, Feature, Variable
 from .primitives.utils import (
@@ -594,6 +594,8 @@ class Featurizer:
                 for ddl in preamble:
                     cur.execute(ddl)
             analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
+            if own_connection:  # never SET LOCAL inside a caller's transaction
+                apply_planner_tuning(conn)
             with conn.cursor() as cur:
                 for gid, sql in grouped.queries.items():
                     name = f'"{schema}"."{stem}_{gid}"'
@@ -726,6 +728,8 @@ class Featurizer:
                     for ddl in preamble:
                         cur.execute(ddl)
             analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
+            if own_connection:  # never SET LOCAL inside a caller's transaction
+                apply_planner_tuning(conn)
 
             tables: "OrderedDict[str, Any]" = _OrderedDict()
             for gid, sql in grouped.queries.items():

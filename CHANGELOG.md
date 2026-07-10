@@ -8,6 +8,22 @@ semantic versioning once a release is cut.
 
 ### Changed
 
+- **Conservative PostgreSQL planner/memory tuning is now an executor default.**
+  Every generated query is a wide multi-way CTE join, which starves under
+  PostgreSQL's stock `work_mem` and collapse limits. The executor now issues
+  `SET LOCAL work_mem = '64MB'`, `join_collapse_limit = 20`,
+  `from_collapse_limit = 20` (measured ~1.4× on dirtyduck all-agg; a supporting
+  lever on top of ADR-0012/0013). `geqo` deliberately stays ON — the aggressive
+  variant (256MB / collapse 30 / geqo off) crashed the backend by exhaustively
+  planning a 38-way join. The tuning is applied **only to connections featurizer
+  opens itself**: a caller's `connection=` is never touched, because `SET LOCAL`
+  would stay in force for the remainder of the caller's open transaction. On the
+  records fast path the SETs share one held connection (and transaction) with
+  the query; on the psycopg paths they are savepoint-isolated and best-effort,
+  like the ANALYZE. New `PLANNER_TUNING` / `tuning_statements()` /
+  `apply_planner_tuning()` in `featurizer.executor`; covered by
+  `tests/test_executor_tuning.py`.
+
 - **Executor ANALYZEs `as_of_dates` before running (ADR-0013).** The caller's
   freshly-created `as_of_dates` has no statistics, so PostgreSQL assumed its
   ~2550-row default and planned the lateral-join body for the wrong cardinality —

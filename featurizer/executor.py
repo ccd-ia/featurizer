@@ -4,13 +4,54 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 import pandas as pd
 import records  # type: ignore[import-untyped]
 from loguru import logger
 
 _AS_OF_DATES = "as_of_dates"
+
+# Conservative planner/memory tuning for the generated queries' wide multi-way
+# CTE joins (an all-aggregator config merge-joins ~38 CTEs). Measured on the
+# dirtyduck all-agg config: ~1.4× (359.3s → 259.9s). Values are deliberately
+# modest: the aggressive variant (work_mem 256MB, collapse limits 30, geqo off)
+# crashed the backend — exhaustive planning of a 38-way join explodes — so the
+# collapse limits stay below geqo_threshold's reach and geqo stays ON. All three
+# GUCs are USERSET (any role may SET them), and ``SET LOCAL`` is scoped to the
+# current transaction, so nothing leaks past featurizer's own work.
+PLANNER_TUNING: tuple[tuple[str, str], ...] = (
+    ("work_mem", "64MB"),
+    ("join_collapse_limit", "20"),
+    ("from_collapse_limit", "20"),
+)
+
+
+def tuning_statements() -> list[str]:
+    """The ``SET LOCAL`` statements implementing :data:`PLANNER_TUNING`."""
+    return [f"set local {name} = '{value}'" for name, value in PLANNER_TUNING]
+
+
+def _run_isolated(conn: Any, statements: Sequence[str], purpose: str) -> None:
+    """Run pure-optimization statements under a SAVEPOINT; never raise.
+
+    A failure rolls back to the savepoint so it cannot poison the caller's open
+    transaction, and is logged instead of raised — these statements are
+    optimizations, so a caller without the needed privilege must still get
+    correct (if slower) results.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("savepoint featurizer_opt")
+            try:
+                for statement in statements:
+                    cur.execute(statement)
+                cur.execute("release savepoint featurizer_opt")
+            except Exception as exc:
+                cur.execute("rollback to savepoint featurizer_opt")
+                logger.warning("{} skipped (optimization only): {}", purpose, exc)
+    except Exception as exc:  # e.g. autocommit connection: no transaction to savepoint
+        logger.debug("{} savepoint unavailable, skipping: {}", purpose, exc)
 
 
 def analyze_as_of_dates(conn: Any) -> None:
@@ -22,28 +63,26 @@ def analyze_as_of_dates(conn: Any) -> None:
     plan for the lateral body — measured 40–50× slower on wide configs
     (dirtyduck / donorschoose all-agg dropped from ~300s to ~7s once analyzed).
 
-    ``ANALYZE`` is a read-only stats refresh and **best-effort**: it is a pure
-    optimization, so a caller without ANALYZE privilege must still get correct
-    (if slower) results. Isolated by a SAVEPOINT so a failure cannot poison the
-    caller's open transaction; failures are logged, never raised.
+    ``ANALYZE`` is a read-only stats refresh and **best-effort**: see
+    :func:`_run_isolated` (savepoint-isolated, logged, never raised).
     """
-    try:
-        with conn.cursor() as cur:
-            cur.execute("savepoint featurizer_analyze")
-            try:
-                cur.execute(f"analyze {_AS_OF_DATES}")
-                cur.execute("release savepoint featurizer_analyze")
-            except Exception as exc:
-                cur.execute("rollback to savepoint featurizer_analyze")
-                logger.warning(
-                    "ANALYZE {} skipped (planner-stats optimization only): {}",
-                    _AS_OF_DATES,
-                    exc,
-                )
-    except Exception as exc:  # e.g. autocommit connection: no transaction to savepoint
-        logger.debug(
-            "ANALYZE {} savepoint unavailable, skipping: {}", _AS_OF_DATES, exc
-        )
+    _run_isolated(
+        conn,
+        [f"analyze {_AS_OF_DATES}"],
+        f"ANALYZE {_AS_OF_DATES} (planner-stats optimization)",
+    )
+
+
+def apply_planner_tuning(conn: Any) -> None:
+    """``SET LOCAL`` the :data:`PLANNER_TUNING` values on a psycopg connection.
+
+    Only ever called on connections featurizer opened itself — a caller's
+    ``connection=`` is never tuned, because ``SET LOCAL`` would stay in force
+    for the remainder of *their* open transaction. Best-effort and
+    savepoint-isolated like :func:`analyze_as_of_dates` (rolling back to a
+    savepoint also cancels any partially-applied ``SET LOCAL``).
+    """
+    _run_isolated(conn, tuning_statements(), "planner/memory tuning")
 
 
 class QueryExecutor:
@@ -87,8 +126,28 @@ class QueryExecutor:
                     _AS_OF_DATES,
                     exc,
                 )
-            rows = db.query(query)
-            df = rows.export("df")
+            # Planner/memory tuning: SET LOCAL is transaction-scoped, and
+            # records' Database.query opens a fresh pooled connection per call,
+            # so the tuning must share ONE connection (and its SQLAlchemy 2
+            # autobegun transaction) with the main query. records' own
+            # Database.transaction() context manager swallows exceptions (bare
+            # except without re-raise), which would break this method's
+            # error-reporting contract — so hold a records Connection directly.
+            # The GUCs are USERSET, so the SETs cannot fail on privilege.
+            if hasattr(db, "get_connection"):
+                conn = db.get_connection()
+                try:
+                    for statement in tuning_statements():
+                        conn.query(statement)
+                    rows = conn.query(query)
+                    df = rows.export("df")
+                finally:
+                    # SELECT-only transaction: close (implicit rollback) is fine
+                    # and returns the connection to the pool untuned.
+                    conn.close()
+            else:  # duck-typed database_factory without records' Connection API
+                rows = db.query(query)
+                df = rows.export("df")
         except Exception as exc:
             logger.error(
                 "Featurizer query execution failed: {}\n--- rendered SQL ---\n{}",
@@ -144,6 +203,10 @@ class QueryExecutor:
             # the lateral-join plan is not built for the ~2550-row no-stats default
             # (40–50× on wide configs). Best-effort + savepoint-isolated.
             analyze_as_of_dates(conn)
+            # Planner/memory tuning — but never on a caller's connection=, where
+            # SET LOCAL would outlive us inside their open transaction.
+            if own_connection:
+                apply_planner_tuning(conn)
             frames: list[pd.DataFrame] = []
             for sql in group_queries.values():
                 with conn.cursor() as cur:
