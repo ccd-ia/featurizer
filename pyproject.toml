@@ -40,9 +40,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nanounanue/featurizer"
-Repository = "https://github.com/nanounanue/featurizer"
-Issues = "https://github.com/nanounanue/featurizer/issues"
+Homepage = "https://github.com/ccd-ia/featurizer"
+Repository = "https://github.com/ccd-ia/featurizer"
+Issues = "https://github.com/ccd-ia/featurizer/issues"
 
 [project.optional-dependencies]
 viz = [

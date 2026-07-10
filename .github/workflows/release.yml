@@ -3,8 +3,8 @@ name: release
 # Tag-triggered CD: push an annotated tag `vX.Y.Z` and this workflow guards
 # version consistency, re-verifies the tagged commit, builds sdist+wheel, and
 # publishes the GitHub release with the tag's CHANGELOG section as notes.
-# Deliberately NO PyPI: this is a fork of dssg/featurizer and the name is
-# generic — GitHub releases on the fork are the distribution channel.
+# Deliberately NO PyPI: this project derives from dssg/featurizer and the name
+# is generic — GitHub releases on this repo are the distribution channel.
 
 on:
   push:

@@ -79,5 +79,5 @@ published by hand:
    commit, builds sdist+wheel, and creates the GitHub release with the
    CHANGELOG section as notes and the dist files as assets.
 
-No PyPI — deliberate (fork of dssg/featurizer; the name is generic). GitHub
-releases on `nanounanue/featurizer` are the distribution channel.
+No PyPI — deliberate (derived from dssg/featurizer; the name is generic).
+GitHub releases on `ccd-ia/featurizer` are the distribution channel.

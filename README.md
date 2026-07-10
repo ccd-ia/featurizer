@@ -22,7 +22,7 @@
 
 **Automated feature engineering for temporal data using PostgreSQL.**
 
-[![CI](https://github.com/nanounanue/featurizer/actions/workflows/test.yml/badge.svg)](https://github.com/nanounanue/featurizer/actions/workflows/test.yml)
+[![CI](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml/badge.svg)](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://www.python.org/downloads/)
 [![Type checked: basedpyright strict](https://img.shields.io/badge/types-basedpyright%20strict-2a6db0.svg)](pyrightconfig.json)
