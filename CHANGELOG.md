@@ -6,6 +6,24 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **Project site on GitHub Pages** (`https://ccd-ia.github.io/featurizer/`):
+  landing page, the live-DB validation artifacts (v0.6.0 / v0.8.0), and a
+  `FeaturizerViz` gallery rendered from a live 177k-row × 272-feature
+  dirtyduck matrix. Deployed by `.github/workflows/pages.yml` on pushes that
+  touch `site/`, `specs/`, or `docs/images/`.
+- README: visualization gallery (6 real plots), latest-release and docs
+  badges; the exported Table of Contents block removed (GitHub renders its
+  own outline).
+
+### Fixed
+
+- `plot_correlation_clustermap` no longer crashes on matrices containing
+  constant or (near-)all-NULL features (undefined correlations made scipy's
+  linkage reject the distance matrix); such features are dropped with a
+  notice.
+
 ## [0.8.0] - 2026-07-12
 
 Sharding rework: the donorschoose `wide` config (~36.8k columns) — a backend

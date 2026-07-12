@@ -34,6 +34,17 @@ def plot_correlation_clustermap(
 
     matrix = _get_feature_matrix(self.df, self.feature_cols)
     corr = matrix.corr(method=method)
+    # A constant or (near-)all-NULL feature has undefined correlation with
+    # everything; scipy's linkage rejects a distance matrix with non-finite
+    # values, so drop those features from the clustermap instead of crashing.
+    finite = corr.columns[corr.notna().sum() > 1]
+    dropped = len(corr.columns) - len(finite)
+    if dropped:
+        print(
+            f"correlation clustermap: dropped {dropped} constant/all-NULL "
+            "feature(s) with undefined correlations."
+        )
+    corr = corr.loc[finite, finite].fillna(0.0)
 
     g = sns.clustermap(
         corr,

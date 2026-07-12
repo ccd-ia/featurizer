@@ -1,28 +1,10 @@
-
-# Table of Contents
-
-1.  [Featurizer](#orgddcf3aa)
-    1.  [Why Featurizer?](#org1e0062f)
-    2.  [Quick Example](#orgd4b4e7d)
-    3.  [Selecting primitives](#org9b66329)
-    4.  [Examples](#orgf381421)
-    5.  [Supported Feature Primitives](#orgde70c50)
-    6.  [Feature Primitive Registries](#org7cae9fd)
-    7.  [Debugging & Logging](#orga74b4b3)
-    8.  [Temporal Joins](#orgc853b3f)
-    9.  [Visualization](#org328866b)
-    10. [Testing](#org3c58faa)
-    11. [Project Map](#org1a0f823)
-
-
-
-<a id="orgddcf3aa"></a>
-
 # Featurizer
 
 **Automated feature engineering for temporal data using PostgreSQL.**
 
 [![CI](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml/badge.svg)](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/ccd-ia/featurizer?label=release)](https://github.com/ccd-ia/featurizer/releases/latest)
+[![Docs](https://img.shields.io/badge/docs-ccd--ia.github.io%2Ffeaturizer-0f766e.svg)](https://ccd-ia.github.io/featurizer/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://www.python.org/downloads/)
 [![Type checked: basedpyright strict](https://img.shields.io/badge/types-basedpyright%20strict-2a6db0.svg)](pyrightconfig.json)
@@ -523,6 +505,27 @@ networkx, umap-learn).
 to `FeaturizerViz(df, entity_col`&#x2026;)= if you materialized it elsewhere.
 Methods that need a complete matrix (importance, embedding, dendrogram)
 median-impute a **local copy**&#x2014;the stored matrix keeps its NULLs as signal.
+
+### Gallery
+
+Real plots from a live 177k-row × 272-feature matrix (the
+[dirtyduck](https://github.com/dssg/dirtyduck) food-inspections data, full
+default aggregator set, 8 monthly as-of dates):
+
+<table>
+<tr>
+<td align="center"><img src="docs/images/viz/feature-distributions.png" alt="Violin plots of the top-variance features across entities" width="420"/><br/><sub><code>plot_feature_distributions(kind="violin")</code></sub></td>
+<td align="center"><img src="docs/images/viz/missing-heatmap.png" alt="Heatmap of missing values per feature and entity — NULLs kept as signal" width="420"/><br/><sub><code>plot_missing_heatmap()</code></sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/images/viz/correlation-clustermap.png" alt="Hierarchically clustered Spearman correlation heatmap of all features" width="420"/><br/><sub><code>plot_correlation_clustermap()</code></sub></td>
+<td align="center"><img src="docs/images/viz/entity-embedding-umap.png" alt="UMAP embedding of entities in feature space" width="420"/><br/><sub><code>plot_entity_embedding(method="umap")</code></sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/images/viz/feature-timeseries.png" alt="Normalized feature trajectories for one entity across as-of dates" width="420"/><br/><sub><code>plot_feature_timeseries(entity_id=…, normalize=True)</code></sub></td>
+<td align="center"><img src="docs/images/viz/entity-dendrogram.png" alt="Hierarchical clustering dendrogram of entities" width="420"/><br/><sub><code>plot_entity_dendrogram()</code></sub></td>
+</tr>
+</table>
 
 
 <a id="org3c58faa"></a>
