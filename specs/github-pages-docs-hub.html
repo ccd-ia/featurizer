@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: GitHub Pages Documentation Hub</title>
+<style>
+:root{
+  --bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;
+  --accent:#0f766e;--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;
+  --ok:#15803d;--warn:#b91c1c;--border:#e2e4e0;--code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;margin:0}
+main{max-width:1000px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.7rem;margin:0 0 .4rem;letter-spacing:-.02em}
+h2{font-size:1.25rem;margin:2.2rem 0 .7rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+h3{font-size:1.05rem;margin:1.4rem 0 .4rem;color:var(--accent)}
+h4{font-size:.92rem;margin:1.1rem 0 .3rem}
+p{margin:.5rem 0}
+a{color:var(--accent)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;
+overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.45}
+pre code{background:none;padding:0}
+figure{margin:1.2rem 0;text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{font-size:.78rem;color:var(--muted);margin-top:.4rem}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .9rem;font-size:.85rem;margin:.5rem 0}
+dt{color:var(--muted);font-weight:700}
+dd{margin:0;font-family:var(--mono);font-size:.82rem}
+details.meta{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.5rem .8rem;margin:.6rem 0}
+details.meta summary{cursor:pointer;color:var(--muted);font-size:.85rem;font-weight:700}
+ul{padding-left:1.4rem}
+li{margin:.22rem 0}
+.tag{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+padding:.1em .5em;border-radius:5px;margin-right:.3em}
+.tag.existing{background:var(--accent-soft);color:var(--accent)}
+.tag.new{background:var(--accent-2-soft);color:var(--accent-2)}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem 1.2rem;margin:1rem 0}
+code.status{background:#eef2ff;color:#3730a3;font-weight:700}
+ul.checklist{list-style:none;padding-left:.4rem}
+ul.checklist li{margin:.3rem 0}
+.loop{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;
+padding:.6rem .9rem;margin:.9rem 0;font-size:.86rem}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.38rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+#questionables details{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+padding:.55rem .85rem;margin:.5rem 0}
+#questionables summary{cursor:pointer;font-weight:700;font-size:.9rem}
+.qa-answer{font-size:.86rem;color:var(--fg)}
+footer,section#amendments details{font-size:.85rem}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: GitHub Pages Documentation Hub</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-12T11:55:00-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-12T11:55:00-06:00, 2026-07-12T12:28:00-06:00</dd>
+        <dt>commits</dt>      <dd>10a6574 (HEAD at authoring)</dd>
+        <dt>agent name</dt>   <dd>claude-fable-5</dd>
+        <dt>session id</dt>   <dd>e1b9387d-8a79-4f35-919a-a348d5070541</dd>
+        <dt>back refs</dt>    <dd>site/index.html, .github/workflows/pages.yml, specs/live-db-revalidation-v080.html</dd>
+        <dt>forward refs</dt> <dd>triage Starlight docs site (planned, org alignment)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Site map of the documentation hub">
+      <rect x="290" y="120" width="180" height="56" rx="10" fill="#0f766e"/>
+      <text x="380" y="144" text-anchor="middle" font-family="Menlo,monospace" font-size="12" fill="#fff">ccd-ia.github.io</text>
+      <text x="380" y="162" text-anchor="middle" font-family="Menlo,monospace" font-size="12" fill="#ccfbf1">/featurizer</text>
+      <g stroke="#0f766e" stroke-width="1.6" fill="none">
+        <line x1="330" y1="120" x2="140" y2="66"/><line x1="380" y1="120" x2="380" y2="52"/>
+        <line x1="430" y1="120" x2="620" y2="66"/><line x1="330" y1="176" x2="140" y2="238"/>
+        <line x1="380" y1="176" x2="380" y2="248"/><line x1="430" y1="176" x2="620" y2="238"/>
+      </g>
+      <g font-family="-apple-system,Segoe UI,sans-serif" font-size="13" text-anchor="middle">
+        <rect x="60" y="38" width="160" height="34" rx="8" fill="#ccfbf1"/><text x="140" y="60" fill="#0f766e">Walkthrough</text>
+        <rect x="300" y="18" width="160" height="34" rx="8" fill="#ccfbf1"/><text x="380" y="40" fill="#0f766e">Notebooks ×5</text>
+        <rect x="540" y="38" width="160" height="34" rx="8" fill="#ccfbf1"/><text x="620" y="60" fill="#0f766e">Primitives 67+83</text>
+        <rect x="60" y="228" width="160" height="34" rx="8" fill="#fef3c7"/><text x="140" y="250" fill="#b45309">Configuration</text>
+        <rect x="300" y="248" width="160" height="34" rx="8" fill="#fef3c7"/><text x="380" y="270" fill="#b45309">ADRs ×13</text>
+        <rect x="540" y="228" width="160" height="34" rx="8" fill="#fef3c7"/><text x="620" y="250" fill="#b45309">Validation reports</text>
+      </g>
+    </svg>
+    <figcaption>The hub at a glance: one landing page, six connected content areas — now built with Astro Starlight, shared with triage.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Turn the current single-page GitHub Pages site into a <strong>connected documentation hub</strong>:
+    a narrative walkthrough tutorial, the five example notebooks rendered as browsable pages, and
+    generated reference pages (primitives, configuration, ADRs, changelog) — all <strong>single-sourced
+    from files already in the repo</strong>, so the GitHub view and the site can never drift apart.
+    Built on <strong>Astro Starlight</strong>, the same docs stack triage is adopting, so ccd-ia projects
+    share one docs mental model, one theme, and one CI pattern. This directly answers: "the GitHub structure
+    seems difficult to read and disconnected; Pages should contain a walkthrough tutorial and links to the
+    notebooks."</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The project's documentation is complete but <em>scattered and mutually unaware</em>. The README is a
+    500-line org-export that must be read top-to-bottom; the five executed tutorial notebooks are invisible
+    unless you browse <code>examples/</code>; <code>docs/</code> mixes org files (some only rendered as PDF),
+    markdown references, and 13 ADRs with no index; the validation artifacts live under <code>specs/</code>;
+    and the Pages site is a landing page whose links mostly bounce <em>back to GitHub blobs</em>. A new user
+    has no guided path from "what is this?" to "I generated my first feature matrix", and no page answers
+    "what primitives exist?" or "what goes in config.yaml?" without reading source.</p>
+    <figure>
+      <svg viewBox="0 0 760 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Disconnected documentation islands">
+        <g font-family="Menlo,monospace" font-size="12" text-anchor="middle">
+          <rect x="30" y="30" width="150" height="44" rx="8" fill="#fff" stroke="#5b6472" stroke-dasharray="5 4"/><text x="105" y="56" fill="#1a2332">README.md</text>
+          <rect x="220" y="120" width="150" height="44" rx="8" fill="#fff" stroke="#5b6472" stroke-dasharray="5 4"/><text x="295" y="146" fill="#1a2332">docs/*.org|md</text>
+          <rect x="420" y="30" width="170" height="44" rx="8" fill="#fff" stroke="#5b6472" stroke-dasharray="5 4"/><text x="505" y="56" fill="#1a2332">examples/*.ipynb</text>
+          <rect x="580" y="130" width="150" height="44" rx="8" fill="#fff" stroke="#5b6472" stroke-dasharray="5 4"/><text x="655" y="156" fill="#1a2332">specs/*.html</text>
+        </g>
+        <text x="380" y="70" font-size="26" fill="#b91c1c" text-anchor="middle" font-family="-apple-system,sans-serif">?</text>
+        <text x="380" y="196" font-size="12" fill="#5b6472" text-anchor="middle" font-family="-apple-system,sans-serif">no path connects them</text>
+      </svg>
+      <figcaption>Today: four documentation islands, each correct, none linked into a readable whole.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>An <strong>Astro Starlight</strong> site with a thin, testable <strong>Python pre-build seam</strong>.
+    Authored content (walkthrough, configuration reference, landing/splash, notebooks learning path) lives as
+    plain markdown in <code>src/content/docs/</code> — still readable on GitHub. Generated content is produced
+    by <code>site/gen.py</code> (uv toolchain, <code>nbconvert</code> only): the five notebooks convert
+    <em>from their committed outputs</em> to markdown pages inside the theme (sidebar + Pagefind search
+    included), the primitives reference is emitted from the live registry (with a count-parity test so it can
+    never lie about the 67 + 83), and ADRs/CHANGELOG are ingested with injected frontmatter — their canonical
+    homes stay <code>docs/adr/</code> and <code>CHANGELOG.md</code>. The self-contained validation artifacts
+    pass through <code>public/</code> untouched: they are lab reports, not docs pages, and keep their own
+    identity. Starlight's theme tokens carry the teal palette so featurizer and triage read as siblings.
+    Generated files are gitignored — CI regenerates them on every deploy, so they cannot drift.</p>
+    <figure>
+      <svg viewBox="0 0 760 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two-stage build pipeline">
+        <g font-family="Menlo,monospace" font-size="11.5">
+          <rect x="15" y="20" width="200" height="210" rx="10" fill="#fff" stroke="#e2e4e0"/>
+          <text x="115" y="44" text-anchor="middle" fill="#0f766e" font-weight="bold" font-size="12.5">repo sources</text>
+          <text x="28" y="70" fill="#1a2332">src/content/docs/*.md</text>
+          <text x="28" y="92" fill="#1a2332">examples/*/tutorial.ipynb</text>
+          <text x="28" y="114" fill="#1a2332">featurizer registry (67+83)</text>
+          <text x="28" y="136" fill="#1a2332">docs/adr/*.md · CHANGELOG</text>
+          <text x="28" y="158" fill="#1a2332">specs/*.html · images/</text>
+        </g>
+        <path d="M225 120 L268 120" stroke="#0f766e" stroke-width="2" marker-end="url(#a)"/>
+        <rect x="272" y="66" width="128" height="52" rx="10" fill="#0f766e"/>
+        <text x="336" y="88" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#fff">uv run</text>
+        <text x="336" y="105" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#ccfbf1">site/gen.py</text>
+        <rect x="272" y="136" width="128" height="52" rx="10" fill="#1a2332"/>
+        <text x="336" y="158" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#fff">npm ci</text>
+        <text x="336" y="175" text-anchor="middle" font-family="Menlo,monospace" font-size="11.5" fill="#ccfbf1">astro build</text>
+        <path d="M410 127 L453 127" stroke="#0f766e" stroke-width="2" marker-end="url(#a)"/>
+        <g font-family="Menlo,monospace" font-size="11.5">
+          <rect x="458" y="20" width="285" height="210" rx="10" fill="#ccfbf1" stroke="#0f766e"/>
+          <text x="600" y="44" text-anchor="middle" fill="#0f766e" font-weight="bold" font-size="12.5">dist/ → Pages (/featurizer/)</text>
+          <text x="472" y="70" fill="#1a2332">splash · walkthrough</text>
+          <text x="472" y="92" fill="#1a2332">notebooks/ (5 + learning path)</text>
+          <text x="472" y="114" fill="#1a2332">reference: primitives · config</text>
+          <text x="472" y="136" fill="#1a2332">engineering: adr/ · changelog</text>
+          <text x="472" y="158" fill="#1a2332">public: specs/ · images/</text>
+          <text x="472" y="180" fill="#1a2332">Pagefind search · sidebar nav</text>
+        </g>
+        <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#0f766e"/></marker></defs>
+      </svg>
+      <figcaption>Two toolchains, one thin seam: Python writes markdown (uv-locked), Starlight builds the site (npm-locked).</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>site/index.html</code> — current hand-written landing page; retired, its content ported to the Starlight splash page (<code>src/content/docs/index.mdx</code>)</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/pages.yml</code> — gains uv + Node setup, <code>gen.py</code>, <code>npm ci &amp;&amp; astro build</code>, link check over <code>dist/</code>; keeps upload/deploy actions</li>
+      <li><span class="tag existing">existing</span> <code>examples/01…05/tutorial.ipynb</code> — five executed notebooks (committed <em>with outputs</em>); converted to markdown, never executed in CI</li>
+      <li><span class="tag existing">existing</span> <code>examples/README.md</code> — the learning path (difficulty, order, concepts) that seeds the notebooks index page</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/cli.py</code> — primitive metadata dictionaries (name, category, description, SQL example) reused by the primitives generator</li>
+      <li><span class="tag existing">existing</span> <code>docs/primitives-reference.md</code> — current hand-maintained reference; gets a "canonical view is the generated page" pointer (see Questionables)</li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/0001…0013-*.md</code> — canonical ADRs; ingested by <code>gen.py</code> with injected frontmatter</li>
+      <li><span class="tag existing">existing</span> <code>CHANGELOG.md</code> — canonical; ingested to <code>engineering/changelog</code></li>
+      <li><span class="tag existing">existing</span> <code>README.md</code> — gains a compact "Documentation" section (site links) near the top; quick-start points at the walkthrough</li>
+      <li><span class="tag existing">existing</span> <code>specs/live-db-revalidation-*.html</code> — validation artifacts, passed through <code>public/specs/</code> unchanged</li>
+      <li><span class="tag existing">existing</span> <code>pyproject.toml</code> — <code>docs</code> dependency group: <code>nbconvert</code> (the only Python docs dep)</li>
+      <li><span class="tag existing">existing</span> <code>.gitignore</code> — gains generated-content paths (<code>src/content/docs/notebooks/*.md</code> except index, <code>reference/primitives.md</code>, <code>engineering/</code> generated pages, <code>node_modules/</code>, <code>dist/</code>)</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>package.json</code> + <code>package-lock.json</code> — Astro + Starlight, <code>engines.node &gt;= 20</code>; scripts: <code>build</code>, <code>dev</code></li>
+      <li><span class="tag new">new</span> <code>astro.config.mjs</code> — Starlight integration; <code>site: "https://ccd-ia.github.io"</code>, <code>base: "/featurizer"</code> (the Pages base-path trap, handled on day one); sidebar; teal theme tokens via <code>src/styles/custom.css</code></li>
+      <li><span class="tag new">new</span> <code>src/content/docs/index.mdx</code> — splash page (hero, "Start here → Walkthrough", cards for notebooks/references/validation)</li>
+      <li><span class="tag new">new</span> <code>src/content/docs/walkthrough.md</code> — the end-to-end tutorial (authored; every command executed and verified during the build phase)</li>
+      <li><span class="tag new">new</span> <code>src/content/docs/reference/configuration.md</code> — consolidated YAML configuration reference</li>
+      <li><span class="tag new">new</span> <code>src/content/docs/notebooks/index.md</code> — authored learning path (difficulty badges, order, concepts)</li>
+      <li><span class="tag new">new</span> <code>src/styles/custom.css</code> — Starlight token overrides: the ccd-ia teal palette (shared design language with triage's site)</li>
+      <li><span class="tag new">new</span> <code>site/gen.py</code> — the Python pre-build seam: notebooks→markdown (nbconvert, assets extracted), primitives page from the registry, ADR/CHANGELOG ingestion with frontmatter + themed ADR index</li>
+      <li><span class="tag new">new</span> <code>site/check_links.py</code> — internal link/asset checker over <code>dist/</code>; CI fails on any broken internal href/src</li>
+      <li><span class="tag new">new</span> <code>tests/test_site_gen.py</code> — DB-free tests: gen runs; primitives page row-count == registry sizes; every YAML snippet in configuration.md parses; notebook conversion emits expected files</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Starlight scaffold + risk spikes</h3>
+      <p>Stand up the Astro Starlight skeleton and <em>immediately</em> burn down the three known risks —
+      base path, notebook-output rendering, and search coverage — before any content investment. Output
+      parity with the current site (splash + specs + images reachable) closes the phase.</p>
+
+      <h4>1. Scaffold</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>npm create astro@latest -- --template starlight</code> at repo root (adapted layout: <code>src/</code>, <code>astro.config.mjs</code>, <code>package.json</code>); pin <code>engines.node &gt;= 20</code></li>
+        <li><code class="status">[x]</code> <code>astro.config.mjs</code>: <code>site: "https://ccd-ia.github.io"</code>, <code>base: "/featurizer"</code>, Starlight title/social (GitHub), sidebar skeleton (Start Here · Notebooks · Reference · Engineering · Validation)</li>
+        <li><code class="status">[x]</code> <code>src/styles/custom.css</code>: teal accent via Starlight CSS custom properties (<code>--sl-color-accent*</code>); note the token names in a comment for reuse in triage's site</li>
+        <li><code class="status">[x]</code> Port <code>site/index.html</code> content to <code>src/content/docs/index.mdx</code> (splash template: hero + cards); delete the static file</li>
+        <li><code class="status">[x]</code> Move pass-through assets: <code>specs/</code> → copied to <code>public/specs/</code> and <code>docs/images/</code> → <code>public/images/</code> at build time (a copy step in <code>gen.py</code>, keeping single sources where they are)</li>
+        <li><code class="status">[x]</code> <code>.gitignore</code>: <code>node_modules/</code>, <code>dist/</code>, generated content paths</li>
+        <li><code class="status">[x]</code> Add <code>docs</code> dependency group (<code>nbconvert&gt;=7.16</code>) to <code>pyproject.toml</code>; <code>uv lock</code></li>
+      </ul>
+
+      <h4>2. Risk spikes (fail fast, in this order)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <strong>Base path</strong>: build + serve <code>dist/</code> under a <code>/featurizer/</code> prefix locally (<code>python -m http.server</code> from a parent dir); click through splash → any page → an image; zero absolute-path 404s</li>
+        <li><code class="status">[x]</code> <strong>Notebook HTML outputs</strong>: hand-convert <code>examples/05-categoricals-output/tutorial.ipynb</code> (the widest DataFrame outputs) with <code>nbconvert --to markdown</code>, drop it into <code>src/content/docs/</code>, build — pandas HTML tables must render acceptably inside Starlight's content area</li>
+        <li><code class="status">[x]</code> <strong>Pagefind coverage</strong>: confirm whether search indexes the pass-through <code>public/specs/*.html</code>; record the answer (acceptable either way) in the splash's Validation card wording</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Local, DB-free. The spikes are the tests of this phase; parity closes it. Edge cases: base-path-relative
+      links inside markdown, image references from mdx, clean re-build idempotency.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>npm ci &amp;&amp; npm run build</code> — clean build, zero warnings that matter</li>
+        <li><code class="status">[x]</code> <code>uv run python site/check_links.py dist</code> — zero broken internal links on the parity site</li>
+        <li><code class="status">[x]</code> <code>test -f dist/index.html &amp;&amp; test -f dist/specs/live-db-revalidation-v080.html &amp;&amp; test -f dist/images/viz/feature-distributions.png</code> — parity with the current deploy</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass. If a spike fails structurally (e.g. DataFrame tables are unreadable), STOP and revisit tooling before investing in content.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Walkthrough tutorial</h3>
+      <p>The headline ask. One narrative page — "zero to a point-in-time feature matrix in ~15 minutes" —
+      authored as <code>src/content/docs/walkthrough.md</code> (plain markdown + small frontmatter; readable on
+      GitHub, rendered in the theme). It reuses example 01's e-commerce scenario so the reader graduates
+      naturally into the notebooks.</p>
+
+      <h4>1. Author walkthrough.md</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> §1 Install — <code>uv add "featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer.git@v0.8.0"</code> (+ plain-pip variant); note: no PyPI, GitHub releases are the channel</li>
+        <li><code class="status">[]</code> §2 The data — example 01's Customers → Orders schema, 3 tables, what "temporal" means here (<code>temporal_ix</code>, <code>as_of_dates</code>)</li>
+        <li><code class="status">[]</code> §3 config.yaml anatomy — annotated minimal config: target, entities, variables/types, relationship, intervals</li>
+        <li><code class="status">[]</code> §4 Render the SQL, no database — <code>Featurizer("config.yaml").query</code> / <code>run_example.py --show-sql</code>; read the CTE shape (synth → transform → lateral over <code>as_of_dates</code>)</li>
+        <li><code class="status">[]</code> §5 Execute — <code>just db-up</code> (or any PG via <code>DATABASE_URL</code>/<code>PG*</code>), seed with <code>create_data.py</code>, <code>to_dataframe()</code>; show the <code>(as_of_date, id)</code>-indexed matrix head</li>
+        <li><code class="status">[]</code> §6 Read your features — naming convention <code>AGG(entity.col|interval)</code>, NULL-as-signal, the feature manifest (<code>feature_manifest</code> / <code>to_tables</code> manifest table)</li>
+        <li><code class="status">[]</code> §7 Choose primitives — <code>aggregations:</code>/<code>transformations:</code> selection, CLI discovery (<code>featurizer list-primitives</code>), link to the primitives page</li>
+        <li><code class="status">[]</code> §8 Point-in-time joins — a short as-of teaser (grace periods) linking notebook 02</li>
+        <li><code class="status">[]</code> §9 Visualize — 2 gallery plots inline, <code>FeaturizerViz</code> snippet, link to README gallery</li>
+        <li><code class="status">[]</code> §10 Where next — the notebook learning path, configuration reference, validation reports</li>
+      </ul>
+
+      <h4>2. Wire into the site</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Sidebar "Start Here" entry; Starlight renders the on-page TOC from headings automatically</li>
+        <li><code class="status">[]</code> Splash page: prominent "Start here → Walkthrough" card above the fold</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Truthfulness is the test: every command in the walkthrough is executed verbatim against the ephemeral
+      PostgreSQL (<code>just db-up</code>) during authoring; outputs shown in the doc are real. Edge case: the
+      no-database path (§1–§4) must work standalone.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Execute §1–§4 in a fresh <code>uv</code> project with no PG configured — SQL renders, nothing errors</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just example 01-basic-aggregations</code> — §5's underlying path is green</li>
+        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — walkthrough page builds, all its links resolve</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Rendered notebooks (nbconvert → markdown → theme)</h3>
+      <p>The five tutorial notebooks become first-class pages <em>inside</em> the theme — sidebar, search,
+      identity — via <code>site/gen.py</code>. They are committed <em>with executed outputs</em>, so the
+      converter renders — never runs — them (no database in the Pages workflow, and outputs stay exactly what
+      was validated locally).</p>
+      <figure>
+        <svg viewBox="0 0 760 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Notebook conversion flow">
+          <g font-family="Menlo,monospace" font-size="12" text-anchor="middle">
+            <rect x="30" y="35" width="210" height="50" rx="9" fill="#fff" stroke="#0f766e"/>
+            <text x="135" y="56" fill="#1a2332">tutorial.ipynb</text><text x="135" y="74" fill="#5b6472" font-size="10.5">committed outputs</text>
+            <rect x="290" y="35" width="190" height="50" rx="9" fill="#0f766e"/>
+            <text x="385" y="56" fill="#fff">gen.py · nbconvert</text><text x="385" y="74" fill="#ccfbf1" font-size="10.5">--to markdown + frontmatter</text>
+            <rect x="530" y="35" width="200" height="50" rx="9" fill="#ccfbf1" stroke="#0f766e"/>
+            <text x="630" y="56" fill="#1a2332">notebooks/*.md</text><text x="630" y="74" fill="#5b6472" font-size="10.5">in-theme: sidebar + search</text>
+          </g>
+          <path d="M240 60 L285 60" stroke="#0f766e" stroke-width="2" marker-end="url(#b)"/>
+          <path d="M480 60 L525 60" stroke="#0f766e" stroke-width="2" marker-end="url(#b)"/>
+          <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0f766e"/></marker></defs>
+        </svg>
+        <figcaption>Convert, don't execute: committed outputs are the validated ones; pages land inside the theme, not beside it.</figcaption>
+      </figure>
+
+      <h4>1. Converter + learning path</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>gen.py</code>: for each <code>examples/*/tutorial.ipynb</code>, <code>nbconvert --to markdown</code> (no execute); extract image outputs to <code>public/notebook-assets/&lt;nn&gt;/</code>; inject frontmatter (title, description, sidebar order) + a header strip linking "View on GitHub" and "Download .ipynb" (raw URL)</li>
+        <li><code class="status">[]</code> Author <code>src/content/docs/notebooks/index.md</code> — the learning path from <code>examples/README.md</code>: order, difficulty badges (Beginner → Advanced), scenario one-liners, concepts covered</li>
+        <li><code class="status">[]</code> Generated notebook pages gitignored; <code>gen.py</code> is idempotent (clean-regenerate)</li>
+        <li><code class="status">[]</code> Splash + walkthrough §10 link the notebooks index; sidebar "Notebooks" group lists index + 5 pages</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>Prove conversion fidelity without execution. Edge cases: notebook 05's wide DataFrame HTML (spiked in
+      Phase 1), matplotlib image outputs, anchors, filename stability for deep links.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; ls src/content/docs/notebooks/*.md | wc -l</code> — 6 files (5 generated + authored index)</li>
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — conversion emits expected files; image assets referenced by the markdown exist</li>
+        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index ↔ notebooks ↔ GitHub links all resolve; notebook images load under the base path</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Reference pages — primitives &amp; configuration</h3>
+      <p>The two "what can it do / what do I write" references. The primitives page is <em>generated from the
+      registry</em> so it can never lie about the 67 + 83; the configuration page consolidates YAML knowledge
+      currently split across README, CLAUDE.md and validation messages.</p>
+
+      <h4>1. Generated primitives reference</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>gen.py</code>: import the registries (<code>get_aggregations()</code>, <code>get_transformers()</code>) + the metadata dictionaries in <code>featurizer/cli.py</code> (category, description, SQL example) → emit <code>src/content/docs/reference/primitives.md</code>: two tables grouped by category, counts in the header; Pagefind gives search for free (an interactive faceted-explorer Astro component is noted as future work)</li>
+        <li><code class="status">[]</code> Primitives missing CLI metadata render with a stub row (never crash); SQL examples escaped</li>
+        <li><code class="status">[]</code> Note planner-pass families (peer-group, spatial, φ-bridge) in a callout — config-driven passes, not registry primitives</li>
+        <li><code class="status">[]</code> Top of <code>docs/primitives-reference.md</code>: one-line pointer to the generated page as the canonical view</li>
+      </ul>
+
+      <h4>2. Configuration reference</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Author <code>src/content/docs/reference/configuration.md</code>: full annotated config skeleton, then per-key sections — <code>target</code>, <code>max_depth</code>, <code>intervals</code> (ISO-8601), <code>entities</code> (alias/table/id/<code>temporal_ix</code>/<code>spatial_ix</code>, variable types + <code>role</code>/<code>vocabulary</code> one-hot contract), <code>relationships</code> (+ <code>temporal: mode: as_of</code>, <code>grace</code>, <code>child_timestamp</code>), primitive selection, <code>peer_groups</code>, <code>spatial_relationships</code>, validation behaviour + common validator errors</li>
+        <li><code class="status">[]</code> Cross-link walkthrough §3 ↔ this page ↔ primitives page</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>The generated page is tested against the registry itself — the count assertions are the drift alarm.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — primitives-page row count == <code>len(registry)</code> for both types; every YAML snippet in configuration.md round-trips <code>yaml.safe_load</code></li>
+        <li><code class="status">[]</code> <code>uv run python -m featurizer list-primitives | tail -3</code> vs page header counts — same 67/83 totals</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Engineering pages — ADRs &amp; changelog</h3>
+      <p>The "why is it built this way" layer. Canonical files stay where they are; <code>gen.py</code> ingests
+      them with injected frontmatter.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>gen.py</code>: <code>docs/adr/*.md</code> → <code>src/content/docs/engineering/adr/&lt;name&gt;.md</code> (frontmatter from the H1); generate the ADR index grouped by theme (sharding/performance · correctness/leakage · features · ops) with one-line decision summaries</li>
+        <li><code class="status">[]</code> <code>CHANGELOG.md</code> → <code>src/content/docs/engineering/changelog.md</code></li>
+        <li><code class="status">[]</code> Splash "Engineering notes" cards point at the rendered ADR index + changelog (not GitHub blobs)</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>ls src/content/docs/engineering/adr/*.md | wc -l</code> — 14 (13 ADRs + index)</li>
+        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index links to every ADR; changelog reachable from sidebar</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 6: CI wiring + repo-side reconnection</h3>
+      <p>Make the pipeline live and heal the "disconnected" feeling from the GitHub side too.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>pages.yml</code>: <code>astral-sh/setup-uv</code> + <code>uv sync --group docs</code> + <code>uv run python site/gen.py</code>; <code>actions/setup-node</code> (Node 22, npm cache) + <code>npm ci</code> + <code>npm run build</code>; <code>uv run python site/check_links.py dist</code>; upload <code>dist/</code>; extend <code>paths</code> triggers with <code>src/**</code>, <code>docs/**</code>, <code>examples/**</code>, <code>CHANGELOG.md</code>, <code>featurizer/cli.py</code>, <code>featurizer/primitives/**</code>, <code>package.json</code>, <code>astro.config.mjs</code></li>
+        <li><code class="status">[]</code> README: compact "Documentation" block right under the badges — Walkthrough · Notebooks · Primitives · Configuration · ADRs · Validation reports (site URLs); quick-start sentence points at the walkthrough</li>
+        <li><code class="status">[]</code> <code>examples/README.md</code>: add "browse these rendered on the site" line with the notebooks-index URL</li>
+        <li><code class="status">[]</code> CHANGELOG <code>[Unreleased]</code>: document the docs-hub addition + the Starlight/triage alignment</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — no library regression (<code>gen.py</code> imports featurizer read-only)</li>
+        <li><code class="status">[]</code> <code>git push</code> → <code>gh run watch</code> on <code>pages</code> — workflow success including gen, build, and link-check steps</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 7: Live verification</h3>
+      <p>Trust nothing until the deployed URLs answer — with the <code>/featurizer/</code> base path.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>curl</code> HTTP 200 on: <code>/featurizer/</code>, <code>/featurizer/walkthrough/</code>, <code>/featurizer/notebooks/</code>, one notebook page, <code>/featurizer/reference/primitives/</code>, <code>/featurizer/reference/configuration/</code>, <code>/featurizer/engineering/adr/</code>, <code>/featurizer/engineering/changelog/</code>, <code>/featurizer/specs/live-db-revalidation-v080.html</code></li>
+        <li><code class="status">[]</code> Manual browser pass: sidebar on every page type, Pagefind search (query "gini", "as_of"), notebook DataFrame rendering, mobile width, dark mode</li>
+      </ul>
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>for p in "" walkthrough/ notebooks/ reference/primitives/ reference/configuration/ engineering/changelog/; do curl -s -o /dev/null -w "%{http_code} $p\n" https://ccd-ia.github.io/featurizer/$p; done</code> — all 200</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm ci &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — full pipeline: generate, build, zero broken internal links</li>
+      <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — generator tests green (page inventory, registry-count parity, YAML snippets load, notebook assets exist)</li>
+      <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — library suite unaffected</li>
+      <li><code class="status">[]</code> <code>gh run list -R ccd-ia/featurizer --workflow pages --limit 1</code> — latest pages run: success</li>
+      <li><code class="status">[]</code> <code>curl -s https://ccd-ia.github.io/featurizer/walkthrough/ | grep -c "feature matrix"</code> — walkthrough deployed with real content</li>
+      <li><code class="status">[]</code> <code>curl -s https://ccd-ia.github.io/featurizer/notebooks/ | grep -ci tutorial</code> — notebooks index deployed, 5 tutorials listed</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong></div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <details>
+      <summary>Why Astro Starlight — and the decision history (ad-hoc → MkDocs → Starlight)</summary>
+      <p class="qa-answer">The plan originally chose a hand-rolled builder, then flipped to MkDocs Material on
+      re-examination (two of three objections didn't survive scrutiny). The deciding fact arrived later:
+      <strong>triage — the flagship consumer — is adopting Starlight</strong>, which converts Starlight's two
+      biggest costs (Node toolchain in a Python shop, maintainer unfamiliarity) into sunk costs paid at the org
+      level, and buys one docs mental model, shared teal theme tokens, cross-linkable sibling sites, and
+      best-in-class search/UX. Starlight's real weakness for featurizer — no native notebook story — is closed
+      with ~80 lines of nbconvert-to-markdown glue owned in the uv toolchain. featurizer doubles as the org's
+      Starlight guinea pig: smaller site, learn here, harvest the config for triage.</p>
+    </details>
+    <details>
+      <summary>Notebooks: convert committed outputs, never execute in CI</summary>
+      <p class="qa-answer">The Pages workflow has no PostgreSQL, and — more importantly — the committed outputs
+      are the ones validated against a live database locally. Executing in CI would either fail (no DB) or
+      silently show unvalidated results. Consequence to accept: contributors must re-execute notebooks locally
+      when they change them (already the repo's practice; note 05 currently has uncommitted local edits that
+      should land or be reverted before the site renders it).</p>
+    </details>
+    <details>
+      <summary>Generated pages are gitignored, not committed</summary>
+      <p class="qa-answer">Everything <code>gen.py</code> emits (notebook pages, primitives reference, ADR/changelog
+      copies) is regenerated on every CI build and gitignored locally. Committing generated content invites drift
+      and noisy diffs; the cost is that a local <code>npm run dev</code> needs <code>uv run python site/gen.py</code>
+      first — documented in the README docs block and cheap.</p>
+    </details>
+    <details>
+      <summary>Walkthrough as markdown, not a sixth notebook</summary>
+      <p class="qa-answer">Markdown is readable on GitHub, diffs cleanly, renders in the theme natively, and can
+      interleave shell + Python + YAML naturally (a notebook privileges Python cells). The notebooks remain the
+      deep-dive layer; the walkthrough is the narrative spine that links into them. Its truthfulness is enforced
+      by executing every command during the build phase. (Quarto's freeze-cached executable walkthrough was the
+      one capability we give up in the Starlight decision — recorded as a trade-off, revisit only if the
+      walkthrough proves hard to keep honest by hand.)</p>
+    </details>
+    <details>
+      <summary>What other documents should we include? — recommended vs deferred</summary>
+      <p class="qa-answer"><strong>Now (this plan):</strong> walkthrough, rendered notebooks + learning path,
+      generated primitives reference, configuration reference, ADR index, changelog. <strong>Deferred (listed in
+      Notes):</strong> auto-generated API reference (pdoc → <code>public/api/</code> pass-through), an interactive
+      primitives explorer (Astro component — the payoff Starlight uniquely enables), FAQ/troubleshooting, the
+      org-mode deep-dive and overview docs, and a performance-methodology page (the validation reports already
+      carry the numbers). Deferring keeps this plan shippable in one pass; each deferred item is additive later.</p>
+    </details>
+    <details>
+      <summary>Node maintenance tax: accepted, org-level</summary>
+      <p class="qa-answer">package.json/lockfile bumps and Dependabot noise for Astro/Starlight are accepted as an
+      org-level cost shared with triage (same stack, same upgrade rhythm). Pin <code>engines.node &gt;= 20</code>,
+      use <code>npm ci</code> in CI for reproducibility, and batch dependency bumps rather than merging each bot PR.</p>
+    </details>
+    <details>
+      <summary>docs/primitives-reference.md: keep or retire?</summary>
+      <p class="qa-answer">Keep for now with a "canonical view is the generated page" pointer — it is linked from
+      existing commits/PRs and costs nothing. Retire in a later housekeeping pass if it drifts. The generated page
+      wins because it cannot disagree with the registry (the count parity test enforces this).</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Answer to "what other documents should we include?"</h3>
+    <table>
+      <thead><tr><th>Document</th><th>Status in this plan</th><th>Source of truth</th></tr></thead>
+      <tbody>
+        <tr><td>Walkthrough tutorial</td><td>Phase 2 — new</td><td><code>src/content/docs/walkthrough.md</code> (authored, commands verified)</td></tr>
+        <tr><td>Tutorial notebooks ×5</td><td>Phase 3 — converted</td><td><code>examples/*/tutorial.ipynb</code> (committed outputs)</td></tr>
+        <tr><td>Primitives reference (67 aggs · 83 transformers)</td><td>Phase 4 — generated</td><td>the registry + <code>cli.py</code> metadata</td></tr>
+        <tr><td>Configuration (YAML) reference</td><td>Phase 4 — new</td><td><code>src/content/docs/reference/configuration.md</code></td></tr>
+        <tr><td>ADR index + rendered ADRs</td><td>Phase 5 — ingested</td><td><code>docs/adr/*.md</code> (canonical home unchanged)</td></tr>
+        <tr><td>Changelog</td><td>Phase 5 — ingested</td><td><code>CHANGELOG.md</code> (canonical home unchanged)</td></tr>
+        <tr><td>Live-DB validation reports</td><td>pass-through</td><td><code>specs/</code> artifacts, untouched in <code>public/</code></td></tr>
+        <tr><td>API reference (pdoc)</td><td><em>deferred</em></td><td>docstrings (Google style, already good) → <code>public/api/</code></td></tr>
+        <tr><td>Interactive primitives explorer</td><td><em>deferred</em></td><td>Astro component over registry JSON — Starlight's unique payoff</td></tr>
+        <tr><td>FAQ / troubleshooting</td><td><em>deferred</em></td><td>collect real questions first</td></tr>
+        <tr><td>Deep-dive & overview (org)</td><td><em>deferred</em></td><td><code>docs/deepdive.org</code> — org→HTML is a separate toolchain call</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Dependencies &amp; constraints</h3>
+    <ul>
+      <li>Python side: <code>docs</code> dependency group = <code>nbconvert</code> only (uv-locked). Runtime package untouched; <code>gen.py</code> imports the registry read-only.</li>
+      <li>Node side: Astro + Starlight in <code>package.json</code>/<code>package-lock.json</code>; Node ≥ 20; <code>npm ci</code> in CI. First Node footprint in the repo — accepted org-level (see Questionables).</li>
+      <li><strong>Base path</strong>: GitHub project pages serve at <code>/featurizer/</code>; <code>astro.config.mjs</code> must set <code>site</code> + <code>base</code>, and all internal links/assets must survive it (Phase 1 spike #1).</li>
+      <li>The Pages workflow gains ~2–3 min (uv sync + gen + npm ci + astro build). Concurrency group already prevents deploy races.</li>
+      <li>The current working tree has in-flight <em>code</em> changes (planner/abstractions/tests, notebook 05). This plan touches none of those files; notebook 05 renders only from its committed state.</li>
+      <li>Theme tokens (<code>--sl-color-accent*</code> teal set) should be written to be copy-pasteable into triage's Starlight site — one palette, two repos, until an org-shared theme package is worth extracting.</li>
+    </ul>
+
+    <h3>Rejected approaches (decision log)</h3>
+    <ul>
+      <li><strong>Ad-hoc <code>site/build.py</code></strong> (this plan's v1) — bespoke ~300 lines nobody else recognizes; no search; every feature hand-rolled. Rejected once org standardization entered the picture.</li>
+      <li><strong>MkDocs Material</strong> (this plan's v2 recommendation) — excellent pure-pip fit (mkdocs-jupyter, mkdocstrings, <code>--strict</code>), but it would make featurizer the org's odd one out once triage runs Starlight. Superseded by alignment, not by defect.</li>
+      <li><strong>Quarto</strong> — best native notebook support and the freeze-cached <em>executable</em> walkthrough was genuinely attractive; loses on org alignment and the second non-uv toolchain. The freeze idea is recorded in Questionables as the capability we consciously gave up.</li>
+      <li><strong>Linking notebooks to GitHub's ipynb viewer only</strong> — keeps the "disconnected" feel, no nav/search/identity, truncates large outputs.</li>
+      <li><strong>Executing notebooks in CI</strong> — no database in the Pages workflow; committed outputs are the validated ones.</li>
+    </ul>
+
+    <h3>Risks &amp; mitigations</h3>
+    <ul>
+      <li><em>Base-path 404s</em> — Phase 1 spike #1; <code>check_links.py</code> over <code>dist/</code> in CI thereafter.</li>
+      <li><em>DataFrame HTML tables render poorly in the theme</em> — Phase 1 spike #2 against notebook 05 (the worst case) before any content investment; the loop instruction halts tooling on structural failure.</li>
+      <li><em>Docs drift</em> — primitives page generated (cannot drift; count-parity test fails CI when the registry moves); ADR/changelog ingested from canonical homes; generated pages gitignored so there is no second copy to rot.</li>
+      <li><em>Node dependency churn</em> — batch bumps, lockfile + <code>npm ci</code>, org-shared upgrade rhythm with triage.</li>
+    </ul>
+
+    <h3>Future work (explicitly out of scope)</h3>
+    <ul>
+      <li>Interactive primitives explorer (Astro component, faceted filter + SQL preview); pdoc API reference under <code>public/api/</code>; org-shared Starlight theme package; versioned docs per release tag; org→HTML export of the deep-dive.</li>
+    </ul>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details>
+      <summary>2026-07-12T12:28:00-06:00 — Tooling reversal: ad-hoc builder → Astro Starlight</summary>
+      <p>The plan's v1 chose a hand-rolled <code>site/build.py</code>; discussion re-examined that choice and
+      flipped the recommendation to MkDocs Material (two of the three original objections to a framework did not
+      survive scrutiny). A new fact then settled it: <strong>triage will use Starlight</strong>, so org-level
+      alignment (one docs stack, shared theme, shared CI pattern, cross-linkable sibling sites) outweighs
+      toolchain purity. Revised accordingly: Phase 1 is now the Starlight scaffold with three explicit risk
+      spikes (Pages base path, notebook DataFrame HTML rendering, Pagefind coverage of pass-through artifacts);
+      Phase 3 converts notebooks via <code>nbconvert --to markdown</code> inside <code>site/gen.py</code> (uv
+      toolchain) so notebook pages live inside the theme; Phase 5 ingests ADRs/CHANGELOG with frontmatter
+      injection; CI adds a Node build stage; validation commands and file inventory updated. Quarto's
+      freeze-cached executable walkthrough is recorded as the one capability consciously given up.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,19 @@
+/* ccd-ia shared docs identity — teal accent.
+ *
+ * These Starlight token overrides define the org palette; copy this block
+ * verbatim into triage's Starlight site so the two docs sites read as
+ * siblings. Values derive from the featurizer validation-artifact identity
+ * (accent #0f766e on warm neutrals). */
+
+:root {
+	/* accent ramp (dark → light) */
+	--sl-color-accent-low: #123d38;
+	--sl-color-accent: #0f766e;
+	--sl-color-accent-high: #a8dcd5;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ccfbf1;
+	--sl-color-accent: #0f766e;
+	--sl-color-accent-high: #134e4a;
+}

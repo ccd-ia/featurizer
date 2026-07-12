@@ -67,6 +67,11 @@ parquet = [
 ]
 
 [dependency-groups]
+# Python side of the docs-site build (site/gen.py): notebook -> markdown
+# conversion only. The site itself is built by Astro Starlight (package.json).
+docs = [
+    "nbconvert>=7.16",
+]
 dev = [
     "basedpyright>=1.31.7",
     "jupyter-console>=6.6.3",

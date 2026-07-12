@@ -1,0 +1,45 @@
+---
+title: featurizer
+description: Automated feature engineering for temporal data — Deep Feature Synthesis compiled to pure PostgreSQL.
+template: splash
+hero:
+  tagline: >-
+    Deep Feature Synthesis compiled to pure PostgreSQL, with
+    point-in-time-correct as-of semantics. 67 aggregations · 83 transformers ·
+    leakage-safe by construction.
+  actions:
+    - text: View on GitHub
+      link: https://github.com/ccd-ia/featurizer
+      icon: github
+    - text: Latest release
+      link: https://github.com/ccd-ia/featurizer/releases/latest
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Explore
+
+<CardGrid stagger>
+	<Card title="Live-database validation" icon="approve-check">
+		Every release is validated by materializing full feature matrices against
+		three live PostgreSQL databases. The v0.8.0 matrix is fully green — every
+		variant materializes, including the ~36.8k-column wide config.
+		[Read the reports](/featurizer/specs/live-db-revalidation-v080.html).
+	</Card>
+	<Card title="Visualization gallery" icon="seti:image">
+		Diagnostic plots from `FeaturizerViz`, rendered from a live 177k-row ×
+		272-feature matrix.
+		[Browse the gallery on GitHub](https://github.com/ccd-ia/featurizer#gallery).
+	</Card>
+	<Card title="Architecture" icon="setting">
+		Config → Validator → Planner → SQL Renderer → Executor. One YAML file in,
+		a point-in-time-correct feature matrix out.
+		[Architecture decision records](https://github.com/ccd-ia/featurizer/tree/master/docs/adr).
+	</Card>
+	<Card title="Examples & tutorials" icon="open-book">
+		Five runnable examples from basic aggregations to custom primitives.
+		[Start with the examples](https://github.com/ccd-ia/featurizer/tree/master/examples).
+	</Card>
+</CardGrid>
