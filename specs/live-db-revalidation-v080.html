@@ -1,0 +1,91 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live-DB revalidation — v0.8.0</title>
+<style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;
+--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+line-height:1.55;margin:0}main{max-width:960px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.6rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.2rem;margin:2rem 0 .6rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+p{margin:.5rem 0}.lede{color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.38rem .55rem;text-align:left}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono{font-family:var(--mono)}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;
+padding:.1em .5em;border-radius:5px}
+.chip.ok{background:#dcfce7;color:#15803d}.chip.cap{background:#fee2e2;color:#b91c1c}
+.was{color:var(--muted);font-size:.9em}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;
+padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+</style></head><body><main>
+<h1>Live-DB revalidation — v0.8.0</h1>
+<p class="lede">Running featurizer against the three live triage databases
+(<code>dirtyduck</code>, <code>chicago311</code>, <code>donorschoose</code>) after the
+0.7.0 perf fixes and the 0.8.0 sharding rework — 2026-07-12.</p>
+
+<div class="note"><b>Headline.</b> Every cell of the 3-DB × 3-variant matrix now
+<b>materializes</b> — including donorschoose <code>wide</code> (~36.8k columns), which
+crashed the PostgreSQL backend in every previous snapshot. Two root causes, both found
+by measurement: (1) <em>0.7.0</em> — correlated two-window drift (ADR-0012) and the
+never-analyzed <code>as_of_dates</code> cardinality (ADR-0013) made all-agg 10–100×
+slower than it should be; (2) <em>0.8.0</em> — order-based column chunking gave every
+group query a CTE closure spanning most of the plan, and PostgreSQL's planning memory
+is <b>superlinear in same-statement window-function count</b> (measured cliff: ~675
+window columns plan in ~5s, ~1350 OOM-kill the backend at a plain <code>EXPLAIN</code>).
+Groups are now packed by dependency lineage with a 500-window budget (ADR-0005
+amendment), and a pre-flight guardrail (<code>warn_plan_size</code>) names doomed
+configs at render time.</div>
+
+<h2>1 · Test results</h2>
+<table><thead><tr><th>tier</th><th>command</th><th>result</th></tr></thead><tbody>
+<tr><td>DB-free</td><td class="mono">just test-fast</td><td>591 passed (guardrail, lineage-clustering, window-budget and re-join regression tests added)</td></tr>
+<tr><td>Integration (seeded)</td><td class="mono">just test-integration</td><td>435 passed, 0 failed — value equality holds under the new partitioning</td></tr>
+<tr><td>Type check</td><td class="mono">just typecheck</td><td>0 errors</td></tr>
+</tbody></table>
+
+<h2>2 · Live full-cohort materialization (measured)</h2>
+<p>Each config materialized through featurizer's grouped path
+(<code>to_dataframe(connection=…)</code>) at one as-of date, read-only.
+<b>narrow</b> = the triage config's own primitives; <b>all-agg</b> = the full
+65-aggregator default set with <code>identity</code>; <b>wide</b> = all-agg × 14
+transformers (lags, rolling, EMA, cusum…). <span class="was">"was" = the v0.6.0
+snapshot (2026-07-08).</span></p>
+<table><thead><tr><th>database</th><th>variant</th><th>features</th><th>shards</th>
+<th>rows</th><th>seconds</th><th>was (v0.6.0)</th><th>status</th></tr></thead><tbody>
+<tr><td>dirtyduck</td><td class="mono">narrow</td><td class="mono">147</td><td class="mono">1</td><td class="mono">22,169</td><td class="mono">3.0</td><td class="was">3.4</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>dirtyduck</td><td class="mono">all-agg</td><td class="mono">272</td><td class="mono">1</td><td class="mono">22,169</td><td class="mono">7.5</td><td class="was">356.8</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>dirtyduck</td><td class="mono">wide</td><td class="mono">1,252</td><td class="mono">1</td><td class="mono">22,169</td><td class="mono">63.2</td><td class="was">ln crash</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>chicago311</td><td class="mono">narrow</td><td class="mono">28</td><td class="mono">1</td><td class="mono">30,654</td><td class="mono">0.8</td><td class="was">1.0</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>chicago311</td><td class="mono">all-agg</td><td class="mono">191</td><td class="mono">1</td><td class="mono">30,654</td><td class="mono">6.0</td><td class="was">10.1</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>chicago311</td><td class="mono">wide</td><td class="mono">907</td><td class="mono">1</td><td class="mono">30,654</td><td class="mono">49.2</td><td class="was">ln crash</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>donorschoose</td><td class="mono">narrow</td><td class="mono">175</td><td class="mono">1</td><td class="mono">3,000</td><td class="mono">0.4</td><td class="was">1.5</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>donorschoose</td><td class="mono">all-agg</td><td class="mono">1,063</td><td class="mono">1</td><td class="mono">3,000</td><td class="mono">7.6</td><td class="was">281.1</td><td><span class="chip ok">materialized</span></td></tr>
+<tr><td>donorschoose</td><td class="mono">wide</td><td class="mono">36,802</td><td class="mono">32</td><td class="mono">3,000</td><td class="mono">470.1</td><td class="was">backend crash</td><td><span class="chip ok">materialized</span></td></tr>
+</tbody></table>
+<p style="font-size:.82rem;color:var(--muted)">shards = actual column-group queries
+emitted (lineage + window-budget packing); duplicate output column names = 0 in every
+cell. Per-DB detail (config, live schema, feature samples with real values):
+<a href="live-db-revalidation-v080/dirtyduck.html">dirtyduck</a> ·
+<a href="live-db-revalidation-v080/chicago311.html">chicago311</a> ·
+<a href="live-db-revalidation-v080/donorschoose.html">donorschoose</a>.</p>
+
+<h2>3 · Read this honestly</h2>
+<p>all-agg is now uniformly <b>seconds</b> on every live DB (was 10–357s), and wide
+completes everywhere — but donorschoose wide's ~8 minutes is <em>survival, not
+speed</em>: ~36.8k columns across 32 group queries is an extreme, atypical config.
+The pre-flight guardrail exists precisely so that configs in that regime announce
+their cost at render time instead of dying minutes into execution. The known open
+edge: <code>to_tables()</code> (CREATE TABLE AS) would hit PostgreSQL's 8160-byte
+heap-row limit on a 1400-numeric-column group; the SELECT/fetch paths measured here
+are immune.</p>
+
+<footer>featurizer v0.8.0 · 2026-07-12 · read-only runs against the live triage
+databases · previous snapshot: <a href="live-db-revalidation-v060.html">v0.6.0
+(2026-07-08)</a></footer>
+</main></body></html>

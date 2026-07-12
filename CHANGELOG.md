@@ -6,6 +6,15 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-12
+
+Sharding rework: the donorschoose `wide` config (~36.8k columns) — a backend
+crash in every previous snapshot — now materializes live in ~8 minutes, and
+every cell of the 3-DB × 3-variant live matrix is green (all-agg is seconds
+everywhere). Full refreshed artifacts: `specs/live-db-revalidation-v080/`
+(+ summary page `specs/live-db-revalidation-v080.html`); decision record:
+ADR-0005 amendment.
+
 ### Changed
 
 - **Column-group sharding now clusters columns by dependency lineage.**

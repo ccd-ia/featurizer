@@ -1,6 +1,6 @@
 # 0005 — Wide feature matrices shard into joinable column groups
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-07-11: lineage-aware packing + window budget)
 
 **Date:** 2026-06-17
 
@@ -77,3 +77,25 @@ the full matrix. Public API:
   invalid SQL.
 - The grouped output is the feature-group contract other tools (triage-pg)
   already consume: independent column shards keyed on `(as_of_date, id)`.
+
+## Amendment (2026-07-11): how columns are packed into groups
+
+Emission-order chunking made each group's CTE closure span most of the plan
+(donorschoose `wide`: closures up to 979 CTEs, 30–45s of PostgreSQL *planning*
+per group, backend OOM-killed during a plain `EXPLAIN`). Packing now:
+
+1. **clusters columns by dependency lineage** (source-CTE signature) before
+   filling groups — max closure 979 → 285, duplicated companion executions
+   899 → 18 instances, emitted SQL 29.2 MB → 17.4 MB; and
+2. **bounds window functions per group** (`max_window_fns_per_group`, 500) —
+   PostgreSQL planning memory is superlinear in same-statement window-function
+   count (measured cliff: ~675 plan in ~5s, ~1350 OOM the backend; count, not
+   content).
+
+Group *composition* is therefore lineage-dependent, not positional; the
+`<stem>_manifest`'s `feature_group` column remains the supported mapping from
+column to group. Validated live: the donorschoose `wide` config (~36.8k
+columns, previously a backend crash) materializes in ~8 minutes across 32
+groups. The re-join key is the full carried identifier tuple
+(`GroupedQueries.key_columns`), not just `(as_of_date, id)` — targets that
+carry relationship keys repeat them per group.

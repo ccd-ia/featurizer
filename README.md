@@ -122,9 +122,12 @@ truncation) when a single query is impossible.
 -   **Wide target -> column groups.** When the target's feature tuple is too wide,
     the matrix is partitioned into ordered column groups, each a self-contained
     query leading with `(as_of_date, <target id>)` so they re-join into the full
-    matrix. `Featurizer.query_groups` returns `OrderedDict[str, str]`; `to_arrow`
-    returns one `pyarrow.Table` when it fits else an `OrderedDict` of group tables;
-    `to_parquet(dir)` writes one file per group. See
+    matrix. Groups are packed by *dependency lineage* (same-source columns share
+    a group, keeping each group's CTE closure — and PostgreSQL's planning cost —
+    small) and bounded by a window-function budget. `Featurizer.query_groups`
+    returns `OrderedDict[str, str]`; `to_arrow` returns one `pyarrow.Table` when
+    it fits else an `OrderedDict` of group tables; `to_parquet(dir)` writes one
+    file per group. See
     [ADR-0005](docs/adr/0005-column-group-sharding.md).
 
 -   **Oversized child entity -> temp-table materialization.** When a *non-target
