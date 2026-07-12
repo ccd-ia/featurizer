@@ -1,5 +1,10 @@
 # Primitives Reference Guide
 
+> **Canonical view:** the docs site's
+> [primitives reference](https://ccd-ia.github.io/featurizer/reference/primitives/)
+> is generated from the live registry at every deploy and cannot drift from the
+> code. This hand-maintained file is kept for offline/in-repo reading.
+
 This document provides a comprehensive reference for all aggregation and transformation primitives available in Featurizer.
 
 ## Quick Reference

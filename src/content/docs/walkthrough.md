@@ -207,7 +207,9 @@ uv run python -m featurizer list-primitives --type transform --show-sql
 Then select per config, as example 01 does. Beyond the basics there are
 ordered-set aggregations (`median`, `p90`…), temporal-gap statistics
 (`gap_mean`, `burstiness`), categorical distributions (`entropy`, `hhi`,
-`gini`), and sequence features (`ngram_2_freq`, `longest_streak`).
+`gini`), and sequence features (`ngram_2_freq`, `longest_streak`) — the
+[primitives reference](/featurizer/reference/primitives/) lists all 150 with
+SQL examples.
 
 ## 8. Point-in-time joins (as-of)
 
@@ -255,9 +257,9 @@ Real output from a live 177k-row × 272-feature matrix:
   primitives —
   [examples/](https://github.com/ccd-ia/featurizer/tree/master/examples)
   (rendered versions join this site shortly).
-- **References**: the full primitive registry and the complete `config.yaml`
-  schema —
-  [docs/primitives-reference.md](https://github.com/ccd-ia/featurizer/blob/master/docs/primitives-reference.md).
+- **References**: the full
+  [primitive registry](/featurizer/reference/primitives/) and the complete
+  [`config.yaml` schema](/featurizer/reference/configuration/).
 - **Proof it holds up**: every release is validated against three live
   databases — <a href="/featurizer/specs/live-db-revalidation-v080.html">the
   v0.8.0 reports</a>.

@@ -28,6 +28,10 @@ export default defineConfig({
 					items: [{ autogenerate: { directory: 'notebooks' } }],
 				},
 				{
+					label: 'Reference',
+					items: [{ autogenerate: { directory: 'reference' } }],
+				},
+				{
 					label: 'Validation',
 					items: [
 						{

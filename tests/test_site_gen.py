@@ -64,3 +64,30 @@ def test_referenced_notebook_assets_exist(converted: list[str]) -> None:
         text = (notebooks_dir / name).read_text()
         for ref in re.findall(r"\]\(/featurizer/notebook-assets/([^)]+)\)", text):
             assert (assets_root / ref).is_file(), f"{name}: missing asset {ref}"
+
+
+def test_primitives_page_row_count_matches_registry(gen) -> None:
+    """The drift alarm: one table row per registered primitive, counts in header."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(REPO))
+    from featurizer.primitives.utils import list_aggregations, list_transformations
+
+    page = gen.generate_primitives().read_text()
+    n_aggs = len(list(list_aggregations()))
+    n_transforms = len(list(list_transformations()))
+    rows = re.findall(r"^\| `", page, flags=re.M)
+    assert len(rows) == n_aggs + n_transforms
+    assert f"## Aggregations ({n_aggs})" in page
+    assert f"## Transformers ({n_transforms})" in page
+
+
+def test_configuration_yaml_snippets_parse() -> None:
+    """Every fenced YAML block in the configuration reference must load."""
+    import yaml
+
+    text = (REPO / "src/content/docs/reference/configuration.md").read_text()
+    blocks = re.findall(r"```yaml\n(.*?)```", text, flags=re.S)
+    assert blocks, "configuration.md should contain yaml examples"
+    for block in blocks:
+        yaml.safe_load(block)

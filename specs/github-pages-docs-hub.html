@@ -348,29 +348,29 @@ footer,section#amendments details{font-size:.85rem}
 
       <h4>1. Generated primitives reference</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>gen.py</code>: import the registries (<code>get_aggregations()</code>, <code>get_transformers()</code>) + the metadata dictionaries in <code>featurizer/cli.py</code> (category, description, SQL example) → emit <code>src/content/docs/reference/primitives.md</code>: two tables grouped by category, counts in the header; Pagefind gives search for free (an interactive faceted-explorer Astro component is noted as future work)</li>
-        <li><code class="status">[]</code> Primitives missing CLI metadata render with a stub row (never crash); SQL examples escaped</li>
-        <li><code class="status">[]</code> Note planner-pass families (peer-group, spatial, φ-bridge) in a callout — config-driven passes, not registry primitives</li>
-        <li><code class="status">[]</code> Top of <code>docs/primitives-reference.md</code>: one-line pointer to the generated page as the canonical view</li>
+        <li><code class="status">[x]</code> <code>gen.py</code>: import the registries (<code>get_aggregations()</code>, <code>get_transformers()</code>) + the metadata dictionaries in <code>featurizer/cli.py</code> (category, description, SQL example) → emit <code>src/content/docs/reference/primitives.md</code>: two tables grouped by category, counts in the header; Pagefind gives search for free (an interactive faceted-explorer Astro component is noted as future work)</li>
+        <li><code class="status">[x]</code> Primitives missing CLI metadata render with a stub row (never crash); SQL examples escaped</li>
+        <li><code class="status">[x]</code> Note planner-pass families (peer-group, spatial, φ-bridge) in a callout — config-driven passes, not registry primitives</li>
+        <li><code class="status">[x]</code> Top of <code>docs/primitives-reference.md</code>: one-line pointer to the generated page as the canonical view</li>
       </ul>
 
       <h4>2. Configuration reference</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Author <code>src/content/docs/reference/configuration.md</code>: full annotated config skeleton, then per-key sections — <code>target</code>, <code>max_depth</code>, <code>intervals</code> (ISO-8601), <code>entities</code> (alias/table/id/<code>temporal_ix</code>/<code>spatial_ix</code>, variable types + <code>role</code>/<code>vocabulary</code> one-hot contract), <code>relationships</code> (+ <code>temporal: mode: as_of</code>, <code>grace</code>, <code>child_timestamp</code>), primitive selection, <code>peer_groups</code>, <code>spatial_relationships</code>, validation behaviour + common validator errors</li>
-        <li><code class="status">[]</code> Cross-link walkthrough §3 ↔ this page ↔ primitives page</li>
+        <li><code class="status">[x]</code> Author <code>src/content/docs/reference/configuration.md</code>: full annotated config skeleton, then per-key sections — <code>target</code>, <code>max_depth</code>, <code>intervals</code> (ISO-8601), <code>entities</code> (alias/table/id/<code>temporal_ix</code>/<code>spatial_ix</code>, variable types + <code>role</code>/<code>vocabulary</code> one-hot contract), <code>relationships</code> (+ <code>temporal: mode: as_of</code>, <code>grace</code>, <code>child_timestamp</code>), primitive selection, <code>peer_groups</code>, <code>spatial_relationships</code>, validation behaviour + common validator errors</li>
+        <li><code class="status">[x]</code> Cross-link walkthrough §3 ↔ this page ↔ primitives page</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p>The generated page is tested against the registry itself — the count assertions are the drift alarm.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — primitives-page row count == <code>len(registry)</code> for both types; every YAML snippet in configuration.md round-trips <code>yaml.safe_load</code></li>
-        <li><code class="status">[]</code> <code>uv run python -m featurizer list-primitives | tail -3</code> vs page header counts — same 67/83 totals</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — primitives-page row count == <code>len(registry)</code> for both types; every YAML snippet in configuration.md round-trips <code>yaml.safe_load</code></li>
+        <li><code class="status">[x]</code> <code>uv run python -m featurizer list-primitives | tail -3</code> vs page header counts — same 67/83 totals</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 5: Engineering pages — ADRs &amp; changelog</h3>
+      <h3><code class="status">[x]</code> Phase 5: Engineering pages — ADRs &amp; changelog</h3>
       <p>The "why is it built this way" layer. Canonical files stay where they are; <code>gen.py</code> ingests
       them with injected frontmatter.</p>
       <ul class="checklist">
