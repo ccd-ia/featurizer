@@ -297,6 +297,7 @@ class Featurizer:
 
         sharder = self._sharder()
         sharder.warn_oversized()
+        sharder.warn_plan_size()  # pre-flight PG planner-blowup prediction
         if sharder.fits_single_group:
             return GroupedQueries(
                 queries=OrderedDict([("group_000", self._renderer.render(self._plan))]),

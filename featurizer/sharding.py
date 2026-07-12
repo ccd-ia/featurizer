@@ -35,7 +35,7 @@ import hashlib
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import AbstractSet, Dict, List, Set
+from typing import AbstractSet, Dict, List, Set, Tuple
 
 from loguru import logger
 
@@ -51,6 +51,15 @@ PG_MAX_TABLE_COLUMNS = 1600
 # always-present carry columns (``as_of_date`` + the target id) and any extra
 # carried index columns never push a group over.
 DEFAULT_MAX_COLUMNS_PER_GROUP = 1400
+
+# Per-group CTE-closure size above which ``warn_plan_size`` flags the config.
+# Calibrated on the live 3-DB wide matrix (2026-07-10): the configs that
+# completed have closures of 51 (chicago311) and 114 (dirtyduck); the config
+# that OOM-killed the backend during planning (donorschoose) had 27 groups
+# with mean closure 420 and max 979, and measured planning time grew with
+# closure size — ~127 CTEs planned in 0.1s, ~446 in 4.2s, ~791 in 33.5s,
+# ~886 in 42.7s. 300 sits between "planned in seconds" and "planning-bound".
+PLAN_SIZE_WARN_CLOSURE = 300
 
 
 @dataclass(frozen=True)
@@ -158,6 +167,11 @@ class ColumnGroupSharder:
         self._name_scanner = (
             _cte_name_scanner(self._all_cte_names) if self._all_cte_names else None
         )
+        # CTE bodies are immutable once planned, so the name-scan of each body
+        # is computed once and reused across groups (reachability runs per
+        # group for both rendering and the plan-size report).
+        self._body_refs_cache: Dict[str, Set[str]] = {}
+        self._agg_refs_cache: Dict[str, Tuple[Set[str], Dict[str, Set[str]]]] = {}
 
         # Temp-table materialization for oversized non-target child CTEs (issue
         # #7). Built lazily and cached: a ``MaterializationPlan`` when the plan
@@ -242,6 +256,57 @@ class ColumnGroupSharder:
             mapping[f"group_{idx:03d}"] = [c.name for c in group_columns]
         return mapping
 
+    def plan_size_report(self) -> "OrderedDict[str, int]":
+        """Map ``group_<NNN>`` -> the CTE-closure size of that group's query.
+
+        The closure is exactly the set of CTEs :meth:`build` would emit for the
+        group (target synth/transform included, temp-materialized CTEs
+        excluded), computed without rendering any SQL. PostgreSQL's planner
+        memory and planning time grow with this number, so it is the pre-flight
+        predictor of planner blowup — see :meth:`warn_plan_size`.
+        """
+        mplan = self.materialization()
+        materialized: AbstractSet[str] = (
+            mplan.materialized_ctes if mplan is not None else frozenset()
+        )
+        report: "OrderedDict[str, int]" = OrderedDict()
+        for idx, group_columns in enumerate(self._partition_columns()):
+            _, _, reachable = self._group_dependencies(group_columns, materialized)
+            report[f"group_{idx:03d}"] = len(reachable)
+        return report
+
+    def warn_plan_size(self) -> None:
+        """Log a loud, actionable warning when a group query's CTE closure
+        predicts a PostgreSQL planner blowup.
+
+        Evidence (2026-07-10, live donorschoose `wide`): group queries closing
+        over ~450–980 CTEs took 27–43s of *planning* each (5,300+ plan nodes)
+        and OOM-killed the backend during a plain ``EXPLAIN`` on a 12 GiB
+        server — with a 3,000-row cohort, so data volume was irrelevant.
+        Configs that completed (dirtyduck/chicago311 wide) stayed materially
+        smaller. The warning fires per run, not per group, and names the worst
+        offenders so the user can shrink the config (fewer transformers /
+        intervals / entities) before burning minutes on a doomed run.
+        """
+        report = self.plan_size_report()
+        offenders = {gid: n for gid, n in report.items() if n > PLAN_SIZE_WARN_CLOSURE}
+        if not offenders:
+            return
+        worst = sorted(offenders.items(), key=lambda kv: -kv[1])[:5]
+        logger.warning(
+            "Plan-size risk: {} of {} column-group queries carry a CTE closure "
+            "over {} (worst: {}). PostgreSQL planning time/memory grows with "
+            "closure size — measured on live data, ~1000-CTE groups took 30-45s "
+            "of planning EACH and OOM-killed the backend regardless of row "
+            "count. Reduce the config's transformer/interval/entity breadth, or "
+            "expect very long runs and possible 'server closed the connection "
+            "unexpectedly' failures on memory-constrained servers.",
+            len(offenders),
+            len(report),
+            PLAN_SIZE_WARN_CLOSURE,
+            ", ".join(f"{gid}={n}" for gid, n in worst),
+        )
+
     def build(self) -> GroupedQueries:
         """Partition + render. Returns the ordered group queries and join keys.
 
@@ -279,17 +344,14 @@ class ColumnGroupSharder:
     # Per-group rendering
     # ------------------------------------------------------------------ #
 
-    def _render_group(
+    def _group_dependencies(
         self,
         group_columns: List[ColumnSpec],
         materialized: AbstractSet[str] = frozenset(),
-        mplan: "MaterializationPlan | None" = None,
-    ) -> str:
-        """Build the self-contained query for one column group.
-
-        ``materialized`` names the CTEs backed by temp tables (issue #7): they are
-        dropped from the ``with`` list and references to them are rewritten to
-        their shards. ``mplan`` carries the shard mapping for the rewrite."""
+    ) -> Tuple[Set[str], List[str], Set[str]]:
+        """One group's pruned dependencies: (needed synth columns, kept joins,
+        reachable CTE closure). Shared by :meth:`_render_group` (which renders
+        the closure) and :meth:`plan_size_report` (which only counts it)."""
         # 1. Synth columns this group needs = union of its columns' deps.
         needed_synth: Set[str] = set()
         for col in group_columns:
@@ -329,9 +391,27 @@ class ColumnGroupSharder:
         #    target synth/transform, the kept upstream CTEs, or the kept joins.
         #    Materialized CTEs are temp tables, so they (and any upstream reachable
         #    only through them) are excluded — the rewrite reads their shards.
-        reachable = self._reachable_ctes(kept_upstream, kept_joins, materialized)
+        reachable = self._reachable_ctes(
+            kept_upstream, kept_joins, materialized, needed_synth
+        )
+        return needed_synth, kept_joins, reachable
 
-        # 4. Render the CTE list in original emission order.
+    def _render_group(
+        self,
+        group_columns: List[ColumnSpec],
+        materialized: AbstractSet[str] = frozenset(),
+        mplan: "MaterializationPlan | None" = None,
+    ) -> str:
+        """Build the self-contained query for one column group.
+
+        ``materialized`` names the CTEs backed by temp tables (issue #7): they are
+        dropped from the ``with`` list and references to them are rewritten to
+        their shards. ``mplan`` carries the shard mapping for the rewrite."""
+        needed_synth, kept_joins, reachable = self._group_dependencies(
+            group_columns, materialized
+        )
+
+        # Render the CTE list in original emission order.
         rendered_ctes = self._render_ctes(
             reachable, group_columns, needed_synth, kept_joins, materialized, mplan
         )
@@ -343,6 +423,7 @@ class ColumnGroupSharder:
         kept_upstream: Set[str],
         kept_joins: List[str],
         materialized: AbstractSet[str] = frozenset(),
+        needed_synth: AbstractSet[str] = frozenset(),
     ) -> Set[str]:
         """Transitive closure of CTE names a group's query references.
 
@@ -357,6 +438,13 @@ class ColumnGroupSharder:
         exactly ``kept_upstream`` + ``kept_joins`` — scanning their full-width
         ``rendered`` text would spuriously pull in agg/peer CTEs this group
         dropped.
+
+        A target-level agg CTE is likewise emitted *pruned* to the group's
+        ``needed_synth`` columns (:meth:`_render_agg`), so its refs are the
+        union of its surviving columns' refs, not the full-width body's —
+        otherwise a companion pre-aggregation CTE whose only consumer columns
+        landed in other groups would ride along as a dead (unreferenced) CTE
+        in every group that touches the relationship at all.
         """
         target_ctes = {self.synth_name, self.transform_name}
         reachable: Set[str] = set(target_ctes)
@@ -371,10 +459,11 @@ class ColumnGroupSharder:
         reachable.update(seeds)
         while frontier:
             name = frontier.pop()
-            body = self._cte_body(name)
-            if body is None:
-                continue
-            for ref in self._names_in(body):
+            if name in self._target_agg_ctes:
+                refs = self._agg_refs(name, needed_synth)
+            else:
+                refs = self._body_refs(name)
+            for ref in refs:
                 if (
                     ref not in reachable
                     and ref not in target_ctes
@@ -383,6 +472,41 @@ class ColumnGroupSharder:
                     reachable.add(ref)
                     frontier.append(ref)
         return reachable
+
+    def _agg_refs(self, name: str, needed_synth: AbstractSet[str]) -> Set[str]:
+        """CTE refs of a target agg CTE as :meth:`_render_agg` will emit it.
+
+        Per-column projection refs are scanned once and cached (the name-scan
+        regex is a >2000-alternation on wide plans; re-scanning a rendered
+        multi-hundred-column body per group measured ~30s on the donorschoose
+        wide config). A group's refs = the CTE's frame (prefix/suffix: the
+        ``from <child>_transform`` scan etc.) + its surviving columns' refs.
+        """
+        cached = self._agg_refs_cache.get(name)
+        if cached is None:
+            spec = self.plan.cte_specs[name]
+            frame = self._names_in(spec.prefix + spec.suffix)
+            for key_col in spec.key_columns:
+                frame |= self._names_in(key_col)
+            per_column = {c.name: self._names_in(c.projection) for c in spec.columns}
+            cached = (frame, per_column)
+            self._agg_refs_cache[name] = cached
+        frame, per_column = cached
+        refs = set(frame)
+        for col_name, col_refs in per_column.items():
+            if col_name in needed_synth:
+                refs |= col_refs
+        return refs
+
+    def _body_refs(self, name: str) -> Set[str]:
+        """CTE names referenced by ``name``'s body (memoized — bodies are
+        immutable once planned, and reachability runs once per group)."""
+        cached = self._body_refs_cache.get(name)
+        if cached is None:
+            body = self._cte_body(name)
+            cached = self._names_in(body) if body is not None else set()
+            self._body_refs_cache[name] = cached
+        return cached
 
     def _render_ctes(
         self,

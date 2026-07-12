@@ -672,3 +672,57 @@ def test_materialized_groups_still_lead_with_join_keys():
     assert built.key_columns == ["as_of_date", "store_id"]
     for sql in built.queries.values():
         assert "select aod.as_of_date, t.*" in sql
+
+
+# --------------------------------------------------------------------------- #
+# Plan-size guardrail (pre-flight PG planner-blowup prediction)
+# --------------------------------------------------------------------------- #
+
+
+def test_plan_size_report_covers_every_group_and_counts_real_closures():
+    """One closure count per group, and each count matches the CTEs the
+    rendered group query actually carries (`with … as (` occurrences plus the
+    target synth/transform are the closure by construction)."""
+    f = _featurizer(_wide_config())
+    sharder = ColumnGroupSharder(f._plan)
+    report = sharder.plan_size_report()
+    built = sharder.build()
+    assert list(report.keys()) == list(built.queries.keys())
+    for gid, sql in built.queries.items():
+        assert report[gid] == len(re.findall(r"\bas \(", sql)), gid
+        assert report[gid] >= 2  # target synth + transform at minimum
+
+
+def test_warn_plan_size_silent_under_threshold():
+    from loguru import logger
+
+    f = _featurizer(_narrow_config())
+    sharder = ColumnGroupSharder(f._plan)
+    messages: list[str] = []
+    sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    try:
+        sharder.warn_plan_size()
+    finally:
+        logger.remove(sink_id)
+    assert messages == []
+
+
+def test_warn_plan_size_fires_over_threshold(monkeypatch):
+    """Force the threshold under a real config's closure and expect one loud,
+    actionable warning naming the offending groups."""
+    import featurizer.sharding as sharding_mod
+    from loguru import logger
+
+    f = _featurizer(_wide_config())
+    sharder = ColumnGroupSharder(f._plan)
+    max_closure = max(sharder.plan_size_report().values())
+    monkeypatch.setattr(sharding_mod, "PLAN_SIZE_WARN_CLOSURE", max_closure - 1)
+    messages: list[str] = []
+    sink_id = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    try:
+        sharder.warn_plan_size()
+    finally:
+        logger.remove(sink_id)
+    assert len(messages) == 1
+    assert "Plan-size risk" in messages[0]
+    assert "group_" in messages[0]

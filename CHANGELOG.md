@@ -6,6 +6,28 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **Sharded group queries no longer carry dead companion CTEs.** Per-group
+  reachability now scans the *pruned* rendering of each target-level agg CTE
+  instead of its full-width body, so companion pre-aggregation CTEs whose only
+  consumer columns landed in other groups are no longer emitted. PostgreSQL 16
+  discards unreferenced CTEs at negligible planning cost (measured), so this
+  does not change plan shape — it shrinks the emitted SQL, parse time, and
+  render time on wide sharded configs.
+
+### Added
+
+- **Pre-flight plan-size guardrail.** `ColumnGroupSharder.plan_size_report()`
+  maps each column group to its live CTE-closure size, and `warn_plan_size()`
+  (wired into every grouped path) logs one loud, actionable warning when any
+  group's closure predicts a PostgreSQL planner blowup — the failure mode
+  diagnosed on the donorschoose `wide` config, where ~1000-CTE group queries
+  took 30–45s of planning each and OOM-killed the backend during a plain
+  `EXPLAIN`. The warning names the worst groups and the config levers
+  (transformers / intervals / entities) instead of letting the run die
+  minutes later with "server closed the connection unexpectedly".
+
 ## [0.7.0] - 2026-07-10
 
 Performance release: the two root causes found by `EXPLAIN (ANALYZE)` on the
