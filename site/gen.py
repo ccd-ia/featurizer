@@ -204,10 +204,101 @@ def generate_primitives() -> Path:
     return out
 
 
+# ADR index grouping. New ADRs land in "other" until themed here — the index
+# generator prints a reminder when that bucket is non-empty.
+ADR_THEMES: dict[str, list[str]] = {
+    "Sharding & performance": ["0005", "0006", "0009", "0010", "0012", "0013"],
+    "Correctness & leakage": ["0001", "0008"],
+    "Feature families": ["0002", "0004", "0007", "0011"],
+    "Operations & boundaries": ["0003"],
+}
+
+
+def ingest_engineering() -> None:
+    """docs/adr/*.md + CHANGELOG.md -> engineering/ pages (canonical homes stay)."""
+    eng = DOCS / "engineering"
+    if eng.exists():
+        shutil.rmtree(eng)
+    adr_out = eng / "adr"
+    adr_out.mkdir(parents=True)
+
+    def fm(title: str, description: str, order: int | None = None) -> str:
+        lines = ["---", f'title: "{title}"', f'description: "{description}"']
+        if order is not None:
+            lines += ["sidebar:", f"  order: {order}"]
+        return "\n".join(lines) + "\n---\n\n"
+
+    entries: dict[str, tuple[str, str]] = {}  # number -> (slug, title)
+    for adr in sorted((REPO / "docs" / "adr").glob("[0-9]*.md")):
+        text = adr.read_text()
+        h1 = re.search(r"^# (.+)$", text, flags=re.M)
+        title = h1.group(1).strip() if h1 else adr.stem
+        body = text.replace(h1.group(0), "", 1).lstrip() if h1 else text
+        number = adr.stem.split("-")[0]
+        entries[number] = (adr.stem, title)
+        # Source-relative links: sibling ADRs become site routes; anything
+        # else under docs/ points at GitHub (org docs stay canonical in-repo).
+        body = re.sub(
+            r"\]\((\d{4}-[\w-]+)\.md\)",
+            r"](/featurizer/engineering/adr/\1/)",
+            body,
+        )
+        body = re.sub(
+            r"\]\(\.\./([\w./-]+)\)",
+            rf"]({GITHUB}/blob/master/docs/\1)",
+            body,
+        )
+        source_note = (
+            f"\n\n---\n\n*Canonical file: "
+            f"[`docs/adr/{adr.name}`]({GITHUB}/blob/master/docs/adr/{adr.name})*\n"
+        )
+        (adr_out / f"{adr.stem}.md").write_text(
+            fm(title, f"Architecture decision record {number}.") + body + source_note
+        )
+
+    themed = {n for numbers in ADR_THEMES.values() for n in numbers}
+    other = [n for n in sorted(entries) if n not in themed]
+    if other:
+        print(f"NOTE: untitled ADR theme bucket gets: {other} — extend ADR_THEMES")
+    index_lines = [
+        fm("Architecture decisions", "The ADR index, grouped by theme.", 0)
+        + "Short records of hard-to-reverse decisions and the trade-offs behind\n"
+        "them. Canonical home:\n"
+        f"[`docs/adr/`]({GITHUB}/tree/master/docs/adr).\n"
+    ]
+    groups = list(ADR_THEMES.items()) + ([("Other", other)] if other else [])
+    for theme, numbers in groups:
+        index_lines.append(f"\n## {theme}\n")
+        for number in numbers:
+            if number not in entries:
+                continue
+            slug, title = entries[number]
+            index_lines.append(f"- [{title}](/featurizer/engineering/adr/{slug}/)")
+    (adr_out / "index.md").write_text("\n".join(index_lines) + "\n")
+
+    changelog = (REPO / "CHANGELOG.md").read_text()
+    changelog = re.sub(r"^# Changelog\n", "", changelog, count=1)
+    changelog = re.sub(
+        r"\]\(docs/adr/(\d{4}-[\w-]+)\.md\)",
+        r"](/featurizer/engineering/adr/\1/)",
+        changelog,
+    )
+    changelog = re.sub(
+        r"\]\((docs/[\w./-]+|specs/[\w./-]+|tests/[\w./-]+)\)",
+        rf"]({GITHUB}/blob/master/\1)",
+        changelog,
+    )
+    (eng / "changelog.md").write_text(
+        fm("Changelog", "All notable changes, per release.", 1) + changelog
+    )
+    print(f"engineering pages: {len(entries)} ADRs + index + changelog")
+
+
 def main() -> None:
     copy_passthrough()
     convert_notebooks()
     generate_primitives()
+    ingest_engineering()
 
 
 if __name__ == "__main__":

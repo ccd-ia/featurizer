@@ -374,20 +374,20 @@ footer,section#amendments details{font-size:.85rem}
       <p>The "why is it built this way" layer. Canonical files stay where they are; <code>gen.py</code> ingests
       them with injected frontmatter.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>gen.py</code>: <code>docs/adr/*.md</code> → <code>src/content/docs/engineering/adr/&lt;name&gt;.md</code> (frontmatter from the H1); generate the ADR index grouped by theme (sharding/performance · correctness/leakage · features · ops) with one-line decision summaries</li>
-        <li><code class="status">[]</code> <code>CHANGELOG.md</code> → <code>src/content/docs/engineering/changelog.md</code></li>
-        <li><code class="status">[]</code> Splash "Engineering notes" cards point at the rendered ADR index + changelog (not GitHub blobs)</li>
+        <li><code class="status">[x]</code> <code>gen.py</code>: <code>docs/adr/*.md</code> → <code>src/content/docs/engineering/adr/&lt;name&gt;.md</code> (frontmatter from the H1); generate the ADR index grouped by theme (sharding/performance · correctness/leakage · features · ops) with one-line decision summaries</li>
+        <li><code class="status">[x]</code> <code>CHANGELOG.md</code> → <code>src/content/docs/engineering/changelog.md</code></li>
+        <li><code class="status">[x]</code> Splash "Engineering notes" cards point at the rendered ADR index + changelog (not GitHub blobs)</li>
       </ul>
       <h4>2. Testing Strategy</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>ls src/content/docs/engineering/adr/*.md | wc -l</code> — 14 (13 ADRs + index)</li>
-        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index links to every ADR; changelog reachable from sidebar</li>
+        <li><code class="status">[x]</code> <code>ls src/content/docs/engineering/adr/*.md | wc -l</code> — 14 (13 ADRs + index)</li>
+        <li><code class="status">[x]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index links to every ADR; changelog reachable from sidebar</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 6: CI wiring + repo-side reconnection</h3>
+      <h3><code class="status">[x]</code> Phase 6: CI wiring + repo-side reconnection</h3>
       <p>Make the pipeline live and heal the "disconnected" feeling from the GitHub side too.</p>
       <ul class="checklist">
         <li><code class="status">[]</code> <code>pages.yml</code>: <code>astral-sh/setup-uv</code> + <code>uv sync --group docs</code> + <code>uv run python site/gen.py</code>; <code>actions/setup-node</code> (Node 22, npm cache) + <code>npm ci</code> + <code>npm run build</code>; <code>uv run python site/check_links.py dist</code>; upload <code>dist/</code>; extend <code>paths</code> triggers with <code>src/**</code>, <code>docs/**</code>, <code>examples/**</code>, <code>CHANGELOG.md</code>, <code>featurizer/cli.py</code>, <code>featurizer/primitives/**</code>, <code>package.json</code>, <code>astro.config.mjs</code></li>

@@ -32,6 +32,13 @@ export default defineConfig({
 					items: [{ autogenerate: { directory: 'reference' } }],
 				},
 				{
+					label: 'Engineering',
+					items: [
+						{ label: 'Architecture decisions', slug: 'engineering/adr' },
+						{ label: 'Changelog', slug: 'engineering/changelog' },
+					],
+				},
+				{
 					label: 'Validation',
 					items: [
 						{
