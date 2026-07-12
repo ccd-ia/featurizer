@@ -387,24 +387,24 @@ footer,section#amendments details{font-size:.85rem}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[x]</code> Phase 6: CI wiring + repo-side reconnection</h3>
+      <h3><code class="status">[wip]</code> Phase 6: CI wiring + repo-side reconnection</h3>
       <p>Make the pipeline live and heal the "disconnected" feeling from the GitHub side too.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>pages.yml</code>: <code>astral-sh/setup-uv</code> + <code>uv sync --group docs</code> + <code>uv run python site/gen.py</code>; <code>actions/setup-node</code> (Node 22, npm cache) + <code>npm ci</code> + <code>npm run build</code>; <code>uv run python site/check_links.py dist</code>; upload <code>dist/</code>; extend <code>paths</code> triggers with <code>src/**</code>, <code>docs/**</code>, <code>examples/**</code>, <code>CHANGELOG.md</code>, <code>featurizer/cli.py</code>, <code>featurizer/primitives/**</code>, <code>package.json</code>, <code>astro.config.mjs</code></li>
-        <li><code class="status">[]</code> README: compact "Documentation" block right under the badges — Walkthrough · Notebooks · Primitives · Configuration · ADRs · Validation reports (site URLs); quick-start sentence points at the walkthrough</li>
-        <li><code class="status">[]</code> <code>examples/README.md</code>: add "browse these rendered on the site" line with the notebooks-index URL</li>
-        <li><code class="status">[]</code> CHANGELOG <code>[Unreleased]</code>: document the docs-hub addition + the Starlight/triage alignment</li>
+        <li><code class="status">[wip]</code> <code>pages.yml</code>: <code>astral-sh/setup-uv</code> + <code>uv sync --group docs</code> + <code>uv run python site/gen.py</code>; <code>actions/setup-node</code> (Node 22, npm cache) + <code>npm ci</code> + <code>npm run build</code>; <code>uv run python site/check_links.py dist</code>; upload <code>dist/</code>; extend <code>paths</code> triggers with <code>src/**</code>, <code>docs/**</code>, <code>examples/**</code>, <code>CHANGELOG.md</code>, <code>featurizer/cli.py</code>, <code>featurizer/primitives/**</code>, <code>package.json</code>, <code>astro.config.mjs</code></li>
+        <li><code class="status">[wip]</code> README: compact "Documentation" block right under the badges — Walkthrough · Notebooks · Primitives · Configuration · ADRs · Validation reports (site URLs); quick-start sentence points at the walkthrough</li>
+        <li><code class="status">[wip]</code> <code>examples/README.md</code>: add "browse these rendered on the site" line with the notebooks-index URL</li>
+        <li><code class="status">[wip]</code> CHANGELOG <code>[Unreleased]</code>: document the docs-hub addition + the Starlight/triage alignment</li>
       </ul>
       <h4>2. Testing Strategy</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — no library regression (<code>gen.py</code> imports featurizer read-only)</li>
-        <li><code class="status">[]</code> <code>git push</code> → <code>gh run watch</code> on <code>pages</code> — workflow success including gen, build, and link-check steps</li>
+        <li><code class="status">[wip]</code> <code>uv run pytest -q -m "not integration"</code> — no library regression (<code>gen.py</code> imports featurizer read-only)</li>
+        <li><code class="status">[wip]</code> <code>git push</code> → <code>gh run watch</code> on <code>pages</code> — workflow success including gen, build, and link-check steps</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 7: Live verification</h3>
+      <h3><code class="status">[wip]</code> Phase 7: Live verification</h3>
       <p>Trust nothing until the deployed URLs answer — with the <code>/featurizer/</code> base path.</p>
       <ul class="checklist">
         <li><code class="status">[]</code> <code>curl</code> HTTP 200 on: <code>/featurizer/</code>, <code>/featurizer/walkthrough/</code>, <code>/featurizer/notebooks/</code>, one notebook page, <code>/featurizer/reference/primitives/</code>, <code>/featurizer/reference/configuration/</code>, <code>/featurizer/engineering/adr/</code>, <code>/featurizer/engineering/changelog/</code>, <code>/featurizer/specs/live-db-revalidation-v080.html</code></li>

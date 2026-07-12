@@ -1,15 +1,28 @@
 name: pages
 
-# Publishes the project site to GitHub Pages (build_type: workflow):
-# a hand-written landing page (site/index.html) plus the committed
-# live-DB validation artifacts (specs/) and images (docs/images/).
+# Publishes the docs site (Astro Starlight) to GitHub Pages.
+#
+# Two-stage build (specs/github-pages-docs-hub.html):
+#   1. Python seam  — site/gen.py (uv, docs group): notebook -> markdown
+#      conversion from committed outputs, primitives reference from the live
+#      registry, ADR/changelog ingestion, specs/images pass-through.
+#   2. Astro build  — npm ci && astro build (base /featurizer).
+# site/check_links.py gates the result before deploy.
 on:
   push:
     branches: [master]
     paths:
+      - "src/**"
       - "site/**"
       - "specs/**"
-      - "docs/images/**"
+      - "docs/**"
+      - "examples/**"
+      - "CHANGELOG.md"
+      - "featurizer/cli.py"
+      - "featurizer/primitives/**"
+      - "package.json"
+      - "package-lock.json"
+      - "astro.config.mjs"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -25,21 +38,30 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
-      - name: Assemble site
+      - uses: astral-sh/setup-uv@v8.3.0
+      - name: Generate content (Python seam)
         run: |
-          mkdir -p _site/specs _site/images
-          cp site/index.html _site/
-          cp -R specs/. _site/specs/
-          cp -R docs/images/. _site/images/
+          uv sync --group docs
+          uv run python site/gen.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build site (Astro Starlight)
+        run: |
+          npm ci
+          npm run build
+      - name: Check internal links
+        run: uv run python site/check_links.py dist
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4

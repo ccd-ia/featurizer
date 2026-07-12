@@ -9,6 +9,14 @@
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://www.python.org/downloads/)
 [![Type checked: basedpyright strict](https://img.shields.io/badge/types-basedpyright%20strict-2a6db0.svg)](pyrightconfig.json)
 
+**Documentation** — [ccd-ia.github.io/featurizer](https://ccd-ia.github.io/featurizer/):
+[Walkthrough](https://ccd-ia.github.io/featurizer/walkthrough/) ·
+[Tutorial notebooks](https://ccd-ia.github.io/featurizer/notebooks/) ·
+[Primitives](https://ccd-ia.github.io/featurizer/reference/primitives/) ·
+[Configuration](https://ccd-ia.github.io/featurizer/reference/configuration/) ·
+[ADRs](https://ccd-ia.github.io/featurizer/engineering/adr/) ·
+[Validation reports](https://ccd-ia.github.io/featurizer/specs/live-db-revalidation-v080.html)
+
 Featurizer implements [Deep Feature Synthesis](https://dai.lids.mit.edu/projects/deep-feature-synthesis/) (DFS) for relational
 databases with first-class support for temporal semantics. Given a
 schema of entities and relationships, it automatically synthesizes

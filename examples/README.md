@@ -2,6 +2,10 @@
 
 This directory contains practical examples demonstrating key features of the Featurizer library.
 
+> The tutorial notebooks are also **rendered on the docs site** (from their
+> committed, executed outputs):
+> [ccd-ia.github.io/featurizer/notebooks](https://ccd-ia.github.io/featurizer/notebooks/).
+
 ## Overview
 
 Each example includes:

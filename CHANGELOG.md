@@ -8,6 +8,17 @@ semantic versioning once a release is cut.
 
 ### Added
 
+- **The docs site is now a full documentation hub on Astro Starlight**
+  (aligned with triage's docs stack; plan: `specs/github-pages-docs-hub.html`):
+  a 10-section walkthrough tutorial (every command executed during authoring),
+  the five tutorial notebooks rendered in-theme from their committed executed
+  outputs (never executed in CI), a primitives reference generated from the
+  live registry (count-parity tested — it cannot drift), an authored
+  configuration reference, the 13 ADRs with a themed index, and the changelog.
+  Python pre-build seam `site/gen.py` (uv, `docs` group) + `astro build`;
+  `site/check_links.py` gates every deploy. Validation artifacts stay
+  pass-through, untouched, under `/specs/`.
+
 - **Project site on GitHub Pages** (`https://ccd-ia.github.io/featurizer/`):
   landing page, the live-DB validation artifacts (v0.6.0 / v0.8.0), and a
   `FeaturizerViz` gallery rendered from a live 177k-row × 272-feature
