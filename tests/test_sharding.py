@@ -726,3 +726,64 @@ def test_warn_plan_size_fires_over_threshold(monkeypatch):
     assert len(messages) == 1
     assert "Plan-size risk" in messages[0]
     assert "group_" in messages[0]
+
+
+def test_partition_clusters_same_lineage_columns():
+    """Columns sharing a dependency signature occupy adjacent positions, so a
+    signature spans at most one group boundary (⇒ its companions are emitted
+    by at most 2 groups, not scattered across most of them)."""
+    f = _featurizer(_wide_config())
+    sharder = ColumnGroupSharder(f._plan, max_columns_per_group=200)
+
+    def signature(col):
+        return tuple(
+            sorted(
+                {
+                    src[0]
+                    for dep in col.depends_on
+                    if (src := f._plan.synth_column_source.get(dep)) is not None
+                }
+            )
+        )
+
+    groups = sharder._partition_columns()
+    sig_groups: dict[tuple, set[int]] = {}
+    for gidx, cols in enumerate(groups):
+        for col in cols:
+            sig_groups.setdefault(signature(col), set()).add(gidx)
+    for sig, gids in sig_groups.items():
+        n_cols = sum(1 for g in groups for c in g if signature(c) == sig)
+        max_span = -(-n_cols // sharder.max_columns_per_group) + 1
+        assert len(gids) <= max_span, (sig, gids)
+        assert sorted(gids) == list(range(min(gids), max(gids) + 1)), sig
+
+
+def test_partition_is_deterministic_and_lossless():
+    f = _featurizer(_wide_config())
+    a = ColumnGroupSharder(f._plan)._partition_columns()
+    b = ColumnGroupSharder(f._plan)._partition_columns()
+    assert [[c.name for c in g] for g in a] == [[c.name for c in g] for g in b]
+    flat = [c.name for g in a for c in g]
+    assert sorted(flat) == sorted(c.name for c in f._plan.cte_specs[
+        f"{f._plan.target.alias}_transform"
+    ].columns)
+    assert len(flat) == len(set(flat))
+
+
+def test_window_fn_budget_bounds_each_group():
+    """Window-heavy configs close groups early so no group's transform tuple
+    carries more window functions than the planning-safe budget (PostgreSQL's
+    planning memory is superlinear in same-statement window-function count)."""
+    f = _featurizer(
+        _wide_config(
+            transformations=["identity", "cum_sum", "lag_1", "rolling_mean_7"]
+        )
+    )
+    sharder = ColumnGroupSharder(f._plan, max_window_fns_per_group=50)
+    groups = sharder._partition_columns()
+    assert len(groups) > 1
+    for cols in groups:
+        n_windows = sum(ColumnGroupSharder._n_window_fns(c) for c in cols)
+        assert n_windows <= 50, n_windows
+    flat = [c.name for g in groups for c in g]
+    assert len(flat) == len(set(flat))

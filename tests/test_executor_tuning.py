@@ -198,3 +198,48 @@ def test_records_path_falls_back_without_get_connection() -> None:
         "select * from features", target_id="id"
     )
     assert db.queries == ["analyze as_of_dates", "select * from features"]
+
+
+def test_materialized_rejoin_merges_on_full_key_tuple() -> None:
+    """A target carrying extra identifier columns (relationship keys) repeats
+    them in every group; merging on the full key tuple must not duplicate them
+    (pandas raises MergeError at the third group otherwise)."""
+
+    class KeyedCursor(FakeCursor):
+        def __init__(self, executed: list[str], sql: str) -> None:
+            super().__init__(executed)
+            n = sql.strip()[-1]
+            self.description = [
+                type("D", (), {"name": c})
+                for c in ("as_of_date", "id", "schoolid", f"f{n}")
+            ]
+
+        def fetchall(self) -> list[tuple]:
+            return [("2020-01-01", 1, "s9", 0.5)]
+
+    class KeyedConnection(FakeConnection):
+        def __init__(self) -> None:
+            super().__init__()
+            self._last_sql = ""
+
+        def cursor(self) -> FakeCursor:
+            conn = self
+
+            class _Cur(KeyedCursor):
+                def execute(self, sql: str, *args: object) -> None:
+                    conn.executed.append(sql)
+                    if sql.startswith("select"):
+                        self.__init__(conn.executed, sql)
+
+            return _Cur(self.executed, "select 0")
+
+    conn = KeyedConnection()
+    df = QueryExecutor().to_dataframe_materialized(
+        preamble_ddl=[],
+        group_queries={f"group_{i}": f"select {i}" for i in range(3)},
+        target_id="id",
+        connection=conn,
+        key_columns=["as_of_date", "id", "schoolid"],
+    )
+    assert list(df.index.names) == ["as_of_date", "id"]
+    assert sorted(c for c in df.columns) == ["f0", "f1", "f2", "schoolid"]

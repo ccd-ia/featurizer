@@ -385,6 +385,7 @@ class Featurizer:
                 group_queries=grouped.queries,
                 target_id=self.target.id.name,
                 connection=connection,
+                key_columns=grouped.key_columns,
             )
         if impute:
             from .imputation import guard_full_matrix_fit, impute_features

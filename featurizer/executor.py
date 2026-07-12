@@ -168,6 +168,7 @@ class QueryExecutor:
         group_queries: Mapping[str, str],
         target_id: str,
         connection: Any = None,
+        key_columns: Optional[Sequence[str]] = None,
     ) -> pd.DataFrame:
         """Execute a grouped / temp-table-materialized query on ONE connection.
 
@@ -186,6 +187,14 @@ class QueryExecutor:
             connection: An open psycopg connection to reuse (e.g. the integration
                 harness). When ``None``, one is built from the environment and
                 closed afterwards.
+            key_columns: The full identifier tuple every group leads with
+                (``GroupedQueries.key_columns``). A target that carries extra
+                identifier columns beyond its id (e.g. relationship keys such
+                as donorschoose's ``schoolid``/``teacher_acctid``) repeats them
+                in *every* group, so the re-join must merge on all of them —
+                merging on ``(as_of_date, id)`` alone duplicates the carried
+                columns and pandas raises ``MergeError`` at the third group.
+                Defaults to ``["as_of_date", target_id]``.
 
         Returns:
             DataFrame indexed by ``['as_of_date', target_id]``.
@@ -225,7 +234,8 @@ class QueryExecutor:
             if own_connection:
                 conn.close()
 
+        join_keys = list(key_columns) if key_columns else ["as_of_date", target_id]
         result = frames[0]
         for frame in frames[1:]:
-            result = result.merge(frame, on=["as_of_date", target_id], how="outer")
+            result = result.merge(frame, on=join_keys, how="outer")
         return result.set_index(["as_of_date", target_id], inplace=False)

@@ -47,10 +47,23 @@ from .planner import ColumnSpec, PlannerResult, ShardableCTE
 PG_MAX_TARGET_LIST = 1664
 PG_MAX_TABLE_COLUMNS = 1600
 
+# Matches a window-function invocation in a rendered projection.
+_WINDOW_FN_RE = re.compile(r"\bover\s*\(", re.IGNORECASE)
+
 # Feature columns per group. Left well under the 1600 table limit so the two
 # always-present carry columns (``as_of_date`` + the target id) and any extra
 # carried index columns never push a group over.
 DEFAULT_MAX_COLUMNS_PER_GROUP = 1400
+
+# Window functions allowed in one group's transform tuple. PostgreSQL's
+# planning cost for N same-spec window functions in ONE select list is
+# superlinear with a hard memory cliff: measured live (donorschoose wide,
+# 2026-07-11), ~675 window columns plan in ~5s, ~800 in ~2s, and ~1350
+# OOM-killed the backend DURING PLANNING (signal 9 at a plain EXPLAIN, fresh
+# connection, single `over (partition by …)` spec — count, not content: both
+# halves of the same select list plan fine). 500 stays well under the cliff
+# while keeping group counts reasonable.
+DEFAULT_MAX_WINDOW_FNS_PER_GROUP = 500
 
 # Per-group CTE-closure size above which ``warn_plan_size`` flags the config.
 # Calibrated on the live 3-DB wide matrix (2026-07-10): the configs that
@@ -119,12 +132,16 @@ class ColumnGroupSharder:
         *,
         max_columns_per_group: int = DEFAULT_MAX_COLUMNS_PER_GROUP,
         materialize_threshold: int = PG_MAX_TARGET_LIST,
+        max_window_fns_per_group: int = DEFAULT_MAX_WINDOW_FNS_PER_GROUP,
     ) -> None:
         if max_columns_per_group < 1:
             raise ValueError("max_columns_per_group must be a positive integer.")
+        if max_window_fns_per_group < 1:
+            raise ValueError("max_window_fns_per_group must be a positive integer.")
         self.plan = plan
         self.max_columns_per_group = max_columns_per_group
         self.materialize_threshold = materialize_threshold
+        self.max_window_fns_per_group = max_window_fns_per_group
 
         self.target_alias = plan.target.alias
         self.transform_name = f"{self.target_alias}_transform"
@@ -232,11 +249,7 @@ class ColumnGroupSharder:
     @property
     def n_groups(self) -> int:
         """Number of column groups the target transform partitions into."""
-        n_cols = len(self.transform_spec.columns)
-        if n_cols == 0:
-            return 1
-        per = self.max_columns_per_group
-        return (n_cols + per - 1) // per
+        return len(self._partition_columns())
 
     def group_queries(self) -> "OrderedDict[str, str]":
         """Render every column group to a self-contained SQL string."""
@@ -333,12 +346,68 @@ class ColumnGroupSharder:
     # ------------------------------------------------------------------ #
 
     def _partition_columns(self) -> List[List[ColumnSpec]]:
-        """Split the target transform columns into ordered ≤-limit groups."""
+        """Split the target transform columns into ordered ≤-limit groups,
+        clustering columns that share a dependency lineage.
+
+        Columns are bucketed by their *source-CTE signature* — the set of CTEs
+        their ``depends_on`` synth columns come from — and buckets are packed
+        in sorted-signature order. Same-lineage columns therefore land in the
+        same group (up to the size limit), so each group's CTE closure stays
+        small and a companion pre-aggregation CTE is emitted/executed by the
+        few groups that need it instead of most of them. Measured on the
+        donorschoose ``wide`` config (27 groups): max closure 979 → 287 CTEs,
+        total closure 11,338 → 2,428, duplicated companion instances 899 → 18,
+        emitted SQL 29.2 MB → 17.4 MB — the difference between OOM-killing the
+        backend during planning and a plannable query set.
+
+        Deterministic: signatures sort lexicographically and columns keep
+        their emission order within a bucket, so the same plan always yields
+        the same partition (``column_groups`` / the manifest rely on this).
+        """
         columns = list(self.transform_spec.columns)
         if not columns:
             return [[]]
+
+        def signature(col: ColumnSpec) -> Tuple[str, ...]:
+            sources = {
+                source[0]
+                for dep in col.depends_on
+                if (source := self.plan.synth_column_source.get(dep)) is not None
+            }
+            return tuple(sorted(sources))
+
+        buckets: "OrderedDict[Tuple[str, ...], List[ColumnSpec]]" = OrderedDict()
+        for col in columns:
+            buckets.setdefault(signature(col), []).append(col)
+
+        # Dual budget: the column limit keeps the tuple under PostgreSQL's
+        # target-list cap; the window-function limit keeps *planning* off the
+        # superlinear memory cliff (see DEFAULT_MAX_WINDOW_FNS_PER_GROUP — a
+        # ~1350-window select list OOM-killed the backend at a plain EXPLAIN).
         per = self.max_columns_per_group
-        return [columns[i : i + per] for i in range(0, len(columns), per)]
+        max_windows = self.max_window_fns_per_group
+        groups: List[List[ColumnSpec]] = []
+        current: List[ColumnSpec] = []
+        current_windows = 0
+        for sig in sorted(buckets.keys()):
+            for col in buckets[sig]:
+                n_windows = self._n_window_fns(col)
+                if current and (
+                    len(current) == per or current_windows + n_windows > max_windows
+                ):
+                    groups.append(current)
+                    current = []
+                    current_windows = 0
+                current.append(col)
+                current_windows += n_windows
+        if current:
+            groups.append(current)
+        return groups
+
+    @staticmethod
+    def _n_window_fns(col: ColumnSpec) -> int:
+        """Window-function count of one projection (``over (`` occurrences)."""
+        return len(_WINDOW_FN_RE.findall(col.projection))
 
     # ------------------------------------------------------------------ #
     # Per-group rendering

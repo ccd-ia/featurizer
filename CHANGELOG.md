@@ -8,6 +8,41 @@ semantic versioning once a release is cut.
 
 ### Changed
 
+- **Column-group sharding now clusters columns by dependency lineage.**
+  `_partition_columns` buckets the target's output columns by their
+  source-CTE signature before bin-packing, so same-lineage columns share a
+  group and each companion pre-aggregation CTE is emitted/executed by the few
+  groups that need it instead of most of them. Measured on the donorschoose
+  `wide` config (27 groups, ~14.9k columns): max per-group CTE closure
+  979 → 287, total closure 11,338 → 2,428, duplicated companion instances
+  899 → 18, emitted SQL 29.2 MB → 17.4 MB. Group *composition* changes
+  (which columns share a `<stem>_group_NNN` table); the feature manifest's
+  `feature_group` column remains the supported mapping, and output column
+  names are unchanged (ADR-0007).
+
+- **Groups are additionally bounded by a window-function budget**
+  (`max_window_fns_per_group`, default 500). PostgreSQL's *planning* memory
+  for N same-spec window functions in one select list is superlinear with a
+  hard cliff: measured live, ~675 window columns plan in ~5s while ~1,350
+  OOM-killed the backend during a plain `EXPLAIN` (fresh connection; both
+  halves of the same list plan fine — count, not content). The packer closes
+  a group early when adding a column would exceed the budget.
+
+  Net effect of the two partitioning changes, measured live on the
+  donorschoose `wide` config (~36.8k output columns, 3,000-row cohort) that
+  previously OOM-killed the backend: **materializes end-to-end in ~8 minutes**
+  (32 groups, render 26.5s + execution 461.6s), max group closure 285 CTEs,
+  worst per-group `EXPLAIN` well under 2s.
+
+### Fixed
+
+- **Sharded re-join no longer collides on carried identifier columns.** A
+  target that carries relationship keys beyond its id (donorschoose's
+  `schoolid` / `teacher_acctid`) repeats them in every group query;
+  `to_dataframe` merged groups on `(as_of_date, id)` only, so pandas raised
+  `MergeError: duplicate columns` at the third group. The materialized path
+  now merges on the full `GroupedQueries.key_columns` tuple.
+
 - **Sharded group queries no longer carry dead companion CTEs.** Per-group
   reachability now scans the *pruned* rendering of each target-level agg CTE
   instead of its full-width body, so companion pre-aggregation CTEs whose only
