@@ -20,15 +20,20 @@ export default defineConfig({
 			// (Starlight fails the build on sidebar slugs without pages).
 			sidebar: [
 				{
+					label: 'Start Here',
+					items: [{ label: 'Walkthrough', slug: 'walkthrough' }],
+				},
+				{
 					label: 'Validation',
 					items: [
 						{
-							// NOTE: Starlight prepends `base` to sidebar links
-							// automatically; content-markdown links need the
-							// /featurizer/ prefix written out. Asymmetric on
-							// purpose — check_links.py guards both.
+							// Full URL on purpose: Starlight normalizes internal
+							// sidebar links to extensionless routes (strips .html),
+							// which 404s for pass-through static artifacts. External
+							// URLs pass through untouched. Content-markdown links to
+							// artifacts need raw <a href> for the same reason.
 							label: 'Live-DB reports (v0.8.0)',
-							link: '/specs/live-db-revalidation-v080.html',
+							link: 'https://ccd-ia.github.io/featurizer/specs/live-db-revalidation-v080.html',
 							attrs: { target: '_blank' },
 						},
 					],

@@ -268,22 +268,22 @@ footer,section#amendments details{font-size:.85rem}
 
       <h4>1. Author walkthrough.md</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> §1 Install — <code>uv add "featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer.git@v0.8.0"</code> (+ plain-pip variant); note: no PyPI, GitHub releases are the channel</li>
-        <li><code class="status">[]</code> §2 The data — example 01's Customers → Orders schema, 3 tables, what "temporal" means here (<code>temporal_ix</code>, <code>as_of_dates</code>)</li>
-        <li><code class="status">[]</code> §3 config.yaml anatomy — annotated minimal config: target, entities, variables/types, relationship, intervals</li>
-        <li><code class="status">[]</code> §4 Render the SQL, no database — <code>Featurizer("config.yaml").query</code> / <code>run_example.py --show-sql</code>; read the CTE shape (synth → transform → lateral over <code>as_of_dates</code>)</li>
-        <li><code class="status">[]</code> §5 Execute — <code>just db-up</code> (or any PG via <code>DATABASE_URL</code>/<code>PG*</code>), seed with <code>create_data.py</code>, <code>to_dataframe()</code>; show the <code>(as_of_date, id)</code>-indexed matrix head</li>
-        <li><code class="status">[]</code> §6 Read your features — naming convention <code>AGG(entity.col|interval)</code>, NULL-as-signal, the feature manifest (<code>feature_manifest</code> / <code>to_tables</code> manifest table)</li>
-        <li><code class="status">[]</code> §7 Choose primitives — <code>aggregations:</code>/<code>transformations:</code> selection, CLI discovery (<code>featurizer list-primitives</code>), link to the primitives page</li>
-        <li><code class="status">[]</code> §8 Point-in-time joins — a short as-of teaser (grace periods) linking notebook 02</li>
-        <li><code class="status">[]</code> §9 Visualize — 2 gallery plots inline, <code>FeaturizerViz</code> snippet, link to README gallery</li>
-        <li><code class="status">[]</code> §10 Where next — the notebook learning path, configuration reference, validation reports</li>
+        <li><code class="status">[x]</code> §1 Install — <code>uv add "featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer.git@v0.8.0"</code> (+ plain-pip variant); note: no PyPI, GitHub releases are the channel</li>
+        <li><code class="status">[x]</code> §2 The data — example 01's Customers → Orders schema, 3 tables, what "temporal" means here (<code>temporal_ix</code>, <code>as_of_dates</code>)</li>
+        <li><code class="status">[x]</code> §3 config.yaml anatomy — annotated minimal config: target, entities, variables/types, relationship, intervals</li>
+        <li><code class="status">[x]</code> §4 Render the SQL, no database — <code>Featurizer("config.yaml").query</code> / <code>run_example.py --show-sql</code>; read the CTE shape (synth → transform → lateral over <code>as_of_dates</code>)</li>
+        <li><code class="status">[x]</code> §5 Execute — <code>just db-up</code> (or any PG via <code>DATABASE_URL</code>/<code>PG*</code>), seed with <code>create_data.py</code>, <code>to_dataframe()</code>; show the <code>(as_of_date, id)</code>-indexed matrix head</li>
+        <li><code class="status">[x]</code> §6 Read your features — naming convention <code>AGG(entity.col|interval)</code>, NULL-as-signal, the feature manifest (<code>feature_manifest</code> / <code>to_tables</code> manifest table)</li>
+        <li><code class="status">[x]</code> §7 Choose primitives — <code>aggregations:</code>/<code>transformations:</code> selection, CLI discovery (<code>featurizer list-primitives</code>), link to the primitives page</li>
+        <li><code class="status">[x]</code> §8 Point-in-time joins — a short as-of teaser (grace periods) linking notebook 02</li>
+        <li><code class="status">[x]</code> §9 Visualize — 2 gallery plots inline, <code>FeaturizerViz</code> snippet, link to README gallery</li>
+        <li><code class="status">[x]</code> §10 Where next — the notebook learning path, configuration reference, validation reports</li>
       </ul>
 
       <h4>2. Wire into the site</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Sidebar "Start Here" entry; Starlight renders the on-page TOC from headings automatically</li>
-        <li><code class="status">[]</code> Splash page: prominent "Start here → Walkthrough" card above the fold</li>
+        <li><code class="status">[x]</code> Sidebar "Start Here" entry; Starlight renders the on-page TOC from headings automatically</li>
+        <li><code class="status">[x]</code> Splash page: prominent "Start here → Walkthrough" card above the fold</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
@@ -291,15 +291,15 @@ footer,section#amendments details{font-size:.85rem}
       PostgreSQL (<code>just db-up</code>) during authoring; outputs shown in the doc are real. Edge case: the
       no-database path (§1–§4) must work standalone.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> Execute §1–§4 in a fresh <code>uv</code> project with no PG configured — SQL renders, nothing errors</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just example 01-basic-aggregations</code> — §5's underlying path is green</li>
-        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — walkthrough page builds, all its links resolve</li>
+        <li><code class="status">[x]</code> Execute §1–§4 in a fresh <code>uv</code> project with no PG configured — SQL renders, nothing errors</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just example 01-basic-aggregations</code> — §5's underlying path is green</li>
+        <li><code class="status">[x]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — walkthrough page builds, all its links resolve</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Rendered notebooks (nbconvert → markdown → theme)</h3>
+      <h3><code class="status">[x]</code> Phase 3: Rendered notebooks (nbconvert → markdown → theme)</h3>
       <p>The five tutorial notebooks become first-class pages <em>inside</em> the theme — sidebar, search,
       identity — via <code>site/gen.py</code>. They are committed <em>with executed outputs</em>, so the
       converter renders — never runs — them (no database in the Pages workflow, and outputs stay exactly what
