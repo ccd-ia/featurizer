@@ -323,25 +323,25 @@ footer,section#amendments details{font-size:.85rem}
 
       <h4>1. Converter + learning path</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>gen.py</code>: for each <code>examples/*/tutorial.ipynb</code>, <code>nbconvert --to markdown</code> (no execute); extract image outputs to <code>public/notebook-assets/&lt;nn&gt;/</code>; inject frontmatter (title, description, sidebar order) + a header strip linking "View on GitHub" and "Download .ipynb" (raw URL)</li>
-        <li><code class="status">[]</code> Author <code>src/content/docs/notebooks/index.md</code> — the learning path from <code>examples/README.md</code>: order, difficulty badges (Beginner → Advanced), scenario one-liners, concepts covered</li>
-        <li><code class="status">[]</code> Generated notebook pages gitignored; <code>gen.py</code> is idempotent (clean-regenerate)</li>
-        <li><code class="status">[]</code> Splash + walkthrough §10 link the notebooks index; sidebar "Notebooks" group lists index + 5 pages</li>
+        <li><code class="status">[x]</code> <code>gen.py</code>: for each <code>examples/*/tutorial.ipynb</code>, <code>nbconvert --to markdown</code> (no execute); extract image outputs to <code>public/notebook-assets/&lt;nn&gt;/</code>; inject frontmatter (title, description, sidebar order) + a header strip linking "View on GitHub" and "Download .ipynb" (raw URL)</li>
+        <li><code class="status">[x]</code> Author <code>src/content/docs/notebooks/index.md</code> — the learning path from <code>examples/README.md</code>: order, difficulty badges (Beginner → Advanced), scenario one-liners, concepts covered</li>
+        <li><code class="status">[x]</code> Generated notebook pages gitignored; <code>gen.py</code> is idempotent (clean-regenerate)</li>
+        <li><code class="status">[x]</code> Splash + walkthrough §10 link the notebooks index; sidebar "Notebooks" group lists index + 5 pages</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <p>Prove conversion fidelity without execution. Edge cases: notebook 05's wide DataFrame HTML (spiked in
       Phase 1), matplotlib image outputs, anchors, filename stability for deep links.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; ls src/content/docs/notebooks/*.md | wc -l</code> — 6 files (5 generated + authored index)</li>
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — conversion emits expected files; image assets referenced by the markdown exist</li>
-        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index ↔ notebooks ↔ GitHub links all resolve; notebook images load under the base path</li>
+        <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; ls src/content/docs/notebooks/*.md | wc -l</code> — 6 files (5 generated + authored index)</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — conversion emits expected files; image assets referenced by the markdown exist</li>
+        <li><code class="status">[x]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — index ↔ notebooks ↔ GitHub links all resolve; notebook images load under the base path</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: Reference pages — primitives &amp; configuration</h3>
+      <h3><code class="status">[x]</code> Phase 4: Reference pages — primitives &amp; configuration</h3>
       <p>The two "what can it do / what do I write" references. The primitives page is <em>generated from the
       registry</em> so it can never lie about the 67 + 83; the configuration page consolidates YAML knowledge
       currently split across README, CLAUDE.md and validation messages.</p>

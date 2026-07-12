@@ -24,6 +24,10 @@ export default defineConfig({
 					items: [{ label: 'Walkthrough', slug: 'walkthrough' }],
 				},
 				{
+					label: 'Notebooks',
+					items: [{ autogenerate: { directory: 'notebooks' } }],
+				},
+				{
 					label: 'Validation',
 					items: [
 						{
