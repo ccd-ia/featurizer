@@ -42,59 +42,69 @@ feature name assemble itself:
 
 ## The formalism
 
-**Setup.** Let `E` be an entity (one row per member: a customer, a facility).
-A child entity `C` related to `E` is an **event stream**: rows
-`(key, τ, x₁ … xₖ)` where `τ` is the event timestamp — the column you declare
-as `temporal_ix` — and `x₁ … xₖ` are the declared variables. Let `T` be the
-set of as-of dates (your `as_of_dates` table).
+**Setup.** Let $E$ be an entity (one row per member: a customer, a facility).
+A child entity $C$ related to $E$ is an **event stream**: rows
+$(\mathrm{key}, \tau, x_1, \dots, x_k)$ where $\tau$ is the event timestamp —
+the column you declare as `temporal_ix` — and $x_1, \dots, x_k$ are the
+declared variables. Let $T$ be the set of as-of dates (your `as_of_dates`
+table).
 
-**The restriction operator.** For an entity `e` and time `t`, the visible
+**The restriction operator.** For an entity $e$ and time $t$, the visible
 history is
 
-```text
-H(e, t) = { (τ, x) ∈ events(e) : τ ≤ t }        (inclusive boundary)
-H(e, t) = { (τ, x) ∈ events(e) : τ < t }        (exclusive boundary)
-```
+$$
+H(e, t) =
+\begin{cases}
+\{\, (\tau, x) \in \mathrm{events}(e) : \tau \le t \,\} & \text{inclusive boundary}\\[4pt]
+\{\, (\tau, x) \in \mathrm{events}(e) : \tau < t \,\} & \text{exclusive boundary}
+\end{cases}
+$$
 
 — the `as_of_boundary` config key chooses the comparison. Every construct
-below consumes `H(e, t)` and nothing else.
+below consumes $H(e, t)$ and nothing else.
 
 **A feature** is any function
 
-```text
-φ : E × T → ℝ ∪ {NULL}        with  φ(e, t) = f(H(e, t))
-```
+$$
+\varphi : E \times T \to \mathbb{R} \cup \{\text{NULL}\}
+\qquad\text{with}\qquad
+\varphi(e, t) = f\bigl(H(e, t)\bigr)
+$$
 
-`NULL` is a first-class value: an empty window means "no data", which is
-signal, not zero.
+$\text{NULL}$ is a first-class value: an empty window means "no data", which
+is signal, not zero.
 
 **The two primitive families.** featurizer composes φ from exactly two kinds
 of pieces:
 
-- **Transformations** `g` act *within* an entity, row by row (or over the
+- **Transformations** $g$ act *within* an entity, row by row (or over the
   entity's own ordered history — lags, rolling stats, cumulative sums):
-  `g(x)` per event, timestamps untouched. In SQL: an expression in the
+  $g(x)$ per event, timestamps untouched. In SQL: an expression in the
   entity's `_transform` CTE.
-- **Aggregations** `a` act *across* a relationship, collapsing a multiset of
+- **Aggregations** $a$ act *across* a relationship, collapsing a multiset of
   child values to a scalar. The windowed variant restricts further to an
-  interval `w` ending at `t`:
+  interval $w$ ending at $t$:
 
-```text
-a_w(e, t) = a({ g(x) : (τ, x) ∈ H(e, t), τ > t − w })
-```
+$$
+a_w(e, t) \;=\; a\bigl(\{\, g(x) : (\tau, x) \in H(e, t),\; \tau > t - w \,\}\bigr)
+$$
 
   In SQL: an aggregate with a `FILTER (WHERE daterange(t − w, t) @> τ)`
   clause in the relationship's aggregation CTE.
 
 **Deep Feature Synthesis** is closure under composition. With entities
-`E ← C ← D` and `max_depth = k`, the feature space is every well-typed stack
+$E \leftarrow C \leftarrow D$ and `max_depth` $= k$, the feature space is
+every well-typed stack
 
-```text
-φ = g′ ∘ a_w ∘ g   (depth 2)      φ = g″ ∘ a_w ∘ g′ ∘ a_v ∘ g   (depth 3) …
-```
+$$
+\varphi = g' \circ a_w \circ g \;\;\text{(depth 2)}
+\qquad
+\varphi = g'' \circ a_w \circ g' \circ a_v \circ g \;\;\text{(depth 3)}
+\quad\dots
+$$
 
-up to depth `k` — each `g` drawn from the 83 transformers, each `a` from the
-67 aggregations, each `w` from your `intervals`. That mechanical enumeration
+up to depth $k$ — each $g$ drawn from the 83 transformers, each $a$ from the
+67 aggregations, each $w$ from your `intervals`. That mechanical enumeration
 of compositions is the core idea of the DFS paper: J. M. Kanter &
 K. Veeramachaneni,
 [*Deep Feature Synthesis: Towards Automating Data Science Endeavors*](https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf)
@@ -105,26 +115,30 @@ respects `H(e, t)`) and compiling it to a single PostgreSQL query instead of
 in-memory dataframes.
 
 **Point-in-time correctness, by construction.** The only data-access
-primitive in the algebra is `H(e, t)`. Transformations preserve timestamps;
+primitive in the algebra is $H(e, t)$. Transformations preserve timestamps;
 aggregations only ever consume restricted histories; composition cannot
-un-restrict. Therefore *every* φ featurizer can express satisfies
+un-restrict. Therefore *every* $\varphi$ featurizer can express satisfies
 
-```text
-φ(e, t) depends only on events with τ ≤ t
-```
+$$
+\varphi(e, t) \text{ depends only on events with } \tau \le t
+$$
 
 There is no discipline to maintain and no review checklist — a leaky feature
 is not expressible in the algebra. In the rendered SQL you can point at the
 guarantee: the `where τ ≤ aod.as_of_date` guard plus the interval `FILTER`
 clauses ([see the query skeleton](/featurizer/walkthrough/#4-render-the-sql--no-database-needed)).
 
-**Names are serialized φ.** The column name is the composition, written
-inside-out:
+**Names are serialized $\varphi$.** The column name is the composition,
+written inside-out:
 
 ```text
 "MEAN(orders.ABS(orders.amount)|interval=P30D)"
-  =  mean ∘ abs over orders.amount, window P30D
 ```
+
+$$
+= \;\operatorname{mean} \circ \operatorname{abs}
+\text{ over } \texttt{orders.amount},\; w = \text{P30D}
+$$
 
 which is why the [feature manifest](/featurizer/walkthrough/#6-read-your-features)
 can reconstruct lineage (depth, parents, source column, interval) for every
@@ -147,15 +161,17 @@ is why per-row φ is the supported shape — a value that genuinely depends on
 `(e, t)` jointly cannot be materialized once per row.)
 
 **Peer groups** (`peer_groups:` on an entity). These compare an entity
-against the *distribution of the same φ over its peers* — entities sharing a
-categorical:
+against the *distribution of the same $\varphi$ over its peers* — entities
+sharing a categorical:
 
-```text
-PEER_ZSCORE(e, t) = ( φ(e, t) − mean{ φ(p, t) : p ∈ peers(e) } ) / std{ … }
-```
+$$
+\mathrm{PEER\_ZSCORE}(e, t) \;=\;
+\frac{\varphi(e, t) - \operatorname{mean}\{\, \varphi(p, t) : p \in \mathrm{peers}(e) \,\}}
+     {\operatorname{std}\{\, \varphi(p, t) : p \in \mathrm{peers}(e) \,\}}
+$$
 
 Still a function of restricted histories only — just of *several* entities'
-histories at the same `t`. Synthesized columns: `PEER_GROUP_SIZE`,
+histories at the same $t$. Synthesized columns: `PEER_GROUP_SIZE`,
 `PEER_EVENT_RATE`, and per measure `PEER_MEAN` / `PEER_ZSCORE` /
 `PEER_PCTILE` / `EGO_MINUS_PEER_MEAN`.
 

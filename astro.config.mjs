@@ -1,12 +1,20 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import remarkMath from 'remark-math';
+import rehypeMathjax from 'rehype-mathjax';
 
 // GitHub *project* pages serve under /featurizer/ — `site` + `base` must both
 // be set or every internal link 404s on the deployed site (plan phase-1 spike).
 export default defineConfig({
 	site: 'https://ccd-ia.github.io',
 	base: '/featurizer',
+	// MathJax rendered at BUILD time to inline SVG (rehype-mathjax): no CDN
+	// script at runtime, pages stay self-contained. $...$ / $$...$$ in markdown.
+	markdown: {
+		remarkPlugins: [remarkMath],
+		rehypePlugins: [rehypeMathjax],
+	},
 	integrations: [
 		starlight({
 			title: 'featurizer',
