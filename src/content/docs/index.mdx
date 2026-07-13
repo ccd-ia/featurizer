@@ -23,28 +23,39 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
+## How it works
+
+One YAML file describes your entities and relationships; featurizer plans,
+renders, and executes pure PostgreSQL that materializes a
+point-in-time-correct feature matrix:
+
+<img src="/featurizer/images/architecture.svg" alt="Featurizer pipeline: config.yaml → Validator → Planner → SQL Renderer → Executor, with the φ-bridge precompute feeding the Planner and a point-in-time-correct feature matrix as output" style="max-width: 100%;" />
+
 ## Explore
 
 <CardGrid>
+	<Card title="Tutorial notebooks" icon="open-book">
+		Five executed notebooks, from basic aggregations to custom primitives —
+		rendered from their validated outputs.
+		[Follow the learning path](/featurizer/notebooks/).
+	</Card>
+	<Card title="References" icon="document">
+		All [150 primitives](/featurizer/reference/primitives/) with SQL examples
+		(generated from the registry — it cannot drift), the complete
+		[configuration schema](/featurizer/reference/configuration/), and the
+		[CLI](/featurizer/reference/cli/).
+	</Card>
 	<Card title="Live-database validation" icon="approve-check">
 		Every release is validated by materializing full feature matrices against
 		three live PostgreSQL databases. The v0.8.0 matrix is fully green — every
 		variant materializes, including the ~36.8k-column wide config.
 		[Read the reports](/featurizer/specs/live-db-revalidation-v080.html).
 	</Card>
-	<Card title="Visualization gallery" icon="seti:image">
-		Diagnostic plots from `FeaturizerViz`, rendered from a live 177k-row ×
-		272-feature matrix.
-		[Browse the gallery on GitHub](https://github.com/ccd-ia/featurizer#gallery).
-	</Card>
-	<Card title="Engineering notes" icon="setting">
-		Config → Validator → Planner → SQL Renderer → Executor. The why behind
-		the design: [architecture decision records](/featurizer/engineering/adr/)
-		and the [changelog](/featurizer/engineering/changelog/).
-	</Card>
-	<Card title="Tutorial notebooks" icon="open-book">
-		Five executed notebooks, from basic aggregations to custom primitives —
-		rendered from their validated outputs.
-		[Follow the learning path](/featurizer/notebooks/).
+	<Card title="Under the hood" icon="setting">
+		The why behind the design:
+		[architecture decision records](/featurizer/engineering/adr/), the
+		[changelog](/featurizer/engineering/changelog/), and the
+		[visualization gallery](/featurizer/walkthrough/#9-visualize-the-matrix)
+		from a live 177k-row matrix.
 	</Card>
 </CardGrid>

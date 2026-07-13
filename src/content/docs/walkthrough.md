@@ -48,6 +48,8 @@ Three tables. Two are yours; one small one is featurizer's contract:
 | `orders` | a **child** event stream — one row per order (`order_id`, `customer_id`, `order_date`, `amount`, `status`) |
 | `as_of_dates` | one `as_of_date` column: the snapshot dates you want features *as of* |
 
+![Entity-relationship diagram: customers 1-to-many orders, both filtered by the as_of_dates spine](/featurizer/images/walkthrough-erd.svg)
+
 The column featurizer cares most about is each entity's **`temporal_ix`** — the
 event timestamp (`order_date` for orders). Every generated feature is computed
 using only rows with `temporal_ix <= as_of_date`, which is what makes the

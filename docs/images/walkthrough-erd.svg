@@ -1,0 +1,53 @@
+<svg viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Entity-relationship diagram of the walkthrough scenario" font-family="-apple-system,'Segoe UI',Roboto,sans-serif">
+  <!-- customers (target) -->
+  <g>
+    <rect x="40" y="60" width="230" height="150" rx="10" fill="#ccfbf1" stroke="#0f766e" stroke-width="1.5"/>
+    <rect x="40" y="60" width="230" height="36" rx="10" fill="#0f766e"/>
+    <rect x="40" y="86" width="230" height="10" fill="#0f766e"/>
+    <text x="155" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">customers · target</text>
+    <g font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#1a2332">
+      <text x="56" y="122">customer_id  🔑</text>
+      <text x="56" y="144">signup_date  ⏱ temporal_ix</text>
+      <text x="56" y="166">country      one-hot</text>
+      <text x="56" y="188">age</text>
+    </g>
+  </g>
+
+  <!-- orders (child) -->
+  <g>
+    <rect x="490" y="60" width="230" height="150" rx="10" fill="#ffffff" stroke="#0f766e" stroke-width="1.5"/>
+    <rect x="490" y="60" width="230" height="36" rx="10" fill="#134e4a"/>
+    <rect x="490" y="86" width="230" height="10" fill="#134e4a"/>
+    <text x="605" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">orders · child events</text>
+    <g font-family="Menlo,Consolas,monospace" font-size="12.5" fill="#1a2332">
+      <text x="506" y="122">order_id     🔑</text>
+      <text x="506" y="144">customer_id  →</text>
+      <text x="506" y="166">order_date   ⏱ temporal_ix</text>
+      <text x="506" y="188">amount · status</text>
+    </g>
+  </g>
+
+  <!-- relationship: one-to-many -->
+  <g stroke="#0f766e" stroke-width="2" fill="none">
+    <line x1="270" y1="135" x2="486" y2="135"/>
+    <!-- crow's foot at orders side -->
+    <line x1="486" y1="135" x2="470" y2="123"/>
+    <line x1="486" y1="135" x2="470" y2="147"/>
+    <line x1="486" y1="135" x2="470" y2="135"/>
+    <!-- single tick at customers side -->
+    <line x1="282" y1="123" x2="282" y2="147"/>
+  </g>
+  <text x="378" y="125" text-anchor="middle" font-size="12.5" fill="#0f766e" font-weight="700">1 ─ many, aggregated ←</text>
+
+  <!-- as_of_dates spine -->
+  <g>
+    <rect x="265" y="238" width="230" height="42" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="1.5"/>
+    <text x="380" y="257" text-anchor="middle" font-size="13.5" font-weight="700" fill="#b45309">as_of_dates</text>
+    <text x="380" y="273" text-anchor="middle" font-size="11.5" fill="#b45309" font-family="Menlo,Consolas,monospace">one row per snapshot date</text>
+  </g>
+  <g stroke="#b45309" stroke-width="1.6" stroke-dasharray="5 4" fill="none">
+    <line x1="155" y1="210" x2="300" y2="238"/>
+    <line x1="605" y1="210" x2="460" y2="238"/>
+  </g>
+  <text x="380" y="228" text-anchor="middle" font-size="11.5" fill="#b45309">features use only rows with temporal_ix ≤ as_of_date</text>
+</svg>
