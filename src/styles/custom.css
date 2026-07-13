@@ -17,3 +17,12 @@
 	--sl-color-accent: #0f766e;
 	--sl-color-accent-high: #134e4a;
 }
+
+/* MathJax (rehype-mathjax, SVG output). A display reset in the content styles
+ * makes svg elements block-level, which kicks every INLINE formula onto its
+ * own line (measured: a 14px glyph's container stretched to the full 720px
+ * column). Inline math must flow with the text; display math keeps the
+ * injected MathJax rules (block, centered). */
+.sl-markdown-content mjx-container svg {
+	display: inline;
+}
