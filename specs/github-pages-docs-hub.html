@@ -65,8 +65,8 @@ footer,section#amendments details{font-size:.85rem}
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-07-12T11:55:00-06:00</dd>
-        <dt>modified</dt>     <dd>2026-07-12T11:55:00-06:00, 2026-07-12T12:28:00-06:00, 2026-07-12T13:00:00-06:00, 2026-07-13T07:40:00-06:00</dd>
-        <dt>commits</dt>      <dd>10a6574 (HEAD at authoring), 1d507a1..776eb13 (build: phases 1-6, P7 verified live)</dd>
+        <dt>modified</dt>     <dd>2026-07-12T11:55:00-06:00, 2026-07-12T12:28:00-06:00, 2026-07-12T13:00:00-06:00, 2026-07-13T07:40:00-06:00, 2026-07-13T08:00:00-06:00</dd>
+        <dt>commits</dt>      <dd>10a6574 (HEAD at authoring), 1d507a1..776eb13 (build: phases 1-6, P7 verified live), 69812b8 (phase 8 built + verified live)</dd>
         <dt>agent name</dt>   <dd>claude-fable-5</dd>
         <dt>session id</dt>   <dd>e1b9387d-8a79-4f35-919a-a348d5070541</dd>
         <dt>back refs</dt>    <dd>site/index.html, .github/workflows/pages.yml, specs/live-db-revalidation-v080.html</dd>
@@ -421,7 +421,7 @@ footer,section#amendments details{font-size:.85rem}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 8: Theory &amp; internals (amendment 2026-07-13)</h3>
+      <h3><code class="status">[x]</code> Phase 8: Theory &amp; internals (amendment 2026-07-13)</h3>
       <p>Two content gaps the shipped hub exposed: the site teaches <em>how</em> but never <em>why the
       abstraction works</em> (the φ formalism behind feature creation), and "Under the hood" names the ADRs
       without telling the performance story as one narrative. Plus one correction: the DFS citation should be
@@ -429,33 +429,33 @@ footer,section#amendments details{font-size:.85rem}
 
       <h4>1. The φ theory page</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Author <code>src/content/docs/concepts/phi-theory.md</code>: a feature is a function φ(entity, as-of date) evaluated over the event stream restricted to <code>temporal_ix ≤ as_of_date</code>; DFS = composing φ from two primitive families (aggregations across relationships, transformations within entities, stacked to depth); why the restriction makes every feature point-in-time correct by construction; the φ-bridge (ADR-0001) as the escape hatch for φ that needs heavy Python — per-row values precomputed across the causal boundary and re-entering as ordinary variables; naming as the serialized form of φ (<code>AGG(entity.col|interval)</code>). Source material: <code>docs/deepdive.org</code>, ADR-0001, <code>docs/text-network-features/phi-bridge.svg</code></li>
-        <li><code class="status">[]</code> Cite the DFS paper properly: J.&nbsp;M.&nbsp;Kanter &amp; K.&nbsp;Veeramachaneni, <em>Deep Feature Synthesis: Towards Automating Data Science Endeavors</em> (IEEE DSAA 2015) — <code>https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf</code>; keep the lab project page as a secondary link</li>
-        <li><code class="status">[]</code> Fix the existing DFS links (walkthrough intro, splash description, README) to cite the paper PDF (project page stays as "more context")</li>
-        <li><code class="status">[]</code> Sidebar: new "Concepts" group between Start Here and Notebooks; cross-link walkthrough §2/§4 → theory page → primitives/configuration references</li>
+        <li><code class="status">[x]</code> Author <code>src/content/docs/concepts/phi-theory.md</code>: a feature is a function φ(entity, as-of date) evaluated over the event stream restricted to <code>temporal_ix ≤ as_of_date</code>; DFS = composing φ from two primitive families (aggregations across relationships, transformations within entities, stacked to depth); why the restriction makes every feature point-in-time correct by construction; the φ-bridge (ADR-0001) as the escape hatch for φ that needs heavy Python — per-row values precomputed across the causal boundary and re-entering as ordinary variables; naming as the serialized form of φ (<code>AGG(entity.col|interval)</code>). Source material: <code>docs/deepdive.org</code>, ADR-0001, <code>docs/text-network-features/phi-bridge.svg</code></li>
+        <li><code class="status">[x]</code> Cite the DFS paper properly: J.&nbsp;M.&nbsp;Kanter &amp; K.&nbsp;Veeramachaneni, <em>Deep Feature Synthesis: Towards Automating Data Science Endeavors</em> (IEEE DSAA 2015) — <code>https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf</code>; keep the lab project page as a secondary link</li>
+        <li><code class="status">[x]</code> Fix the existing DFS links (walkthrough intro, splash description, README) to cite the paper PDF (project page stays as "more context")</li>
+        <li><code class="status">[x]</code> Sidebar: new "Concepts" group between Start Here and Notebooks; cross-link walkthrough §2/§4 → theory page → primitives/configuration references</li>
       </ul>
 
       <h4>2. A NEW φ/DFS explorable (recreated, not ported)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Author <code>site/explorables/phi-dfs.html</code>: fully self-contained (inline CSS/JS, zero external hosts), site teal identity; a small fixed event stream (one customer's orders on a timeline), a draggable as-of-date slider, live window highlighting (P7D/P30D) and live recomputation of 3–4 features (count/sum/mean per window) with the emitted column names; a second control toggling <code>as_of_boundary</code> inclusive/exclusive to make the leakage guard tangible</li>
-        <li><code class="status">[]</code> <code>gen.py</code>: copy <code>site/explorables/</code> → <code>public/explorables/</code> (pass-through, like specs); theory page embeds it via <code>&lt;iframe&gt;</code> + raw <code>&lt;a&gt;</code> fallback link (the Starlight <code>.html</code>-stripping gotcha)</li>
-        <li><code class="status">[]</code> Why recreate instead of porting: the existing explorables live in other repos/teaching material, carry foreign identities, and predate this library's exact semantics (<code>as_of_boundary</code>, interval filters, column naming) — a fresh one is single-purpose, self-contained, and testable here</li>
+        <li><code class="status">[x]</code> Author <code>site/explorables/phi-dfs.html</code>: fully self-contained (inline CSS/JS, zero external hosts), site teal identity; a small fixed event stream (one customer's orders on a timeline), a draggable as-of-date slider, live window highlighting (P7D/P30D) and live recomputation of 3–4 features (count/sum/mean per window) with the emitted column names; a second control toggling <code>as_of_boundary</code> inclusive/exclusive to make the leakage guard tangible</li>
+        <li><code class="status">[x]</code> <code>gen.py</code>: copy <code>site/explorables/</code> → <code>public/explorables/</code> (pass-through, like specs); theory page embeds it via <code>&lt;iframe&gt;</code> + raw <code>&lt;a&gt;</code> fallback link (the Starlight <code>.html</code>-stripping gotcha)</li>
+        <li><code class="status">[x]</code> Why recreate instead of porting: the existing explorables live in other repos/teaching material, carry foreign identities, and predate this library's exact semantics (<code>as_of_boundary</code>, interval filters, column naming) — a fresh one is single-purpose, self-contained, and testable here</li>
       </ul>
 
       <h4>3. Performance internals page ("why it doesn't blow up")</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Author <code>src/content/docs/engineering/internals.md</code> (authored page — exempt it from the <code>engineering/</code> ingest-clean step in <code>gen.py</code>): (a) the query shape — one lateral over <code>as_of_dates</code>, per-entity synth → transform CTEs, per-relationship aggregation CTEs; (b) joins — how aggregates re-join the target, as-of laterals for temporal parents, the full-key re-join of column groups; (c) the correlated-tier story — why per-row subqueries were O(rows × features) and how the set-based companion CTEs (count/percentile with <code>FILTER</code>) replaced them (ADR-0009/0010/0012: dirtyduck all-agg 356.8s → 27.6s); (d) planner statistics — <code>ANALYZE as_of_dates</code> (ADR-0013: donorschoose 294s → 7.5s) and the SET LOCAL tuning defaults; (e) staying under PostgreSQL's limits — 1664-column sharding, lineage-aware packing, the window-function planning cliff and its 500-per-group budget, the pre-flight <code>warn_plan_size</code> guardrail (ADR-0005 amendment: donorschoose wide, backend crash → ~8 min); (f) the honest numbers table from <code>specs/live-db-revalidation-v080.html</code></li>
-        <li><code class="status">[]</code> Wire into the "Under the hood" splash card (lead link) and the Engineering sidebar group; cross-link each section to its ADR</li>
+        <li><code class="status">[x]</code> Author <code>src/content/docs/engineering/internals.md</code> (authored page — exempt it from the <code>engineering/</code> ingest-clean step in <code>gen.py</code>): (a) the query shape — one lateral over <code>as_of_dates</code>, per-entity synth → transform CTEs, per-relationship aggregation CTEs; (b) joins — how aggregates re-join the target, as-of laterals for temporal parents, the full-key re-join of column groups; (c) the correlated-tier story — why per-row subqueries were O(rows × features) and how the set-based companion CTEs (count/percentile with <code>FILTER</code>) replaced them (ADR-0009/0010/0012: dirtyduck all-agg 356.8s → 27.6s); (d) planner statistics — <code>ANALYZE as_of_dates</code> (ADR-0013: donorschoose 294s → 7.5s) and the SET LOCAL tuning defaults; (e) staying under PostgreSQL's limits — 1664-column sharding, lineage-aware packing, the window-function planning cliff and its 500-per-group budget, the pre-flight <code>warn_plan_size</code> guardrail (ADR-0005 amendment: donorschoose wide, backend crash → ~8 min); (f) the honest numbers table from <code>specs/live-db-revalidation-v080.html</code></li>
+        <li><code class="status">[x]</code> Wire into the "Under the hood" splash card (lead link) and the Engineering sidebar group; cross-link each section to its ADR</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
       <p>Same gates as every phase, plus self-containment for the explorable (a strict-CSP-style check: no
       external URLs in its HTML) and live verification after deploy.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — all pages incl. theory/internals/explorable, 0 broken</li>
-        <li><code class="status">[]</code> <code>grep -cE "https?://" site/explorables/phi-dfs.html</code> — only the repo/GitHub footer link at most; no external scripts/styles/fonts (extend test_site_gen.py with this assertion)</li>
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — incl. new explorable copy + self-containment tests</li>
-        <li><code class="status">[]</code> Post-deploy: curl 200 on <code>/featurizer/concepts/phi-theory/</code>, <code>/featurizer/engineering/internals/</code>, <code>/featurizer/explorables/phi-dfs.html</code>; slider drag + boundary toggle verified in a browser</li>
+        <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — all pages incl. theory/internals/explorable, 0 broken</li>
+        <li><code class="status">[x]</code> <code>grep -cE "https?://" site/explorables/phi-dfs.html</code> — only the repo/GitHub footer link at most; no external scripts/styles/fonts (extend test_site_gen.py with this assertion)</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — incl. new explorable copy + self-containment tests</li>
+        <li><code class="status">[x]</code> Post-deploy: curl 200 on <code>/featurizer/concepts/phi-theory/</code>, <code>/featurizer/engineering/internals/</code>, <code>/featurizer/explorables/phi-dfs.html</code>; slider drag + boundary toggle verified in a browser</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
@@ -472,8 +472,8 @@ footer,section#amendments details{font-size:.85rem}
       <li><code class="status">[x]</code> <code>gh run list -R ccd-ia/featurizer --workflow pages --limit 1</code> — latest pages run: success</li>
       <li><code class="status">[x]</code> <code>curl -s https://ccd-ia.github.io/featurizer/walkthrough/ | grep -c "feature matrix"</code> — walkthrough deployed with real content</li>
       <li><code class="status">[x]</code> <code>curl -s https://ccd-ia.github.io/featurizer/notebooks/ | grep -ci tutorial</code> — notebooks index deployed, 5 tutorials listed</li>
-      <li><code class="status">[]</code> (Phase 8) <code>for p in concepts/phi-theory/ engineering/internals/ explorables/phi-dfs.html; do curl -s -o /dev/null -w "%{http_code} $p\n" https://ccd-ia.github.io/featurizer/$p; done</code> — theory, internals, and the explorable all deployed</li>
-      <li><code class="status">[]</code> (Phase 8) <code>curl -s https://ccd-ia.github.io/featurizer/concepts/phi-theory/ | grep -c "DSAA_DSM_2015.pdf"</code> — the DFS paper cited by its actual PDF</li>
+      <li><code class="status">[x]</code> (Phase 8) <code>for p in concepts/phi-theory/ engineering/internals/ explorables/phi-dfs.html; do curl -s -o /dev/null -w "%{http_code} $p\n" https://ccd-ia.github.io/featurizer/$p; done</code> — theory, internals, and the explorable all deployed</li>
+      <li><code class="status">[x]</code> (Phase 8) <code>curl -s https://ccd-ia.github.io/featurizer/concepts/phi-theory/ | grep -c "DSAA_DSM_2015.pdf"</code> — the DFS paper cited by its actual PDF</li>
     </ul>
     <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong></div>
   </section>
