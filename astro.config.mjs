@@ -24,6 +24,10 @@ export default defineConfig({
 					items: [{ label: 'Walkthrough', slug: 'walkthrough' }],
 				},
 				{
+					label: 'Concepts',
+					items: [{ autogenerate: { directory: 'concepts' } }],
+				},
+				{
 					label: 'Notebooks',
 					items: [{ autogenerate: { directory: 'notebooks' } }],
 				},
@@ -34,6 +38,7 @@ export default defineConfig({
 				{
 					label: 'Engineering',
 					items: [
+						{ label: 'Performance internals', slug: 'engineering/internals' },
 						{ label: 'Architecture decisions', slug: 'engineering/adr' },
 						{ label: 'Changelog', slug: 'engineering/changelog' },
 					],

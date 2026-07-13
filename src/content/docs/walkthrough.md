@@ -7,10 +7,13 @@ sidebar:
   order: 1
 ---
 
-featurizer implements [Deep Feature Synthesis](https://dai.lids.mit.edu/projects/deep-feature-synthesis/)
-for temporal, relational data — compiled to **pure PostgreSQL**. You describe
-entities and relationships in YAML; featurizer plans, renders, and (optionally)
-executes SQL that computes hundreds of point-in-time-correct features.
+featurizer implements [Deep Feature Synthesis](https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf)
+(Kanter & Veeramachaneni, IEEE DSAA 2015) for temporal, relational data —
+compiled to **pure PostgreSQL**. You describe entities and relationships in
+YAML; featurizer plans, renders, and (optionally) executes SQL that computes
+hundreds of point-in-time-correct features. The
+[φ formalism](/featurizer/concepts/phi-theory/) explains *why* this
+construction cannot leak.
 
 This walkthrough follows [example 01](https://github.com/ccd-ia/featurizer/tree/master/examples/01-basic-aggregations)
 (an e-commerce scenario: customers and their orders). Clone the repo to run
@@ -259,6 +262,8 @@ Real output from a live 177k-row × 272-feature matrix:
   primitives —
   [examples/](https://github.com/ccd-ia/featurizer/tree/master/examples)
   (rendered versions join this site shortly).
+- **The theory**: [φ — the formalism behind feature creation](/featurizer/concepts/phi-theory/),
+  with an interactive explorable.
 - **References**: the full
   [primitive registry](/featurizer/reference/primitives/) and the complete
   [`config.yaml` schema](/featurizer/reference/configuration/).

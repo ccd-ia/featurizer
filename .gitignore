@@ -136,7 +136,10 @@ dist/
 public/specs/
 public/images/
 public/notebook-assets/
+public/explorables/
 src/content/docs/notebooks/*.md
 !src/content/docs/notebooks/index.md
 src/content/docs/reference/primitives.md
-src/content/docs/engineering/
+# engineering/: adr/ + changelog.md are generated (ingested); internals.md is authored
+src/content/docs/engineering/adr/
+src/content/docs/engineering/changelog.md

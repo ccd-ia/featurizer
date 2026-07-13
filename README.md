@@ -17,7 +17,7 @@
 [ADRs](https://ccd-ia.github.io/featurizer/engineering/adr/) ·
 [Validation reports](https://ccd-ia.github.io/featurizer/specs/live-db-revalidation-v080.html)
 
-Featurizer implements [Deep Feature Synthesis](https://dai.lids.mit.edu/projects/deep-feature-synthesis/) (DFS) for relational
+Featurizer implements [Deep Feature Synthesis](https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf) (DFS; Kanter & Veeramachaneni, IEEE DSAA 2015) for relational
 databases with first-class support for temporal semantics. Given a
 schema of entities and relationships, it automatically synthesizes
 hundreds of meaningful features by traversing the entity graph,

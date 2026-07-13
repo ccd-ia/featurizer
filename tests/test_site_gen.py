@@ -91,3 +91,19 @@ def test_configuration_yaml_snippets_parse() -> None:
     assert blocks, "configuration.md should contain yaml examples"
     for block in blocks:
         yaml.safe_load(block)
+
+
+def test_explorable_is_self_contained() -> None:
+    """The explorable must load nothing from external hosts (CSP-clean):
+    no external scripts/styles/fonts/images; only plain <a href> links out."""
+    html = (REPO / "site/explorables/phi-dfs.html").read_text()
+    assert re.search(r"<script\s+[^>]*src=", html) is None
+    assert re.search(r"<link\s", html) is None
+    assert "@import" not in html and "fonts." not in html
+    externals = re.findall(r'(\w+)="https?://[^"]+"', html)
+    assert set(externals) <= {"href"}, f"non-anchor external refs: {externals}"
+
+
+def test_explorable_copied_to_public(gen) -> None:
+    gen.copy_passthrough()
+    assert (REPO / "public/explorables/phi-dfs.html").is_file()

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>φ, explorable — how featurizer creates features</title>
+<style>
+:root{
+  --bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;
+  --accent:#0f766e;--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;
+  --border:#e2e4e0;--code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#15181e;--surface:#1e232b;--fg:#e7eaf0;--muted:#98a1af;
+  --accent:#2dd4bf;--accent-soft:#134e4a;--accent-2:#f5b45e;--accent-2-soft:#4a3008;
+  --border:#333a45;--code-bg:#262c36}
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.5;margin:0;padding:1rem}
+main{max-width:860px;margin:0 auto}
+h1{font-size:1.15rem;margin:.2rem 0 .1rem}
+h2{font-size:.95rem;margin:1.4rem 0 .4rem;color:var(--accent)}
+p{margin:.35rem 0;font-size:.86rem}
+.muted{color:var(--muted)}
+code{font-family:var(--mono);font-size:.82em;background:var(--code-bg);padding:.05em .3em;border-radius:4px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.8rem 1rem;margin:.7rem 0}
+.controls{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin:.5rem 0}
+.controls label{font-size:.8rem;color:var(--muted);font-weight:700}
+input[type=range]{width:min(420px,90%);accent-color:var(--accent)}
+select,button{font:inherit;font-size:.82rem;background:var(--code-bg);color:var(--fg);
+border:1px solid var(--border);border-radius:6px;padding:.2rem .5rem}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+table{border-collapse:collapse;width:100%;font-size:.8rem;margin:.5rem 0}
+th,td{border:1px solid var(--border);padding:.3rem .5rem;text-align:left}
+th{background:var(--accent-soft);color:var(--accent)}
+td.mono,th.mono{font-family:var(--mono);font-size:.76rem}
+.sql{font-family:var(--mono);font-size:.72rem;background:var(--code-bg);border:1px solid var(--border);
+border-radius:8px;padding:.5rem .7rem;overflow-x:auto;white-space:pre;margin:.4rem 0}
+svg text{font-family:var(--sans)}
+.steps{display:flex;gap:.4rem;margin:.4rem 0}
+.formula{font-family:var(--mono);font-size:.85rem;background:var(--code-bg);border-left:3px solid var(--accent);
+padding:.45rem .7rem;border-radius:6px;margin:.4rem 0;overflow-x:auto}
+footer{font-size:.72rem;color:var(--muted);margin-top:1.2rem;border-top:1px solid var(--border);padding-top:.6rem}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>φ, explorable</h1>
+<p class="muted">A feature is a function <code>φ(entity, t)</code> that may only see events with
+<code>τ ≤ t</code>. Drag the as-of date and watch featurizer's features recompute.</p>
+
+<!-- ============ Panel 1: as-of scrubber ============ -->
+<div class="panel">
+<h2>1 · One customer's orders, one as-of date</h2>
+<div class="controls">
+  <label>as-of date <span id="tlabel" class="mono"></span></label>
+  <input type="range" id="tslider" min="0" max="89" value="60">
+  <label>boundary</label>
+  <button id="binc" class="on" type="button">τ ≤ t (inclusive)</button>
+  <button id="bexc" type="button">τ &lt; t (exclusive)</button>
+</div>
+<svg id="timeline" viewBox="0 0 800 130" width="100%" aria-label="Event timeline with rolling windows"></svg>
+<p class="muted" style="font-size:.75rem">● in P7D window&ensp;· ● in P30D window&ensp;· ● past, outside both windows&ensp;· ○ future — invisible to φ. The ✕ is a refund (negative amount).</p>
+<div class="controls">
+  <label>aggregation</label>
+  <select id="aggpick">
+    <option value="count">count</option>
+    <option value="sum" selected>sum</option>
+    <option value="mean">mean</option>
+    <option value="max">max</option>
+    <option value="nunique">nunique</option>
+  </select>
+  <span class="muted" style="font-size:.78rem">over <code>orders.amount</code></span>
+</div>
+<table id="feattable"></table>
+<div class="sql" id="sqlfrag"></div>
+</div>
+
+<!-- ============ Panel 2: depth stacking ============ -->
+<div class="panel">
+<h2>2 · Deep Feature Synthesis: stacking φ</h2>
+<p>DFS builds features by composing two primitive families — <em>transformations</em> (within an
+entity) and <em>aggregations</em> (across a relationship). Each step wraps the name:</p>
+<div class="steps">
+  <button type="button" data-step="0" class="on">0 · raw column</button>
+  <button type="button" data-step="1">1 · transform (child)</button>
+  <button type="button" data-step="2">2 · aggregate ←</button>
+  <button type="button" data-step="3">3 · transform (target)</button>
+</div>
+<div class="formula" id="stackformula"></div>
+<p id="stackexplain" style="font-size:.82rem"></p>
+<table id="stacktable"></table>
+</div>
+
+<footer>Same data as the <a href="../walkthrough/">walkthrough</a> scenario. Every value here is computed
+by the same rules featurizer renders to SQL: restriction to <code>τ ≤ t</code>, interval windows via
+<code>FILTER</code>, names as serialized φ. — <a href="https://github.com/ccd-ia/featurizer">ccd-ia/featurizer</a></footer>
+</main>
+
+<script>
+"use strict";
+// Fixed dataset: day offsets from 2024-01-01 + amounts. One refund (negative).
+const EVENTS = [
+  {d: 3,  amt: 42.0}, {d: 9,  amt: 15.5}, {d: 16, amt: 88.0}, {d: 22, amt: 30.0},
+  {d: 29, amt: 55.25},{d: 35, amt: -25.0},{d: 41, amt: 12.0}, {d: 48, amt: 63.5},
+  {d: 55, amt: 21.0}, {d: 58, amt: 99.0}, {d: 63, amt: 47.5}, {d: 71, amt: 18.0},
+  {d: 80, amt: 76.0},
+];
+const DAY0 = new Date(Date.UTC(2024, 0, 1));
+const fmt = d => new Date(DAY0.getTime() + d * 864e5).toISOString().slice(0, 10);
+const state = {t: 60, inclusive: true, agg: "sum", step: 0};
+
+const AGGS = {
+  count:   {sql: c => `count( ${c} )`,          fn: v => v.length},
+  sum:     {sql: c => `sum( ${c} )`,            fn: v => v.reduce((a, b) => a + b, 0)},
+  mean:    {sql: c => `avg( ${c} )`,            fn: v => v.length ? v.reduce((a, b) => a + b, 0) / v.length : null},
+  max:     {sql: c => `max( ${c} )`,            fn: v => v.length ? Math.max(...v) : null},
+  nunique: {sql: c => `count(distinct ${c} )`,  fn: v => new Set(v).size},
+};
+const round = x => x === null ? "∅ (NULL)" : (Number.isInteger(x) ? x : x.toFixed(2));
+
+function visible(e) { return state.inclusive ? e.d <= state.t : e.d < state.t; }
+function inWindow(e, w) { return visible(e) && e.d > state.t - w; }
+
+function windowValues(w, transform) {
+  const evs = w === null ? EVENTS.filter(visible) : EVENTS.filter(e => inWindow(e, w));
+  return evs.map(e => transform ? transform(e.amt) : e.amt);
+}
+
+function drawTimeline() {
+  const svg = document.getElementById("timeline");
+  const X = d => 20 + d * (760 / 89), Y = 62;
+  const tX = X(state.t);
+  let s = "";
+  // window bands (drawn first)
+  const band = (w, color, y, h) => {
+    const x0 = Math.max(20, X(state.t - w + (state.inclusive ? 0 : 1)));
+    s += `<rect x="${x0}" y="${y}" width="${Math.max(0, tX - x0)}" height="${h}" fill="${color}" opacity="0.35" rx="4"/>`;
+  };
+  band(30, "var(--accent-2-soft)", 30, 64);
+  band(7, "var(--accent-soft)", 38, 48);
+  // axis
+  s += `<line x1="20" y1="${Y}" x2="780" y2="${Y}" stroke="var(--border)" stroke-width="2"/>`;
+  for (let d = 0; d <= 89; d += 10)
+    s += `<text x="${X(d)}" y="${Y + 42}" text-anchor="middle" font-size="9" fill="var(--muted)">${fmt(d).slice(5)}</text>`;
+  // as-of marker
+  s += `<line x1="${tX}" y1="14" x2="${tX}" y2="${Y + 24}" stroke="var(--accent)" stroke-width="2.5"/>`;
+  s += `<text x="${tX}" y="12" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)">as-of ${fmt(state.t)}</text>`;
+  // events
+  for (const e of EVENTS) {
+    const vis = visible(e);
+    const color = !vis ? "none" : inWindow(e, 7) ? "var(--accent)" : inWindow(e, 30) ? "var(--accent-2)" : "var(--muted)";
+    const stroke = vis ? color : "var(--muted)";
+    if (e.amt < 0) {
+      const c = vis ? color : "var(--muted)";
+      s += `<text x="${X(e.d)}" y="${Y + 4}" text-anchor="middle" font-size="13" font-weight="700" fill="${c}">✕</text>`;
+    } else {
+      s += `<circle cx="${X(e.d)}" cy="${Y}" r="6" fill="${color}" stroke="${stroke}" stroke-width="1.8"/>`;
+    }
+    s += `<text x="${X(e.d)}" y="${Y - 12}" text-anchor="middle" font-size="8.5" fill="${vis ? "var(--fg)" : "var(--muted)"}" opacity="${vis ? 1 : 0.55}">${e.amt}</text>`;
+  }
+  svg.innerHTML = s;
+}
+
+function renderFeatures() {
+  const a = AGGS[state.agg];
+  const name = w => `${state.agg.toUpperCase()}(orders.amount${w ? `|interval=P${w}D` : ""})`;
+  const rows = [[name(7), a.fn(windowValues(7))], [name(30), a.fn(windowValues(30))], [name(null), a.fn(windowValues(null))]];
+  document.getElementById("feattable").innerHTML =
+    `<tr><th class="mono">column (serialized φ)</th><th>value at t = ${fmt(state.t)}</th></tr>` +
+    rows.map(([n, v]) => `<tr><td class="mono">"${n}"</td><td class="mono">${round(v)}</td></tr>`).join("");
+  const cmp = state.inclusive ? "'[]'" : "'[)'";
+  document.getElementById("sqlfrag").textContent =
+    `${a.sql("amount")} filter (where daterange((aod.as_of_date - interval 'P7D')::date,\n` +
+    `                                 aod.as_of_date::date, ${cmp}) @> order_date::date)\n` +
+    `  as "${name(7)}"  -- restriction τ ${state.inclusive ? "≤" : "<"} t, rendered as SQL`;
+}
+
+const STACK = [
+  {name: "amount", formula: "x", explain:
+    "Depth 0 — a raw child column. Not yet a feature of the customer: it lives on orders."},
+  {name: "ABS(orders.amount)", formula: "g(x) = |x|", explain:
+    "Depth 1 — a transformation within the child entity. The refund (−25.0) becomes 25.0; every event keeps its own timestamp τ."},
+  {name: "MEAN(orders.ABS(orders.amount)|interval=P30D)", formula: "a₃₀(g) = mean{ |x| : τ ≤ t, τ > t−30d }", explain:
+    "Depth 2 — an aggregation across the relationship, restricted to the P30D window ending at t. NOW it is φ(customer, t): one value per customer per as-of date."},
+  {name: "ABS(customers.MEAN(orders.ABS(orders.amount)|interval=P30D))", formula: "φ = g′ ∘ a₃₀ ∘ g", explain:
+    "Depth 3 — a target-level transformation wraps the aggregate. The name is the serialized composition — read it inside-out. Every layer depends only on events with τ ≤ t, so the stack is point-in-time correct by construction."},
+];
+
+function renderStack() {
+  document.querySelectorAll("[data-step]").forEach(b =>
+    b.classList.toggle("on", Number(b.dataset.step) === state.step));
+  const s = STACK[state.step];
+  document.getElementById("stackformula").textContent = `"${s.name}"    —    ${s.formula}`;
+  document.getElementById("stackexplain").textContent = s.explain;
+  const t = state.t;
+  const v30abs = windowValues(30, Math.abs);
+  const mean30 = v30abs.length ? v30abs.reduce((a, b) => a + b, 0) / v30abs.length : null;
+  const rows = [];
+  if (state.step === 0)
+    rows.push(["events visible at t", EVENTS.filter(visible).map(e => e.amt).join(", ") || "—"]);
+  if (state.step >= 1)
+    rows.push(["|amount| per event (τ ≤ t)", EVENTS.filter(visible).map(e => Math.abs(e.amt)).join(", ") || "—"]);
+  if (state.step >= 2)
+    rows.push([`mean over P30D window at ${fmt(t)}`, round(mean30)]);
+  if (state.step >= 3)
+    rows.push(["|mean| (target transform)", round(mean30 === null ? null : Math.abs(mean30))]);
+  document.getElementById("stacktable").innerHTML =
+    rows.map(([k, v]) => `<tr><td>${k}</td><td class="mono">${v}</td></tr>`).join("");
+}
+
+function render() {
+  document.getElementById("tlabel").textContent = fmt(state.t);
+  document.getElementById("binc").classList.toggle("on", state.inclusive);
+  document.getElementById("bexc").classList.toggle("on", !state.inclusive);
+  drawTimeline(); renderFeatures(); renderStack();
+}
+
+document.getElementById("tslider").addEventListener("input", e => { state.t = Number(e.target.value); render(); });
+document.getElementById("binc").addEventListener("click", () => { state.inclusive = true; render(); });
+document.getElementById("bexc").addEventListener("click", () => { state.inclusive = false; render(); });
+document.getElementById("aggpick").addEventListener("change", e => { state.agg = e.target.value; render(); });
+document.querySelectorAll("[data-step]").forEach(b =>
+  b.addEventListener("click", () => { state.step = Number(b.dataset.step); render(); }));
+render();
+</script>
+</body>
+</html>

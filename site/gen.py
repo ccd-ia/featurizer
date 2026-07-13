@@ -41,6 +41,7 @@ def copy_passthrough() -> None:
     for source, dest in [
         (REPO / "specs", PUBLIC / "specs"),
         (REPO / "docs" / "images", PUBLIC / "images"),
+        (REPO / "site" / "explorables", PUBLIC / "explorables"),
     ]:
         if dest.exists():
             shutil.rmtree(dest)
@@ -215,11 +216,16 @@ ADR_THEMES: dict[str, list[str]] = {
 
 
 def ingest_engineering() -> None:
-    """docs/adr/*.md + CHANGELOG.md -> engineering/ pages (canonical homes stay)."""
+    """docs/adr/*.md + CHANGELOG.md -> engineering/ pages (canonical homes stay).
+
+    Only the *generated* content is cleaned (adr/ + changelog.md) — the
+    engineering/ directory also holds authored pages (internals.md).
+    """
     eng = DOCS / "engineering"
-    if eng.exists():
-        shutil.rmtree(eng)
     adr_out = eng / "adr"
+    if adr_out.exists():
+        shutil.rmtree(adr_out)
+    (eng / "changelog.md").unlink(missing_ok=True)
     adr_out.mkdir(parents=True)
 
     def fm(title: str, description: str, order: int | None = None) -> str:
