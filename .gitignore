@@ -137,6 +137,7 @@ public/specs/
 public/images/
 public/notebook-assets/
 public/explorables/
+public/api/
 src/content/docs/notebooks/*.md
 !src/content/docs/notebooks/index.md
 src/content/docs/reference/primitives.md

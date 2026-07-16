@@ -23,6 +23,7 @@ deploy, so generated content cannot drift from its sources.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -179,6 +180,12 @@ def generate_primitives() -> Path:
         "`aggregations:` / `transformations:` keys — see the",
         "[configuration reference](/featurizer/reference/configuration/).",
         "",
+        ":::tip[Prefer to browse interactively?]",
+        "Open the [**primitives explorer**](/featurizer/explorables/primitives.html)"
+        " — faceted filter by type and category, live search, and the SQL each"
+        " primitive emits.",
+        ":::",
+        "",
         ":::note",
         "Peer-group features (`peer_groups`), spatial second-table features",
         "(`spatial_relationships`), and the φ-bridge companion are **planner",
@@ -203,6 +210,268 @@ def generate_primitives() -> Path:
         f"primitives registry ({len(aggs)}+{len(transforms)}) -> {out.relative_to(REPO)}"
     )
     return out
+
+
+def registry_records() -> tuple[list[dict[str, str]], int, int]:
+    """Flat primitive records from the live registry — the explorer's data.
+
+    Same source of truth as ``generate_primitives`` (the registry for *what
+    exists*, ``featurizer.cli``'s DOCS for the human metadata), so the explorer
+    cannot drift from the reference table.
+    """
+    sys.path.insert(0, str(REPO))
+    from featurizer.cli import AGGREGATION_DOCS, TRANSFORMATION_DOCS
+    from featurizer.primitives.utils import list_aggregations, list_transformations
+
+    aggs = sorted(list_aggregations())
+    transforms = sorted(list_transformations())
+    records: list[dict[str, str]] = []
+    for kind, names, docs in (
+        ("aggregation", aggs, AGGREGATION_DOCS),
+        ("transformer", transforms, TRANSFORMATION_DOCS),
+    ):
+        for name in names:
+            meta = docs.get(name, {})
+            records.append(
+                {
+                    "name": name,
+                    "type": kind,
+                    "category": meta.get("category", "general"),
+                    "description": meta.get("description", ""),
+                    "sql": meta.get("sql_example", ""),
+                }
+            )
+    return records, len(aggs), len(transforms)
+
+
+# Self-contained (CSP-clean) interactive explorer: faceted filter + text search
+# + SQL preview over the registry JSON, embedded inline. Palette mirrors the
+# hand-authored explorable (site/explorables/phi-dfs.html) so it reads as native
+# to the site. __DATA__/__N_AGG__/__N_TRANS__ are string-substituted, never
+# .format()'d — the CSS/JS braces must survive verbatim.
+EXPLORER_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Primitives explorer — featurizer</title>
+<style>
+:root{
+  --bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;
+  --accent:#0f766e;--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;
+  --border:#e2e4e0;--code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#15181e;--surface:#1e232b;--fg:#e7eaf0;--muted:#98a1af;
+  --accent:#2dd4bf;--accent-soft:#134e4a;--accent-2:#f5b45e;--accent-2-soft:#4a3008;
+  --border:#333a45;--code-bg:#262c36}
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.5;margin:0;padding:1rem}
+main{max-width:920px;margin:0 auto}
+h1{font-size:1.2rem;margin:.2rem 0 .1rem}
+p{margin:.35rem 0;font-size:.86rem}
+.muted{color:var(--muted)}
+code{font-family:var(--mono);font-size:.82em;background:var(--code-bg);padding:.05em .3em;border-radius:4px}
+a{color:var(--accent)}
+.controls{position:sticky;top:0;background:var(--bg);z-index:2;display:flex;flex-wrap:wrap;gap:.7rem;
+  align-items:center;padding:.7rem 0;border-bottom:1px solid var(--border);margin-bottom:.6rem}
+.controls label{font-size:.72rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+input[type=search],select{font:inherit;font-size:.85rem;background:var(--surface);color:var(--fg);
+  border:1px solid var(--border);border-radius:7px;padding:.32rem .55rem}
+input[type=search]{min-width:min(260px,80vw);flex:1 1 200px}
+input[type=search]:focus,select:focus{outline:2px solid var(--accent);outline-offset:0}
+.count{font-size:.78rem;color:var(--muted);margin:.2rem 0 .8rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.7rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.7rem .85rem;
+  display:flex;flex-direction:column;gap:.35rem}
+.card .name{font-family:var(--mono);font-weight:700;font-size:.9rem;word-break:break-word}
+.badges{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center}
+.badge{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  padding:.1rem .4rem;border-radius:999px;white-space:nowrap}
+.badge.agg{background:var(--accent-soft);color:var(--accent)}
+.badge.transformer{background:var(--accent-2-soft);color:var(--accent-2)}
+.badge.cat{background:var(--code-bg);color:var(--muted)}
+.desc{font-size:.8rem;color:var(--fg)}
+.desc.none{color:var(--muted);font-style:italic}
+.sql{font-family:var(--mono);font-size:.72rem;background:var(--code-bg);border:1px solid var(--border);
+  border-radius:7px;padding:.4rem .55rem;overflow-x:auto;white-space:pre}
+mark{background:var(--accent-2-soft);color:inherit;border-radius:3px;padding:0 .05em}
+.empty{color:var(--muted);font-size:.85rem;padding:1.5rem 0;text-align:center}
+footer{font-size:.72rem;color:var(--muted);margin-top:1.4rem;border-top:1px solid var(--border);padding-top:.6rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Primitives explorer</h1>
+<p class="muted">Every registered primitive — <strong id="nagg"></strong> aggregations
+(parent&nbsp;&larr;&nbsp;child) and <strong id="ntrans"></strong> transformers (within an entity).
+Generated from the live registry at build time, so it cannot drift from the code.
+Filter, search, and preview the SQL each one emits.</p>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="Search name or description…" autocomplete="off" aria-label="Search primitives">
+  <span><label for="type">Type</label>
+    <select id="type" aria-label="Filter by type">
+      <option value="all">All</option>
+      <option value="aggregation">Aggregations</option>
+      <option value="transformer">Transformers</option>
+    </select></span>
+  <span><label for="cat">Category</label>
+    <select id="cat" aria-label="Filter by category"></select></span>
+</div>
+<p class="count" id="count"></p>
+<div class="grid" id="grid"></div>
+<p class="empty" id="empty" hidden>No primitives match — clear the search or widen the filters.</p>
+
+<footer>
+Back to the <a href="../reference/primitives/">primitives reference</a> ·
+Discover the same from the CLI: <code>python -m featurizer list-primitives --type agg --show-sql</code>
+</footer>
+</main>
+<script>
+const DATA = __DATA__;
+const N_AGG = __N_AGG__, N_TRANS = __N_TRANS__;
+const $ = (id) => document.getElementById(id);
+$("nagg").textContent = N_AGG; $("ntrans").textContent = N_TRANS;
+
+// Category dropdown reflects the current type filter (only reachable categories).
+function refreshCategories() {
+  const type = $("type").value;
+  const cats = [...new Set(DATA.filter(d => type === "all" || d.type === type)
+    .map(d => d.category))].sort();
+  const prev = $("cat").value;
+  $("cat").innerHTML = '<option value="all">All</option>' +
+    cats.map(c => `<option value="${c}">${c}</option>`).join("");
+  $("cat").value = cats.includes(prev) ? prev : "all";
+}
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+}
+function highlight(text, q) {
+  const safe = esc(text);
+  if (!q) return safe;
+  const re = new RegExp("(" + q.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&") + ")", "ig");
+  return safe.replace(re, "<mark>$1</mark>");
+}
+
+function render() {
+  const q = $("q").value.trim().toLowerCase();
+  const type = $("type").value, cat = $("cat").value;
+  const rows = DATA.filter(d =>
+    (type === "all" || d.type === type) &&
+    (cat === "all" || d.category === cat) &&
+    (!q || d.name.toLowerCase().includes(q) || (d.description || "").toLowerCase().includes(q)));
+  const grid = $("grid");
+  grid.innerHTML = rows.map(d => {
+    const badge = d.type === "aggregation"
+      ? '<span class="badge agg">agg</span>'
+      : '<span class="badge transformer">transform</span>';
+    const desc = d.description
+      ? `<div class="desc">${highlight(d.description, q)}</div>`
+      : '<div class="desc none">no metadata registered</div>';
+    const sql = d.sql ? `<div class="sql">${esc(d.sql)}</div>` : "";
+    return `<div class="card"><div class="name">${highlight(d.name, q)}</div>` +
+      `<div class="badges">${badge}<span class="badge cat">${esc(d.category)}</span></div>` +
+      `${desc}${sql}</div>`;
+  }).join("");
+  $("empty").hidden = rows.length > 0;
+  const nAgg = rows.filter(d => d.type === "aggregation").length;
+  $("count").textContent =
+    `Showing ${rows.length} of ${DATA.length} — ${nAgg} aggregations, ${rows.length - nAgg} transformers`;
+}
+
+$("q").addEventListener("input", render);
+$("type").addEventListener("change", () => { refreshCategories(); render(); });
+$("cat").addEventListener("change", render);
+refreshCategories();
+render();
+</script>
+</body>
+</html>
+"""
+
+
+def generate_explorer() -> Path:
+    """The interactive primitives explorer -> public/explorables/primitives.html.
+
+    Runs AFTER copy_passthrough (which populates public/explorables/ from the
+    hand-authored sources) so the generated page joins them without being wiped.
+    """
+    records, n_agg, n_trans = registry_records()
+    # Escape ``</`` so the inline JSON can never terminate the <script> early.
+    data = json.dumps(records, ensure_ascii=False).replace("</", "<\\/")
+    html = (
+        EXPLORER_TEMPLATE.replace("__DATA__", data)
+        .replace("__N_AGG__", str(n_agg))
+        .replace("__N_TRANS__", str(n_trans))
+    )
+    out = PUBLIC / "explorables" / "primitives.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html)
+    print(f"primitives explorer ({n_agg}+{n_trans}) -> {out.relative_to(REPO)}")
+    return out
+
+
+# The SQL-spine public API, documented by pdoc into public/api/. The optional
+# viz/bridge extras are deliberately omitted (heavy deps absent in the docs
+# build) — pdoc still emits harmless return-type warnings for the FeaturizerViz
+# methods re-exported at the top level. Extend this list when a new core module
+# joins the public surface.
+API_MODULES: list[str] = [
+    "featurizer",
+    "featurizer.planner",
+    "featurizer.sql",
+    "featurizer.executor",
+    "featurizer.validation",
+    "featurizer.manifest",
+    "featurizer.categoricals",
+    "featurizer.imputation",
+    "featurizer.sharding",
+    "featurizer.boundary",
+    "featurizer.arrow",
+    "featurizer.primitives.abstractions",
+    "featurizer.primitives.aggregations",
+    "featurizer.primitives.transformations",
+    "featurizer.primitives.utils",
+    "featurizer.primitives.preagg",
+]
+
+
+def generate_api() -> Path:
+    """Auto-generated API reference (pdoc) -> public/api/, self-contained HTML.
+
+    pdoc renders the Google-style docstrings already in the source to a set of
+    static, CSP-clean pages (all CSS/JS inlined; the only external reference is
+    pdoc's own footer link). ``--edit-url`` wires each page back to its module
+    on GitHub. Served under /featurizer/api/ via pdoc's relative links.
+    """
+    api_out = PUBLIC / "api"
+    if api_out.exists():
+        shutil.rmtree(api_out)
+    api_out.mkdir(parents=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pdoc",
+            *API_MODULES,
+            "--docformat",
+            "google",
+            "--edit-url",
+            f"featurizer={GITHUB}/blob/master/featurizer/",
+            "-o",
+            str(api_out),
+        ],
+        cwd=REPO,
+        check=True,
+    )
+    pages = sorted(p.relative_to(api_out) for p in api_out.rglob("*.html"))
+    print(f"api reference (pdoc): {len(pages)} pages -> {api_out.relative_to(REPO)}")
+    return api_out
 
 
 # ADR index grouping. New ADRs land in "other" until themed here — the index
@@ -304,6 +573,8 @@ def main() -> None:
     copy_passthrough()
     convert_notebooks()
     generate_primitives()
+    generate_explorer()
+    generate_api()
     ingest_engineering()
 
 

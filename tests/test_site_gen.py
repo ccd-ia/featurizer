@@ -107,3 +107,54 @@ def test_explorable_is_self_contained() -> None:
 def test_explorable_copied_to_public(gen) -> None:
     gen.copy_passthrough()
     assert (REPO / "public/explorables/phi-dfs.html").is_file()
+
+
+def test_explorer_generates_from_registry(gen) -> None:
+    """The explorer embeds one record per registered primitive, counts wired."""
+    gen.copy_passthrough()  # populates public/explorables/ before the explorer joins
+    out = gen.generate_explorer()
+    html = out.read_text()
+    records, n_agg, n_trans = gen.registry_records()
+    assert len(records) == n_agg + n_trans
+    assert html.count('"name":') == len(records)
+    assert f"N_AGG = {n_agg}, N_TRANS = {n_trans}" in html
+    # No template placeholder survives substitution.
+    for token in ("__DATA__", "__N_AGG__", "__N_TRANS__"):
+        assert token not in html, token
+
+
+def test_explorer_is_self_contained(gen) -> None:
+    """The generated explorer is CSP-clean — only <a href> links leave the page."""
+    gen.copy_passthrough()
+    html = gen.generate_explorer().read_text()
+    assert re.search(r"<script\s+[^>]*src=", html) is None
+    assert re.search(r"<link\s", html) is None
+    assert "@import" not in html and "fonts." not in html
+    externals = re.findall(r'(\w+)="https?://[^"]+"', html)
+    assert set(externals) <= {"href"}, f"non-anchor external refs: {externals}"
+
+
+def test_api_reference_generates_curated_modules(gen) -> None:
+    """pdoc emits one page per curated module into public/api/, index included."""
+    pytest.importorskip("pdoc")
+    api_out = gen.generate_api()
+    pages = {p.relative_to(api_out).as_posix() for p in api_out.rglob("*.html")}
+    assert "index.html" in pages
+    # The SQL spine must be documented — a stand-in for the whole curated list.
+    for expected in (
+        "featurizer.html",
+        "featurizer/planner.html",
+        "featurizer/sql.html",
+    ):
+        assert expected in pages, f"missing api page: {expected}"
+    assert len(pages) == len(gen.API_MODULES) + 1  # +1 for the index redirect
+
+
+def test_api_reference_is_self_contained(gen) -> None:
+    """No external resource loads from the pdoc tree — only pdoc's footer link."""
+    pytest.importorskip("pdoc")
+    api_out = gen.generate_api()
+    for page in api_out.rglob("*.html"):
+        html = page.read_text()
+        assert re.search(r'<script\s+[^>]*src="https?://', html) is None, page.name
+        assert re.search(r'<link\s+[^>]*href="https?://', html) is None, page.name

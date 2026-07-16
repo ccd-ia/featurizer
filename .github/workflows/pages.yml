@@ -18,8 +18,9 @@ on:
       - "docs/**"
       - "examples/**"
       - "CHANGELOG.md"
-      - "featurizer/cli.py"
-      - "featurizer/primitives/**"
+      # Whole package: the primitives reference reads the registry AND the pdoc
+      # API reference documents every core module (site/gen.py generate_api).
+      - "featurizer/**"
       - "package.json"
       - "package-lock.json"
       - "astro.config.mjs"

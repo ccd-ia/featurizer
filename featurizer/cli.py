@@ -509,6 +509,103 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Category taxonomy for the aggregation registry. Transformers carry their
+# "category" inline in TRANSFORMATION_DOCS; aggregations keep it in this separate
+# map so the big AGGREGATION_DOCS dict stays focused on per-primitive SQL
+# metadata. It drives the grouped primitives reference and the explorer's facet.
+# Extend it when a new aggregation lands — tests/test_site_gen.py asserts full
+# coverage, so an uncategorized aggregation fails loudly rather than silently
+# falling back to "general".
+AGGREGATION_CATEGORIES: Dict[str, str] = {
+    # Basic reductions
+    "sum": "basic",
+    "min": "basic",
+    "max": "basic",
+    "mean": "basic",
+    "stddev": "basic",
+    "variance": "basic",
+    "count": "basic",
+    "nunique": "basic",
+    # Boolean reductions
+    "all": "boolean",
+    "any": "boolean",
+    # Ordered-set (percentiles / mode)
+    "median": "ordered_set",
+    "mode": "ordered_set",
+    "p10": "ordered_set",
+    "p25": "ordered_set",
+    "p75": "ordered_set",
+    "p90": "ordered_set",
+    "p95": "ordered_set",
+    "p99": "ordered_set",
+    # Mean variants
+    "harmonic_mean": "mean_variant",
+    "geometric_mean": "mean_variant",
+    "trimmed_mean_10": "mean_variant",
+    # Statistical spread / shape
+    "skewness": "statistical",
+    "kurtosis": "statistical",
+    "iqr": "statistical",
+    "cv": "statistical",
+    "range": "statistical",
+    "mean_deviation": "statistical",
+    "median_absolute_deviation": "statistical",
+    "variance_ratio": "statistical",
+    # Inequality / concentration / diversity indices
+    "gini": "inequality",
+    "theil": "inequality",
+    "hhi": "inequality",
+    "entropy": "inequality",
+    # Distribution drift (recent vs prior window)
+    "kl_drift": "drift",
+    "wasserstein_drift": "drift",
+    # Inter-event gap statistics
+    "gap_mean": "gap",
+    "gap_stddev": "gap",
+    "gap_min": "gap",
+    "gap_max": "gap",
+    "gap_cv": "gap",
+    # Temporal rates & spans
+    "event_rate": "temporal",
+    "time_span": "temporal",
+    "recency": "temporal",
+    "tenure": "temporal",
+    "age_in_system": "temporal",
+    "inter_event_hazard_proxy": "temporal",
+    # Temporal patterns (burst / seasonality / autocorrelation)
+    "burstiness": "temporal_pattern",
+    "acf_1": "temporal_pattern",
+    "cosinor_amplitude_weekly": "temporal_pattern",
+    # Survival / time-to-event / censoring
+    "first_passage_time": "survival",
+    "right_censoring_indicator": "survival",
+    "cross_type_latency": "survival",
+    # Categorical sequence structure (n-gram / streak / entropy)
+    "ngram_2_freq": "sequence",
+    "ngram_3_freq": "sequence",
+    "sequence_entropy": "sequence",
+    "longest_streak": "sequence",
+    # Categorical state dynamics (transitions / volatility / dwell time)
+    "markov_conditional_entropy": "state_dynamics",
+    "max_transition_prob": "state_dynamics",
+    "transition_matrix_summary": "state_dynamics",
+    "rework_count": "state_dynamics",
+    "state_volatility": "state_dynamics",
+    "recurrence_interval": "state_dynamics",
+    "time_in_current_state": "state_dynamics",
+    # Spatial (geospatial dispersion / movement)
+    "bbox_area": "spatial",
+    "distance_travelled": "spatial",
+    "radius_of_gyration": "spatial",
+    "spatial_std": "spatial",
+}
+
+# Fold the category into each doc entry so downstream readers (the CLI's
+# list-primitives, the site's primitives reference, the explorer) see a uniform
+# schema — matching the inline "category" transformers already carry.
+for _agg_name, _agg_doc in AGGREGATION_DOCS.items():
+    _agg_doc["category"] = AGGREGATION_CATEGORIES.get(_agg_name, "general")
+
 TRANSFORMATION_DOCS: Dict[str, Dict[str, Any]] = {
     # Basic transformers
     "identity": {

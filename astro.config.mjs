@@ -29,7 +29,10 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: 'Start Here',
-					items: [{ label: 'Walkthrough', slug: 'walkthrough' }],
+					items: [
+						{ label: 'Walkthrough', slug: 'walkthrough' },
+						{ label: 'FAQ & troubleshooting', slug: 'faq' },
+					],
 				},
 				{
 					label: 'Concepts',
@@ -41,7 +44,24 @@ export default defineConfig({
 				},
 				{
 					label: 'Reference',
-					items: [{ autogenerate: { directory: 'reference' } }],
+					items: [
+						{ autogenerate: { directory: 'reference' } },
+						{
+							// Full URL: generated pass-through explorable (.html kept).
+							label: 'Primitives explorer',
+							link: 'https://ccd-ia.github.io/featurizer/explorables/primitives.html',
+							attrs: { target: '_blank' },
+						},
+						{
+							// Full URL on purpose: pdoc emits a pass-through static
+							// tree under public/api/ (relative links between its own
+							// pages). Starlight would strip the .html from an internal
+							// sidebar slug and 404 — external URLs pass through intact.
+							label: 'API reference (pdoc)',
+							link: 'https://ccd-ia.github.io/featurizer/api/featurizer.html',
+							attrs: { target: '_blank' },
+						},
+					],
 				},
 				{
 					label: 'Engineering',

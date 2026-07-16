@@ -68,9 +68,12 @@ parquet = [
 
 [dependency-groups]
 # Python side of the docs-site build (site/gen.py): notebook -> markdown
-# conversion only. The site itself is built by Astro Starlight (package.json).
+# conversion (nbconvert) and the auto-generated API reference (pdoc, emitted as
+# self-contained HTML into public/api/). The site itself is built by Astro
+# Starlight (package.json).
 docs = [
     "nbconvert>=7.16",
+    "pdoc>=15",
 ]
 dev = [
     "basedpyright>=1.31.7",

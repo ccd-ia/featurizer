@@ -34,6 +34,28 @@ def test_default_aggregations_registered():
     assert {"count", "mean", "median", "sum", "stddev"} <= registered
 
 
+def test_every_aggregation_is_categorized():
+    """Each registered aggregation carries a real category (never 'general').
+
+    Drives the grouped primitives reference and the explorer facet; a new
+    aggregation without an AGGREGATION_CATEGORIES entry must fail here rather
+    than silently landing in the catch-all bucket.
+    """
+    from featurizer.cli import AGGREGATION_CATEGORIES, AGGREGATION_DOCS
+
+    uncategorized = [
+        name
+        for name in list_aggregations()
+        if AGGREGATION_DOCS.get(name, {}).get("category", "general") == "general"
+    ]
+    assert not uncategorized, f"aggregations missing a category: {uncategorized}"
+    # No stale mappings for primitives that no longer exist.
+    stale = [
+        name for name in AGGREGATION_CATEGORIES if name not in set(list_aggregations())
+    ]
+    assert not stale, f"AGGREGATION_CATEGORIES has stale entries: {stale}"
+
+
 def test_get_aggregations_unknown_raises():
     with pytest.raises(KeyError):
         get_aggregations(["does_not_exist"])
