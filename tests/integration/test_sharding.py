@@ -342,9 +342,9 @@ def test_wide_groups_each_execute_and_cover_all_features(pg_conn):
         rows = _run(pg_conn, sql)
         group_rows[gid] = rows
         out_cols = set(rows[0]) if rows else set()
-        assert (
-            len(out_cols) <= PG_MAX_TABLE_COLUMNS
-        ), f"{gid} returned {len(out_cols)} columns, over the table limit"
+        assert len(out_cols) <= PG_MAX_TABLE_COLUMNS, (
+            f"{gid} returned {len(out_cols)} columns, over the table limit"
+        )
         assert len(out_cols) <= PG_MAX_TARGET_LIST
         # PostgreSQL truncates identifiers to 63 bytes, so compare on the
         # truncated forms the planner would also produce.
@@ -365,9 +365,9 @@ def test_wide_groups_each_execute_and_cover_all_features(pg_conn):
         return bare[:63]
 
     expected = {trunc(n) for n in full_features}
-    assert (
-        seen_features == expected
-    ), f"missing: {expected - seen_features}; extra: {seen_features - expected}"
+    assert seen_features == expected, (
+        f"missing: {expected - seen_features}; extra: {seen_features - expected}"
+    )
 
 
 # ------------------------------------------------------------------ #

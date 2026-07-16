@@ -479,9 +479,9 @@ def test_graph_clique_families_have_closed_form_values(food_db):
             rows, MID, license_no, "ADAMIC_ADAR_MEAN(facilities.chain_edges)"
         )
 
-        assert math.isclose(
-            float(clustering), 1.0, rel_tol=1e-9
-        ), f"facility {license_no} (clique n={n}): clustering={clustering}"
+        assert math.isclose(float(clustering), 1.0, rel_tol=1e-9), (
+            f"facility {license_no} (clique n={n}): clustering={clustering}"
+        )
         assert math.isclose(float(common), n - 2, rel_tol=1e-9)
         assert math.isclose(float(jaccard), (n - 2) / n, rel_tol=1e-9)
         assert math.isclose(float(adamic), (n - 2) / math.log(n - 1), rel_tol=1e-9)

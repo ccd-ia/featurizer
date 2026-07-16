@@ -142,9 +142,9 @@ def test_numeric_aggregations_match_sql(donorschoose_db):
                 donorschoose_db, recompute.format(expr=expr), (projectid, MID)
             )
             assert got is not None and want is not None
-            assert math.isclose(
-                float(got), float(want), rel_tol=tol
-            ), f"{col} for project {projectid}: featurizer={got} sql={want}"
+            assert math.isclose(float(got), float(want), rel_tol=tol), (
+                f"{col} for project {projectid}: featurizer={got} sql={want}"
+            )
 
 
 def test_nunique_donors_is_causal(donorschoose_db):
@@ -293,9 +293,9 @@ def test_depth3_schools_nesting_matches_two_level_sql(donorschoose_db):
             (schoolid, as_ofs[1], as_ofs[1]),
         )
         assert got is not None and want is not None
-        assert math.isclose(
-            float(got), float(want), rel_tol=1e-9
-        ), f"school {schoolid}: featurizer={got} sql={want}"
+        assert math.isclose(float(got), float(want), rel_tol=1e-9), (
+            f"school {schoolid}: featurizer={got} sql={want}"
+        )
 
 
 def test_k_hop_2_matches_sql_recomputation(donorschoose_db):
@@ -338,9 +338,9 @@ def test_k_hop_2_matches_sql_recomputation(donorschoose_db):
         if want == 0:
             assert got is None or int(got) == 0
         else:
-            assert (
-                got is not None and int(got) == want
-            ), f"project {projectid}: featurizer={got} sql={want}"
+            assert got is not None and int(got) == want, (
+                f"project {projectid}: featurizer={got} sql={want}"
+            )
 
 
 def test_graph_co_donation_degree_is_causal(donorschoose_db):

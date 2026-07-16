@@ -160,6 +160,6 @@ def test_every_registered_aggregator_is_accounted_for():
     # Everything that doesn't fire on the plain fixture must be a known
     # special-config primitive — otherwise a new aggregator slipped coverage.
     unexpected = set(non_firing) - _NEEDS_SPECIAL_CONFIG
-    assert (
-        not unexpected
-    ), f"aggregators with no execution coverage: {sorted(unexpected)}"
+    assert not unexpected, (
+        f"aggregators with no execution coverage: {sorted(unexpected)}"
+    )

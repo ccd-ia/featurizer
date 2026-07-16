@@ -308,8 +308,7 @@ class Relationship:
     def __repr__(self) -> str:
         label = f" [{self.name}]" if self.name else ""
         return (
-            f"{self.parent}.{self.parent_key} -> "
-            f"{self.child}.{self.child_key}{label}"
+            f"{self.parent}.{self.parent_key} -> {self.child}.{self.child_key}{label}"
         )
 
     def __eq__(self, other: object) -> bool:

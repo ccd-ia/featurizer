@@ -97,9 +97,9 @@ def test_spatial_families_alive(food_db):
     ):
         columns = feature_columns(rows, family)
         assert columns, f"no output column for {family!r}"
-        assert any(
-            row[col] is not None for row in rows for col in columns
-        ), f"spatial family {family!r} is all-NULL on real data"
+        assert any(row[col] is not None for row in rows for col in columns), (
+            f"spatial family {family!r} is all-NULL on real data"
+        )
 
 
 def test_colocation_count_matches_haversine_recompute(food_db):

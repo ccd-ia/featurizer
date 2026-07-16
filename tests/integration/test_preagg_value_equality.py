@@ -34,8 +34,7 @@ _GOLDEN_PATH = (
 def _load_golden() -> dict:
     if not _GOLDEN_PATH.exists():
         pytest.skip(
-            "golden values not captured: run "
-            "`just db-up && just bench-capture-golden`"
+            "golden values not captured: run `just db-up && just bench-capture-golden`"
         )
     return json.loads(_GOLDEN_PATH.read_text())
 
@@ -56,9 +55,9 @@ def test_golden_inventory_matches_live_registry() -> None:
         preagg_cases.migratable_aggregators()
     ), "golden is stale vs the live registry — re-run capture-golden"
     assert meta.get("case_count") == len(_CASES)
-    assert set(_GOLDEN["cases"]) == {
-        c["id"] for c in _CASES
-    }, "golden case ids differ from the live case matrix — re-capture"
+    assert set(_GOLDEN["cases"]) == {c["id"] for c in _CASES}, (
+        "golden case ids differ from the live case matrix — re-capture"
+    )
 
 
 @pytest.mark.parametrize("case", _CASES, ids=lambda c: c["id"])

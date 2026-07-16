@@ -764,9 +764,9 @@ def test_partition_is_deterministic_and_lossless():
     b = ColumnGroupSharder(f._plan)._partition_columns()
     assert [[c.name for c in g] for g in a] == [[c.name for c in g] for g in b]
     flat = [c.name for g in a for c in g]
-    assert sorted(flat) == sorted(c.name for c in f._plan.cte_specs[
-        f"{f._plan.target.alias}_transform"
-    ].columns)
+    assert sorted(flat) == sorted(
+        c.name for c in f._plan.cte_specs[f"{f._plan.target.alias}_transform"].columns
+    )
     assert len(flat) == len(set(flat))
 
 
@@ -775,9 +775,7 @@ def test_window_fn_budget_bounds_each_group():
     carries more window functions than the planning-safe budget (PostgreSQL's
     planning memory is superlinear in same-statement window-function count)."""
     f = _featurizer(
-        _wide_config(
-            transformations=["identity", "cum_sum", "lag_1", "rolling_mean_7"]
-        )
+        _wide_config(transformations=["identity", "cum_sum", "lag_1", "rolling_mean_7"])
     )
     sharder = ColumnGroupSharder(f._plan, max_window_fns_per_group=50)
     groups = sharder._partition_columns()

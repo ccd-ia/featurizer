@@ -151,8 +151,8 @@ def _fmt(run_result: Dict[str, Any] | None) -> str:
     if not run_result:
         return "—"
     if run_result.get("censored"):
-        return f'&gt;{run_result["seconds"]}s (censored)'
-    return f'{run_result["seconds"]}s'
+        return f"&gt;{run_result['seconds']}s (censored)"
+    return f"{run_result['seconds']}s"
 
 
 def render_html(document: Dict[str, Any], label: str) -> str:
@@ -179,7 +179,7 @@ def render_html(document: Dict[str, Any], label: str) -> str:
 table{{border-collapse:collapse;width:100%;font-size:.85rem}}th,td{{border:1px solid #e2e4e0;padding:.35rem .5rem;text-align:left}}
 th{{background:#ccfbf1;color:#0f766e}}td:first-child{{font-family:monospace}}h1{{font-size:1.4rem}}</style></head>
 <body><h1>Subquery aggregator scaling — {label}</h1>
-<p>Wall-clock per config at each parent-count scale (~20 children/parent). Timeout {document.get('timeout_s', 300)}s.</p>
+<p>Wall-clock per config at each parent-count scale (~20 children/parent). Timeout {document.get("timeout_s", 300)}s.</p>
 <table><tr><th>config</th>{head}</tr>
 {body}
 </table></body></html>

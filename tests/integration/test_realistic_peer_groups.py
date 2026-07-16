@@ -85,9 +85,9 @@ def test_peer_families_alive_on_real_data(food_db):
     for family in ("PEER_GROUP_SIZE(", "PEER_EVENT_RATE("):
         columns = feature_columns(rows, family)
         assert columns, f"no output column for peer family {family!r}"
-        assert any(
-            row[col] is not None for row in rows for col in columns
-        ), f"peer family {family!r} is all-NULL on real data"
+        assert any(row[col] is not None for row in rows for col in columns), (
+            f"peer family {family!r} is all-NULL on real data"
+        )
 
 
 @pytest.mark.slow

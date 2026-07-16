@@ -111,15 +111,15 @@ class TestRegistryPresence:
 
     def test_new_aggregations_registered(self):
         registered = set(list_aggregations())
-        assert (
-            self.NEW_AGGREGATION_NAMES <= registered
-        ), f"Missing: {self.NEW_AGGREGATION_NAMES - registered}"
+        assert self.NEW_AGGREGATION_NAMES <= registered, (
+            f"Missing: {self.NEW_AGGREGATION_NAMES - registered}"
+        )
 
     def test_new_transformers_registered(self):
         registered = set(list_transformations())
-        assert (
-            self.NEW_TRANSFORMER_NAMES <= registered
-        ), f"Missing: {self.NEW_TRANSFORMER_NAMES - registered}"
+        assert self.NEW_TRANSFORMER_NAMES <= registered, (
+            f"Missing: {self.NEW_TRANSFORMER_NAMES - registered}"
+        )
 
     def test_new_aggregations_in_DEFAULT_AGGREGATIONS(self):
         from featurizer.primitives.aggregations import DEFAULT_AGGREGATIONS

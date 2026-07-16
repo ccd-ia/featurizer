@@ -181,8 +181,7 @@ def values_equal(
     for i, (e, a) in enumerate(zip(expected, actual)):
         if e.keys() != a.keys():
             return False, (
-                f"row {i}: column set differs "
-                f"(expected {sorted(e)}, got {sorted(a)})"
+                f"row {i}: column set differs (expected {sorted(e)}, got {sorted(a)})"
             )
         for col in e:
             ev, av = e[col], a[col]

@@ -462,9 +462,9 @@ def test_default_active_set_is_fully_covered(pg_conn):
             # for a transformed feature). A column ending in ``(orders.amount)``
             # therefore proves the un-transformed (identity) feature flowed
             # through.
-            assert any(
-                c.endswith("(orders.amount)") for c in columns
-            ), "identity passthrough column not found"
+            assert any(c.endswith("(orders.amount)") for c in columns), (
+                "identity passthrough column not found"
+            )
             continue
         if _token_for(primitive) not in joined:
             missing.append(primitive)
