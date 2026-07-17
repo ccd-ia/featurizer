@@ -10,12 +10,15 @@ so the spine aggregates it like any other ``Variable``. See :mod:`.base` for the
 contract and the causal boundary (ADR-0001); the bridge is an orchestration-
 agnostic library (ADR-0003) — wire it upstream of the SQL run in Dagster/Snakemake.
 
-Four exemplars ship, one per modality:
+Shipped bridges by modality:
 
 - :class:`~featurizer.bridge.sequence.MarkovSurprisalBridge` — pure-Python Markov
   surprisal; the end-to-end reference (no optional deps).
 - :class:`~featurizer.bridge.text.TfidfTopicShareBridge` — fitted TF-IDF/SVD topic
   share (scikit-learn).
+- Text Path 1 reductions (:mod:`.nlp`): :class:`SentimentBridge`,
+  :class:`ReadabilityBridge`, :class:`LanguageIdBridge` (all dependency-free)
+  and :class:`NERCountsBridge` (spaCy, multi-column).
 - :class:`~featurizer.bridge.graph.PageRankBridge` — PageRank centrality
   (networkx).
 - :class:`~featurizer.bridge.embeddings.SentenceEmbeddingBridge` — sentence
@@ -25,17 +28,18 @@ The optional dependencies live in the ``[bridge]`` extra
 (``pip install 'featurizer[bridge]'``).
 
 Remaining heavy families ship as *documented abstract interfaces only* — each is
-a :class:`~featurizer.bridge.base.BridgeComputer` subclass implementing
-``compute(rows, *, fit_rows) -> {pk: φ}``, following the four exemplars above:
+a :class:`~featurizer.bridge.base.BridgeComputer` (or
+:class:`~featurizer.bridge.base.MultiColumnBridge`) subclass implementing
+``compute(rows, *, fit_rows)``, following the shipped bridges above:
 
-  Text/NLP      named-entity counts, POS/dependency stats, sentiment, toxicity,
-                language id, readability, keyphrase rates, coreference density.
-  Embeddings    document/user/image embeddings, drift vs a reference centroid,
-                novelty (1 - max cosine to history), cluster assignment, outlier
-                score, nearest-prototype distance.
-  Graph         betweenness / eigenvector / closeness centrality, community id
-                and modularity, k-core number, triangle count, label propagation,
-                temporal-motif counts, embedding (node2vec).
+  Text/NLP      POS/dependency stats, toxicity, keyphrase rates, coreference
+                density, LLM structured extraction.
+  Embeddings    drift vs a reference centroid, novelty (1 - max cosine to
+                history), cluster assignment, outlier score, nearest-prototype
+                distance.
+  Graph         SBM block membership / MDL surprise (graph-tool; deliberately
+                deferred — not pip-installable), temporal-motif counts,
+                embedding (node2vec).
   Sequence      HMM state posterior, change-point score, motif/n-gram surprisal,
                 edit distance to a prototype, survival/hazard estimates,
                 periodicity (FFT peak), trend (STL) components.
@@ -52,6 +56,12 @@ from __future__ import annotations
 from .base import BridgeComputer, MultiColumnBridge, assert_pre_t0
 from .embeddings import SentenceEmbeddingBridge
 from .graph import PageRankBridge
+from .nlp import (
+    LanguageIdBridge,
+    NERCountsBridge,
+    ReadabilityBridge,
+    SentimentBridge,
+)
 from .sequence import MarkovSurprisalBridge
 from .text import TfidfTopicShareBridge
 
@@ -61,6 +71,10 @@ __all__ = [
     "assert_pre_t0",
     "MarkovSurprisalBridge",
     "TfidfTopicShareBridge",
+    "SentimentBridge",
+    "ReadabilityBridge",
+    "LanguageIdBridge",
+    "NERCountsBridge",
     "PageRankBridge",
     "SentenceEmbeddingBridge",
 ]
