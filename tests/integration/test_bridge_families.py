@@ -218,7 +218,14 @@ def test_ner_counts_multicolumn_via_real_model(pg_conn):
         pg_conn,
         "docs",
         [("doc_id", "int"), ("owner_id", "int"), ("ts", "date"), ("body", "text")],
-        [(1, 1, date(2020, 1, 1), "Juan Pérez trabaja en Petróleos Mexicanos.")],
+        [
+            (
+                1,
+                1,
+                date(2020, 1, 1),
+                "Juan Pérez firmó un contrato con la empresa Pemex en Veracruz.",
+            )
+        ],
     )
     bridge = NERCountsBridge(pk_col="doc_id", text_col="body", language="es")
     bridge.materialize(
@@ -358,8 +365,12 @@ def test_graph_community_membership_materializes_per_node(pg_conn):
         "clique_edges",
         [("src", "text"), ("dst", "text")],
         [
-            ("a1", "a2"), ("a1", "a3"), ("a2", "a3"),
-            ("b1", "b2"), ("b1", "b3"), ("b2", "b3"),
+            ("a1", "a2"),
+            ("a1", "a3"),
+            ("a2", "a3"),
+            ("b1", "b2"),
+            ("b1", "b3"),
+            ("b2", "b3"),
             ("a3", "b1"),
         ],
     )
@@ -372,9 +383,7 @@ def test_graph_community_membership_materializes_per_node(pg_conn):
         node_col="node_id",
     )
     assert (
-        expect_sql(
-            pg_conn, "select count(distinct community_id) from bridge_community"
-        )
+        expect_sql(pg_conn, "select count(distinct community_id) from bridge_community")
         == 2
     )
     same_clique = expect_sql(

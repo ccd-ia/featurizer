@@ -64,14 +64,19 @@ in SQL so leakage can't creep in. See the
 ### Why aren't peer-group, spatial, or φ-bridge features in the primitives list?
 
 Because they aren't registry primitives — they're **planner passes** driven by
-their own config blocks (`peer_groups`, `spatial_relationships`, and the
-`featurizer/bridge/` companion). Aggregations and transformers apply uniformly
-across the entity graph; these families need cross-entity or second-table
-context the registry model doesn't express, so they're deliberately separate.
-The [primitives reference](/featurizer/reference/primitives/) covers everything
+their own config blocks (`peer_groups`, `spatial_relationships`, the native
+1-hop `graph_relationships` pass added in 0.9.0) or **φ-bridge families** (the
+`featurizer/bridge/` companion: sentiment, NER counts, readability, language
+id, multi-metric centralities, Louvain community, embeddings, Markov
+surprisal). Aggregations and transformers apply uniformly across the entity
+graph; these families need cross-entity, second-table, or heavy-Python context
+the registry model doesn't express, so they're deliberately separate. The
+[primitives reference](/featurizer/reference/primitives/) covers everything
 that *is* a registry primitive; the
 [primitives explorer](/featurizer/explorables/primitives.html) lets you filter
-and search them.
+and search them; the
+[bridge cookbook](/featurizer/engineering/bridge-cookbook/) shows how to wire
+and extend the bridge families.
 
 ## Common errors & limits
 

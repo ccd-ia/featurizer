@@ -70,6 +70,8 @@ different features:
 - =[safe ●●○]= *Local clustering coefficient.*
 - =[care ●●●]= *Centralities* — betweenness, eigenvector, PageRank, Katz,
   harmonic, closeness. =[care]= for non-locality, not for any two-sided window.
+  =shipped 0.9.0= as ~CentralityBridge~ (cheap tier default, heavy opt-in,
+  per-window snapshot rebuild); PageRank since 0.6.
 - =[safe ●●○]= *Core number / k-truss membership* (coreness).
 - =[safe ●●○]= *Structural holes* — Burt's constraint, effective size,
   brokerage roles.
@@ -81,8 +83,11 @@ different features:
 - =[care ●●○]= *k-hop neighbour feature aggregates* — mean / share of a property
   over 1-hop, 2-hop neighbours. k-hop aggregation is the manual form of a
   k-layer GNN. 2-hop aggregates leak neighbours' /future/ labels — the canonical
-  temporal-GNN failure.
-- =[care ●●○]= *Peer rate* — peer churn, flagged-neighbour share. *[GAP]*
+  temporal-GNN failure. =shipped 0.9.0= for 1-hop as the native
+  ~graph_relationships~ planner stage (double as-of bound; 2-hop deliberately
+  not offered).
+- =[care ●●○]= *Peer rate* — flagged-neighbour share =shipped 0.9.0= (native
+  ~neighbour_share~); peer churn *[GAP]*
 - =[safe ●●○]= *Network autocorrelation* — Moran's I on the graph (label
   homophily). *[GAP]*
 
@@ -95,6 +100,8 @@ different features:
 
 *** Community / block (SBM)
 - =[care ●●●]= *Modularity community* — Louvain / Leiden membership.
+  =shipped 0.9.0= as ~CommunityBridge~ (Louvain membership + modularity;
+  SBM stays deferred — graph-tool is not pip-installable).
 - =[safe ●●●]= *Nested-SBM block assignment* (graph-tool) — block ID as a
   categorical feature.
 - =[safe ●●●]= *Block-membership posterior entropy* — assignment uncertainty.
@@ -169,12 +176,19 @@ Collapse each document to scalars per event; then every window family applies.
 The most interpretable and most causal-safe path.
 
 - =[safe ●○○]= *Surface / lexical* — length, type-token ratio, readability
-  (Flesch), caps / punctuation ratios, OOV rate, language ID.
+  (Flesch), caps / punctuation ratios, OOV rate, language ID. =shipped 0.9.0=
+  for readability (Fernández-Huerta / Flesch, ~ReadabilityBridge~) and
+  language ID (~LanguageIdBridge~, categorical); counts/ratios were already
+  SQL-native transformers.
 - =[safe ●○○]= *Dictionary scores* — sentiment (valence / arousal), LIWC
   categories (anger, certainty, hedging), toxicity, urgency, formality.
+  =shipped 0.9.0= for sentiment valence (~SentimentBridge~, Spanish-register
+  default, pluggable lexicon); LIWC / toxicity remain open.
 - =[care ●●○]= *Topic vector* — LDA / NMF topic shares per document.
 - =[safe ●●○]= *NER counts + entity linking* — persons / orgs / locations /
-  money / dates; link to a KB.
+  money / dates; link to a KB. =shipped 0.9.0= for the counts
+  (~NERCountsBridge~, one spaCy parse → five columns, multilingual default);
+  entity linking remains open.
 - =[care ●●○]= *Intent / category label* — classifier output per event
   (complaint vs query; violation-type from notes).
 - =[safe ●●○]= *Then temporal (reuse the spine)* — sentiment slope (trajectory),
@@ -236,6 +250,12 @@ Documents create edges, which then feed every network family above.
 - Net new GAP families introduced here: peer / network-autocorrelation
   aggregation, SBM posterior-entropy & MDL-surprise, temporal global dynamics,
   and the entire text substrate. All re-enter the same spine after φ.
+- Status as of 0.9.0: Path 1's core reductions (sentiment, NER counts,
+  readability, language id), the multi-metric centralities, Louvain
+  community, and the native 1-hop neighbour aggregation are shipped (see the
+  =shipped 0.9.0= markers above). Remaining GAPs: peer churn, Moran's I, SBM
+  entropy / MDL surprise, community persistence, global temporal dynamics;
+  trajectory / change-point / text-induced edges are the 0.9.1 line.
 
 #  Local Variables:
 #  org-image-actual-width: 1100

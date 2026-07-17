@@ -67,6 +67,7 @@ export default defineConfig({
 					label: 'Engineering',
 					items: [
 						{ label: 'Performance internals', slug: 'engineering/internals' },
+						{ label: 'Bridge cookbook', slug: 'engineering/bridge-cookbook' },
 						{ label: 'Architecture decisions', slug: 'engineering/adr' },
 						{ label: 'Changelog', slug: 'engineering/changelog' },
 					],

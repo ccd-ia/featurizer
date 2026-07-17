@@ -144,3 +144,5 @@ src/content/docs/reference/primitives.md
 # engineering/: adr/ + changelog.md are generated (ingested); internals.md is authored
 src/content/docs/engineering/adr/
 src/content/docs/engineering/changelog.md
+COMPACT.md
+COMPACT-archive-*.md

@@ -6,7 +6,66 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-17
+
+The text/graph feature-family release (plan:
+`specs/incorporating-text-graph-feature-families.html`): the taxonomy's
+`[GAP]` substrates become shipped φ-bridge families, enabled by an additive
+bridge-contract extension (ADR-0014), plus one deliberate engine addition —
+the native 1-hop `graph_relationships` planner pass. Trajectory / sequence /
+text-induced-edge families are the 0.9.1 line.
+
 ### Added
+
+- **Bridge contract extensions (ADR-0014, all additive)** — `MultiColumnBridge`
+  (`compute() → {pk: {col: val}}`: one expensive pass emits N declared value
+  columns, with per-column variable types incl. categorical);
+  **temporal snapshot sequences** (`compute_snapshots` /
+  `materialize_snapshots`: rebuild the model per as-of window on the pre-t₀
+  slice, asserted per window, output keyed `(entity, as_of_date)` as an
+  ordinary event stream — O(windows × build) by design); `materialize_nodes`
+  (per-entity output for bridges whose compute keys by node); `persist=`
+  (real table for orchestrated assets vs the default session-temporary);
+  and `model_vintage` + `assert_model_vintage` (pretrained-model training
+  cutoff as declarable, assertable metadata — `assert_pre_t0` guards fitted
+  models only). The single-column contract is regression-proven byte-identical.
+- **Text Path-1 bridges** (`featurizer/bridge/nlp.py`, multilingual by
+  default — Spanish register, never silent English): `SentimentBridge`
+  (lexicon valence, built-in es/en/xx starter lexicons, pluggable `lexicon=`),
+  `ReadabilityBridge` (Fernández-Huerta / Flesch), `LanguageIdBridge`
+  (stopword-profile detection, categorical output) — all three
+  dependency-free — and `NERCountsBridge` (one spaCy parse → persons / orgs /
+  locations / money / dates via the multi-column contract; carries
+  `model_vintage`).
+- **Graph bridges**: `CentralityBridge` (one networkx build → degree / in /
+  out / weighted, coreness, clustering by default; betweenness, eigenvector,
+  closeness **opt-in** via `include_heavy=` so configs never get silently
+  slower; snapshot-aware) and `CommunityBridge` (Louvain membership as a
+  categorical column + modularity; SBM/MDL-surprise deferred — graph-tool is
+  not pip-installable).
+- **Native 1-hop graph pass** (the one engine change): a top-level
+  `graph_relationships` config block — edge table with required `timestamp`,
+  optional neighbour-state entity, `measures` / `shares` defaults from
+  declared variable types — generating `DEGREE(<name>)` (+ one windowed
+  variant per configured interval) and `NEIGHBOUR_MEAN` / `NEIGHBOUR_SHARE`
+  columns in pure SQL, bounded by **both** the edge timestamp and the
+  neighbour state's `temporal_ix`. Strictly 1-hop: 2-hop aggregation (the
+  canonical temporal-GNN leakage) is not offered, and validation says why.
+  Validation quality matches the spatial block (required keys, entity refs,
+  family/column typo suggestions).
+- Docs: **bridge cookbook** page (worked example per modality, the native
+  alternative, dependency matrix), ADR-0014 in the themed index, `[GAP]` →
+  `shipped 0.9.0` markers in the taxonomy doc, FAQ answer updated.
+- Deps: `spacy` and `python-louvain` join the `[bridge]` extra (spaCy models
+  remain separate downloads); `networkx` + `python-louvain` join the dev
+  group so the hand-computed graph tests execute under plain `uv sync`.
+- Tests: 60 new DB-free (contract shapes, hand-computed NLP and graph
+  values, SQL-shape guards for the native pass) and 10 new live-PG
+  integration tests (materialize → spine handoff per family, snapshot stream
+  through the spine, planted future edge *and* future neighbour state both
+  excluded).
+
+### Added — docs hub (shipped to master between 0.8.0 and this release)
 
 - **The docs site is now a full documentation hub on Astro Starlight**
   (aligned with triage's docs stack; plan: `specs/github-pages-docs-hub.html`):

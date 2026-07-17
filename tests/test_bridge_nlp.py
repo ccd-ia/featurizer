@@ -239,8 +239,15 @@ def test_ner_real_model_smoke_when_available():
         pytest.skip("es_core_news_sm not downloaded")
     bridge = NERCountsBridge(pk_col="id", text_col="body", language="es")
     phi = bridge.compute(
-        [{"id": 1, "body": "Juan Pérez trabaja en Petróleos Mexicanos."}],
+        [
+            {
+                "id": 1,
+                "body": "Juan Pérez firmó un contrato con la empresa Pemex "
+                "en Veracruz.",
+            }
+        ],
         fit_rows=[],
     )
     assert phi[1]["persons"] >= 1.0
     assert phi[1]["orgs"] >= 1.0
+    assert phi[1]["locations"] >= 1.0
