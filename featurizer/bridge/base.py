@@ -202,6 +202,55 @@ class BridgeComputer(ABC):
             )
         return output_table
 
+    def materialize_nodes(
+        self,
+        conn: Any,
+        *,
+        source_table: str,
+        output_table: str,
+        content_cols: Sequence[str],
+        node_col: str = "node_id",
+        causal_col: Optional[str] = None,
+        fit_before: Any = None,
+        persist: bool = False,
+    ) -> str:
+        """Materialize a per-*entity* φ (one row per compute key, not per source
+        row): read ``content_cols`` from ``source_table`` (an edge stream for
+        the graph bridges), fit on the pre-``fit_before`` slice, and write
+        ``output_table`` = (node_col, value column(s)). The SQL spine joins it
+        to the node entity on ``node_col``. Single-snapshot fast path — for a
+        backtest cohort use :meth:`materialize_snapshots` (non-local φ must be
+        rebuilt per window).
+        """
+        select_cols = list(content_cols)
+        if causal_col and causal_col not in select_cols:
+            select_cols.append(causal_col)
+        rows = self._load_rows(conn, source_table, select_cols)
+        fit_rows = self._fit_slice(rows, causal_col, fit_before)
+        values = self.compute(rows, fit_rows=fit_rows)
+
+        node_type = self._value_sql_type(list(values.keys()))
+        value_ddl = ", ".join(
+            f"{col} {typ}"
+            for col, typ in zip(self._value_columns(), self._value_ddl_types(values))
+        )
+        n_values = len(self._value_columns())
+        with conn.cursor() as cur:
+            cur.execute(
+                self._create_table_sql(
+                    output_table, f"{node_col} {node_type}, {value_ddl}", persist
+                )
+            )
+            placeholders = ", ".join(["%s"] * (1 + n_values))
+            payload = [
+                (node,) + self._value_tuple(val)
+                for node, val in sorted(values.items(), key=lambda kv: str(kv[0]))
+            ]
+            cur.executemany(
+                f"insert into {output_table} values ({placeholders})", payload
+            )
+        return output_table
+
     # ---- temporal snapshot sequences (ADR-0014) ------------------------ #
 
     def compute_snapshots(

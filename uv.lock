@@ -935,9 +935,12 @@ viz = [
 dev = [
     { name = "basedpyright" },
     { name = "jupyter-console" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyarrow" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-louvain" },
 ]
 docs = [
     { name = "nbconvert" },
@@ -973,9 +976,11 @@ provides-extras = ["viz", "bridge", "parquet"]
 dev = [
     { name = "basedpyright", specifier = ">=1.31.7" },
     { name = "jupyter-console", specifier = ">=6.6.3" },
+    { name = "networkx", specifier = ">=3" },
     { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "python-louvain", specifier = ">=0.16" },
 ]
 docs = [
     { name = "nbconvert", specifier = ">=7.16" },

@@ -21,6 +21,11 @@ Shipped bridges by modality:
   and :class:`NERCountsBridge` (spaCy, multi-column).
 - :class:`~featurizer.bridge.graph.PageRankBridge` — PageRank centrality
   (networkx).
+- :class:`~featurizer.bridge.centrality.CentralityBridge` — multi-metric
+  centrality profile, cheap tier default / heavy opt-in, snapshot-aware
+  (networkx).
+- :class:`~featurizer.bridge.community.CommunityBridge` — Louvain membership
+  (categorical) + modularity (python-louvain).
 - :class:`~featurizer.bridge.embeddings.SentenceEmbeddingBridge` — sentence
   embeddings → pgvector (sentence-transformers + the pgvector extension).
 
@@ -54,6 +59,8 @@ materialized column.
 from __future__ import annotations
 
 from .base import BridgeComputer, MultiColumnBridge, assert_pre_t0
+from .centrality import CentralityBridge
+from .community import CommunityBridge
 from .embeddings import SentenceEmbeddingBridge
 from .graph import PageRankBridge
 from .nlp import (
@@ -76,5 +83,7 @@ __all__ = [
     "LanguageIdBridge",
     "NERCountsBridge",
     "PageRankBridge",
+    "CentralityBridge",
+    "CommunityBridge",
     "SentenceEmbeddingBridge",
 ]

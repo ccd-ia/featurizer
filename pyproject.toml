@@ -88,6 +88,13 @@ dev = [
     # Keeping it in the dev group means `uv sync` type-checks clean without the
     # runtime extra; end users still gate Arrow features behind featurizer[parquet].
     "pyarrow>=24.0.0",
+    # networkx + python-louvain are RUNTIME-optional ([bridge] extra), but they
+    # are lightweight and the graph-bridge tests (test_bridge_graph.py) execute
+    # real centralities/partitions — dev-group presence means those tests run
+    # (not skip) under plain `uv sync`, locally and in CI. The heavy bridge
+    # deps (torch via sentence-transformers, spaCy) stay extra-only.
+    "networkx>=3",
+    "python-louvain>=0.16",
     "pytest>=8.2",
     "pytest-cov>=7.0.0",
 ]
