@@ -49,7 +49,7 @@ materialized column.
 
 from __future__ import annotations
 
-from .base import BridgeComputer, assert_pre_t0
+from .base import BridgeComputer, MultiColumnBridge, assert_pre_t0
 from .embeddings import SentenceEmbeddingBridge
 from .graph import PageRankBridge
 from .sequence import MarkovSurprisalBridge
@@ -57,6 +57,7 @@ from .text import TfidfTopicShareBridge
 
 __all__ = [
     "BridgeComputer",
+    "MultiColumnBridge",
     "assert_pre_t0",
     "MarkovSurprisalBridge",
     "TfidfTopicShareBridge",

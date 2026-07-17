@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Incorporating the Text &amp; Graph Feature Families</title>
+<style>
+:root{
+  --bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;
+  --accent:#0f766e;--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;
+  --border:#e2e4e0;--code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#15181e;--surface:#1e232b;--fg:#e7eaf0;--muted:#98a1af;
+  --accent:#2dd4bf;--accent-soft:#134e4a;--accent-2:#f5b45e;--accent-2-soft:#4a3008;
+  --border:#333a45;--code-bg:#262c36}
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;margin:0;padding:1.2rem}
+main{max-width:900px;margin:0 auto}
+h1{font-size:1.5rem;margin:.2rem 0 .6rem;line-height:1.2}
+h2{font-size:1.15rem;margin:1.8rem 0 .5rem;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:.25rem}
+h3{font-size:1rem;margin:1.2rem 0 .35rem}
+h4{font-size:.9rem;margin:.9rem 0 .3rem;color:var(--accent-2)}
+p,li{font-size:.88rem}
+.muted{color:var(--muted)}
+code{font-family:var(--mono);font-size:.82em;background:var(--code-bg);padding:.05em .35em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;overflow-x:auto;font-family:var(--mono);font-size:.76rem;line-height:1.45}
+pre code{background:none;padding:0}
+a{color:var(--accent)}
+header .meta{margin:.4rem 0 0}
+.meta summary{cursor:pointer;font-size:.78rem;color:var(--muted);font-weight:700}
+.meta dl{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .8rem;font-size:.76rem;margin:.5rem 0 0;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem}
+.meta dt{color:var(--muted);font-weight:700}
+.meta dd{margin:0;font-family:var(--mono);word-break:break-word}
+figure{margin:1rem 0;text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{font-size:.75rem;color:var(--muted);margin-top:.4rem}
+.tag{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.08rem .4rem;border-radius:999px}
+.tag.existing{background:var(--code-bg);color:var(--muted)}
+.tag.new{background:var(--accent-soft);color:var(--accent)}
+.files ul{list-style:none;padding-left:0}
+.files li{margin:.3rem 0}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.6rem 1rem 1rem;margin:1rem 0}
+.status{background:var(--accent-2-soft);color:var(--accent-2);font-weight:700}
+.checklist{list-style:none;padding-left:.2rem}
+.checklist li{margin:.28rem 0;padding-left:.2rem}
+.loop{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:6px;padding:.5rem .75rem;margin:.6rem 0;font-size:.8rem}
+.pill{display:inline-block;font-size:.66rem;font-weight:700;border-radius:999px;padding:.1rem .45rem;margin-left:.35rem}
+.pill.safe{background:var(--accent-soft);color:var(--accent)}
+.pill.care{background:var(--accent-2-soft);color:var(--accent-2)}
+#questionables details,#amendments details{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:.55rem .8rem;margin:.5rem 0}
+#questionables summary,#amendments summary{cursor:pointer;font-weight:700;font-size:.85rem}
+.qa-answer{margin:.5rem 0 0}
+table{border-collapse:collapse;width:100%;font-size:.8rem;margin:.6rem 0}
+th,td{border:1px solid var(--border);padding:.35rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent)}
+/* SVG palette — resolves the page CSS vars so diagrams are theme-aware */
+svg text{fill:var(--fg);font-family:var(--sans)}
+svg .lbl{fill:var(--muted)}
+svg .box{fill:var(--surface);stroke:var(--border);stroke-width:1.5}
+svg .accent-box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+svg .amber-box{fill:var(--accent-2-soft);stroke:var(--accent-2);stroke-width:1.5}
+svg .muted-box{fill:var(--code-bg);stroke:var(--border);stroke-width:1.5;stroke-dasharray:4 3}
+svg .edge{stroke:var(--muted);fill:none;stroke-width:1.5}
+svg .edge-accent{stroke:var(--accent);fill:none;stroke-width:2}
+svg .fill-accent{fill:var(--accent)}
+svg .fill-muted{fill:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: Incorporating the Text &amp; Graph Feature Families</h1>
+    <p class="muted">Turning the <code>[GAP]</code> substrates of the temporal feature taxonomy into shipped
+    φ-bridge families — the 0.9.0 feature line.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-16T15:06-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-16T15:06-06:00, 2026-07-16T15:21-06:00</dd>
+        <dt>commits</dt>      <dd>(pending — planning only)</dd>
+        <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
+        <dt>session id</dt>   <dd>ee7ddd4f-c10a-4a61-9913-d795ee2b732b</dd>
+        <dt>back refs</dt>    <dd>docs/text-network-features/temporal-features-network-text.org, featurizer/bridge/ (ADR-0001, ADR-0003)</dd>
+        <dt>forward refs</dt> <dd>docs/adr/0014-multi-column-bridge-and-temporal-snapshots.md (to write), CHANGELOG.md 0.9.0</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 860 190" role="img" aria-label="Scalar, graph, and text columns each pass through a heavy phi, then re-enter one shared temporal spine.">
+      <text x="430" y="22" text-anchor="middle" font-weight="700" font-size="15">One spine · three substrates</text>
+      <!-- three inputs -->
+      <rect class="box" x="20" y="50" width="130" height="30" rx="6"/><text x="85" y="70" text-anchor="middle" font-size="12">scalar column</text>
+      <rect class="box" x="20" y="90" width="130" height="30" rx="6"/><text x="85" y="110" text-anchor="middle" font-size="12">graph position</text>
+      <rect class="box" x="20" y="130" width="130" height="30" rx="6"/><text x="85" y="150" text-anchor="middle" font-size="12">text document</text>
+      <!-- phi -->
+      <path class="edge" d="M150 65 H240"/><path class="edge" d="M150 105 H240"/><path class="edge" d="M150 145 H240"/>
+      <circle class="accent-box" cx="290" cy="105" r="42"/><text x="290" y="100" text-anchor="middle" font-size="20" font-weight="700">φ</text>
+      <text x="290" y="122" text-anchor="middle" class="lbl" font-size="10">heavy transform</text>
+      <!-- materialize -->
+      <path class="edge-accent" d="M332 105 H430" marker-end="url(#ah)"/>
+      <rect class="muted-box" x="432" y="86" width="150" height="38" rx="6"/><text x="507" y="103" text-anchor="middle" font-size="11">materialized column</text><text x="507" y="117" text-anchor="middle" class="lbl" font-size="9">back into PostgreSQL</text>
+      <!-- spine -->
+      <path class="edge-accent" d="M582 105 H650" marker-end="url(#ah)"/>
+      <rect class="accent-box" x="652" y="70" width="186" height="70" rx="8"/>
+      <text x="745" y="98" text-anchor="middle" font-size="12" font-weight="700">temporal spine</text>
+      <text x="745" y="116" text-anchor="middle" class="lbl" font-size="10">window · aggregate · as-of</text>
+      <text x="745" y="130" text-anchor="middle" class="lbl" font-size="10">causal bound (unchanged)</text>
+      <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="fill-accent"/></marker></defs>
+    </svg>
+    <figcaption>Only φ changes per substrate; after materialization every family re-enters the same point-in-time-correct spine.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Implement the missing <strong>text (substrate E)</strong> and <strong>graph (substrate C)</strong>
+    feature families described in <code>docs/text-network-features/temporal-features-network-text.org</code>,
+    delivering them as real, tested φ-bridge computers (not just documented interfaces) while preserving the
+    point-in-time causal boundary (ADR-0001), keeping heavy dependencies behind the <code>[bridge]</code>
+    extra, and requiring <em>no change to the SQL engine</em> — the spine keeps aggregating materialized
+    columns exactly as today. This is the <strong>0.9.0</strong> feature line.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The taxonomy doc is a rich roadmap, but the code ships only <strong>four exemplars</strong> — one per
+    modality (<code>PageRankBridge</code>, <code>TfidfTopicShareBridge</code>, <code>SentenceEmbeddingBridge</code>,
+    <code>MarkovSurprisalBridge</code>). Everything else — graph centralities / community / SBM / temporal motifs,
+    text NER / sentiment / toxicity / readability / LLM-extraction, embedding drift / novelty — exists only as an
+    abstract-interface list in <code>featurizer/bridge/__init__.py:27-47</code>. Worse, two structural limits in
+    the current <code>BridgeComputer</code> contract block whole families before we even start:</p>
+    <ul>
+      <li><strong>Single φ per bridge.</strong> <code>compute() → {pk: scalar|vector}</code>. Multi-metric
+      families (NER counts per entity type; a node's degree + betweenness + coreness from one graph build) would
+      need one bridge — and one full pass — <em>per metric</em>.</li>
+      <li><strong>Single graph snapshot.</strong> <code>PageRankBridge</code> fits one graph at one
+      <code>fit_before</code>. But centrality is <em>non-local</em> — one future edge changes it — so a cohort with
+      many as-of dates needs the graph rebuilt <em>per window</em>. There is no snapshot-sequence mechanism.</li>
+    </ul>
+    <figure>
+      <svg viewBox="0 0 860 210" role="img" aria-label="A taxonomy grid where four cells are shipped and most cells are gaps.">
+        <text x="430" y="22" text-anchor="middle" font-weight="700" font-size="14">Taxonomy today: 4 shipped, most [GAP]</text>
+        <!-- legend -->
+        <rect class="accent-box" x="300" y="34" width="14" height="14" rx="3"/><text x="320" y="46" font-size="11">shipped exemplar</text>
+        <rect class="muted-box" x="470" y="34" width="14" height="14" rx="3"/><text x="490" y="46" font-size="11">[GAP] — this plan</text>
+        <!-- rows: Graph, Text, Embedding, Sequence -->
+        <g font-size="10">
+          <text x="20" y="82" font-weight="700">Graph</text>
+          <rect class="accent-box" x="90" y="70" width="90" height="26" rx="4"/><text x="135" y="87" text-anchor="middle">pagerank</text>
+          <rect class="muted-box" x="188" y="70" width="90" height="26" rx="4"/><text x="233" y="87" text-anchor="middle">betweenness</text>
+          <rect class="muted-box" x="286" y="70" width="90" height="26" rx="4"/><text x="331" y="87" text-anchor="middle">coreness</text>
+          <rect class="muted-box" x="384" y="70" width="90" height="26" rx="4"/><text x="429" y="87" text-anchor="middle">community</text>
+          <rect class="muted-box" x="482" y="70" width="90" height="26" rx="4"/><text x="527" y="87" text-anchor="middle">SBM surprise</text>
+          <rect class="muted-box" x="580" y="70" width="110" height="26" rx="4"/><text x="635" y="87" text-anchor="middle">temporal motif</text>
+
+          <text x="20" y="122" font-weight="700">Text</text>
+          <rect class="accent-box" x="90" y="110" width="90" height="26" rx="4"/><text x="135" y="127" text-anchor="middle">tfidf topic</text>
+          <rect class="muted-box" x="188" y="110" width="90" height="26" rx="4"/><text x="233" y="127" text-anchor="middle">sentiment</text>
+          <rect class="muted-box" x="286" y="110" width="90" height="26" rx="4"/><text x="331" y="127" text-anchor="middle">NER counts</text>
+          <rect class="muted-box" x="384" y="110" width="90" height="26" rx="4"/><text x="429" y="127" text-anchor="middle">readability</text>
+          <rect class="muted-box" x="482" y="110" width="90" height="26" rx="4"/><text x="527" y="127" text-anchor="middle">toxicity</text>
+          <rect class="muted-box" x="580" y="110" width="110" height="26" rx="4"/><text x="635" y="127" text-anchor="middle">near-dup edges</text>
+
+          <text x="20" y="162" font-weight="700">Embed</text>
+          <rect class="accent-box" x="90" y="150" width="90" height="26" rx="4"/><text x="135" y="167" text-anchor="middle">sentence emb</text>
+          <rect class="muted-box" x="188" y="150" width="90" height="26" rx="4"/><text x="233" y="167" text-anchor="middle">novelty</text>
+          <rect class="muted-box" x="286" y="150" width="90" height="26" rx="4"/><text x="331" y="167" text-anchor="middle">drift</text>
+          <rect class="muted-box" x="384" y="150" width="90" height="26" rx="4"/><text x="429" y="167" text-anchor="middle">volatility</text>
+
+          <text x="20" y="197" font-weight="700">Seq</text>
+          <rect class="accent-box" x="90" y="185" width="90" height="26" rx="4"/><text x="135" y="202" text-anchor="middle">markov surp</text>
+          <rect class="muted-box" x="188" y="185" width="90" height="26" rx="4"/><text x="233" y="202" text-anchor="middle">change-point</text>
+          <rect class="muted-box" x="286" y="185" width="90" height="26" rx="4"/><text x="331" y="202" text-anchor="middle">periodicity</text>
+        </g>
+      </svg>
+      <figcaption>Four accent cells ship today; the dashed cells are the families this plan implements.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Do <strong>not</strong> touch the SQL engine and do <strong>not</strong> write a second feature framework.
+    Instead: (1) extend the <code>BridgeComputer</code> contract minimally to remove the two structural limits,
+    then (2) fill the high-value families per modality by subclassing it, exactly following the four exemplars.
+    Every new family fits the same causal-guarded <em>compute → materialize → emit_yaml</em> lifecycle, so the
+    spine consumes the results unchanged. Heavy deps stay behind <code>[bridge]</code> (and one very heavy path
+    behind a separate extra). The contract extension is a hard-to-reverse public decision, so it earns
+    <strong>ADR-0014</strong>.</p>
+    <figure>
+      <svg viewBox="0 0 860 210" role="img" aria-label="The extended bridge base gains multi-column output, a temporal snapshot loop, and persistent materialization, which unlock the per-modality families.">
+        <text x="430" y="22" text-anchor="middle" font-weight="700" font-size="14">Extend the harness once → fill by pattern</text>
+        <!-- base -->
+        <rect class="accent-box" x="40" y="60" width="200" height="110" rx="10"/>
+        <text x="140" y="84" text-anchor="middle" font-size="12" font-weight="700">BridgeComputer (base)</text>
+        <text x="140" y="106" text-anchor="middle" class="lbl" font-size="10">+ multi-column output</text>
+        <text x="140" y="122" text-anchor="middle" class="lbl" font-size="10">+ temporal snapshot loop</text>
+        <text x="140" y="138" text-anchor="middle" class="lbl" font-size="10">+ persistent materialize</text>
+        <text x="140" y="158" text-anchor="middle" class="lbl" font-size="10">assert_pre_t0 (unchanged)</text>
+        <!-- arrows to families -->
+        <path class="edge-accent" d="M240 90 H330" marker-end="url(#ah2)"/>
+        <path class="edge-accent" d="M240 115 H330" marker-end="url(#ah2)"/>
+        <path class="edge-accent" d="M240 140 H330" marker-end="url(#ah2)"/>
+        <g font-size="11">
+          <rect class="box" x="332" y="60" width="220" height="30" rx="6"/><text x="442" y="79" text-anchor="middle">NLP: sentiment · NER · readability</text>
+          <rect class="box" x="332" y="100" width="220" height="30" rx="6"/><text x="442" y="119" text-anchor="middle">Graph: centralities · community</text>
+          <rect class="box" x="332" y="140" width="220" height="30" rx="6"/><text x="442" y="159" text-anchor="middle">Trajectory · change-point · edges</text>
+        </g>
+        <!-- spine -->
+        <path class="edge-accent" d="M552 115 H640" marker-end="url(#ah2)"/>
+        <rect class="accent-box" x="642" y="90" width="180" height="50" rx="8"/><text x="732" y="112" text-anchor="middle" font-size="12" font-weight="700">SQL spine</text>
+        <text x="732" y="128" text-anchor="middle" class="lbl" font-size="10">unchanged</text>
+        <defs><marker id="ah2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="fill-accent"/></marker></defs>
+      </svg>
+      <figcaption>One contract extension unblocks every remaining family; the engine and the exemplar pattern stay put.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/bridge/base.py</code> — the <code>BridgeComputer</code> ABC + <code>assert_pre_t0</code>; extend with multi-column output, a snapshot-sequence helper, and a persist option.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/bridge/graph.py</code> — <code>PageRankBridge</code>; the per-node template the new centrality/community bridges build on.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/bridge/text.py</code> — <code>TfidfTopicShareBridge</code>; per-document template for the NLP bridges.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/bridge/embeddings.py</code> / <code>sequence.py</code> — templates for trajectory and change-point families.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/bridge/__init__.py</code> — exports + the "abstract interfaces only" list (lines 27-47); flip entries to real exports as they land.</li>
+      <li><span class="tag existing">existing</span> <code>pyproject.toml</code> — the <code>[bridge]</code> extra (sklearn, networkx, sentence-transformers, pgvector); add the new heavy deps.</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_bridge.py</code> (DB-free) + <code>tests/integration/test_bridge.py</code> (DB materialize) — the two-tier test pattern to mirror.</li>
+      <li><span class="tag existing">existing</span> <code>docs/text-network-features/temporal-features-network-text.org</code> — the taxonomy; flip <code>[GAP]</code> markers to shipped as families land.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> + <code>featurizer/validation.py</code> — the engine; Phase 4's native 1-hop pass adds a <code>graph_relationships</code> block + generated as-of SQL here (modeled on the existing <code>peer_groups</code> / <code>spatial_relationships</code> passes).</li>
+      <li><span class="tag existing">existing</span> <code>site/gen.py</code> ADR_THEMES + <code>CHANGELOG.md</code> — docs generation and the release ledger.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/nlp.py</code> — <code>SentimentBridge</code>, <code>NERCountsBridge</code> (multi-column), <code>ReadabilityBridge</code>, <code>LanguageIdBridge</code>.</li>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/centrality.py</code> — <code>CentralityBridge</code> (multi-column: degree/betweenness/eigenvector/closeness/coreness/clustering from one graph build), temporal-snapshot aware.</li>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/community.py</code> — <code>CommunityBridge</code> (Louvain/Leiden membership + modularity; pip-installable).</li>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/trajectory.py</code> — <code>EmbeddingTrajectoryBridge</code> (novelty / drift / volatility from per-event embeddings).</li>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/changepoint.py</code> — <code>ChangePointBridge</code>, <code>PeriodicityBridge</code> (FFT peak), sequence extensions.</li>
+      <li><span class="tag new">new</span> <code>featurizer/bridge/edges.py</code> — <code>NearDuplicateEdgeBridge</code> (MinHash/LSH), <code>CoMentionEdgeBridge</code> — emit an edge table that feeds the graph bridges (Path 2).</li>
+      <li><span class="tag new">new</span> <code>docs/adr/0014-multi-column-bridge-and-temporal-snapshots.md</code> — records the contract extension + temporal-graph decision.</li>
+      <li><span class="tag new">new</span> <code>src/content/docs/engineering/bridge-cookbook.md</code> — docs-hub page: how to wire and extend bridges, one worked example per modality.</li>
+      <li><span class="tag new">new</span> <code>tests/test_bridge_nlp.py</code>, <code>test_bridge_graph.py</code>, <code>test_bridge_trajectory.py</code> (DB-free compute) + <code>tests/integration/test_bridge_families.py</code> (materialize).</li>
+      <li><span class="tag new">new</span> <code>tests/test_graph_neighbour_pass.py</code> (DB-free SQL-shape) + <code>tests/integration/test_graph_neighbour_pass.py</code> (as-of leakage exclusion) — the native Phase-4 pass.</li>
+      <li><span class="tag new">new</span> <code>examples/06-graph-text-bridge/</code> — optional end-to-end example (text → edges → centrality → spine).</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+    <p class="muted"><strong>0.9.0 cut line</strong> (decided): Phases 1–4 — harness + text + graph bridges + the
+    native cheap-graph SQL pass — plus the ADR/docs/release steps of Phase 6. Phase 5 (trajectory / sequence /
+    text-induced-edge families) ships as <strong>0.9.1</strong>. See the resolved Questionables for the decisions
+    folded into each phase.</p>
+
+    <!-- ===== PHASE 1 ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Bridge harness extensions (the enablers)</h3>
+      <p>Remove the two structural limits before adding families. All additive — the current single-column,
+      single-snapshot path keeps working. This is the phase that earns ADR-0014.</p>
+      <figure>
+        <svg viewBox="0 0 820 180" role="img" aria-label="compute returns a dict of columns per key, materialize writes N columns, emit_yaml declares N variables.">
+          <text x="410" y="20" text-anchor="middle" font-weight="700" font-size="13">Multi-column output contract</text>
+          <rect class="muted-box" x="30" y="45" width="180" height="90" rx="8"/>
+          <text x="120" y="66" text-anchor="middle" font-size="11" font-weight="700">compute(rows, fit_rows)</text>
+          <text x="120" y="90" text-anchor="middle" class="lbl" font-size="10">{pk: {persons: 2,</text>
+          <text x="120" y="105" text-anchor="middle" class="lbl" font-size="10">orgs: 1, money: 0}}</text>
+          <path class="edge-accent" d="M210 90 H300" marker-end="url(#ah3)"/>
+          <rect class="accent-box" x="302" y="45" width="200" height="90" rx="8"/>
+          <text x="402" y="66" text-anchor="middle" font-size="11" font-weight="700">materialize</text>
+          <text x="402" y="90" text-anchor="middle" class="lbl" font-size="10">table(pk, fk, ts,</text>
+          <text x="402" y="105" text-anchor="middle" class="lbl" font-size="10">persons, orgs, money)</text>
+          <path class="edge-accent" d="M502 90 H592" marker-end="url(#ah3)"/>
+          <rect class="box" x="594" y="45" width="196" height="90" rx="8"/>
+          <text x="692" y="66" text-anchor="middle" font-size="11" font-weight="700">emit_yaml</text>
+          <text x="692" y="90" text-anchor="middle" class="lbl" font-size="10">N variables →</text>
+          <text x="692" y="105" text-anchor="middle" class="lbl" font-size="10">spine aggregates each</text>
+          <defs><marker id="ah3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="fill-accent"/></marker></defs>
+        </svg>
+        <figcaption>One NLP/graph pass emits many feature columns instead of one bridge per metric.</figcaption>
+      </figure>
+
+      <h4>1. Multi-column output contract</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a <code>MultiColumnBridge</code> subclass (or a <code>value_cols: list[str]</code> mode on the base) whose <code>compute()</code> returns <code>{pk: {col: val}}</code>; keep the scalar/vector base untouched for backward compat.</li>
+        <li><code class="status">[]</code> Generalize <code>materialize()</code> to build the DDL and INSERT for N value columns (reuse <code>_carry_type</code> / <code>_column_type</code> per column).</li>
+        <li><code class="status">[]</code> Generalize <code>emit_yaml()</code> to declare one <code>Variable</code> per value column with correct per-column types.</li>
+      </ul>
+
+      <h4>2. Temporal snapshot-sequence helper</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a helper that, given a set of as-of dates, rebuilds the graph/model on the pre-t₀ slice <em>per window</em> and keys the output by <code>(entity, as_of_date)</code> — the causal-correct "snapshot sequence" representation from the doc §C②.</li>
+        <li><code class="status">[]</code> Emit the snapshot output as an event stream (carry <code>as_of_date</code> as the <code>temporal_ix</code>) so the existing spine aggregates "trend in centrality" as a normal window over a metric.</li>
+        <li><code class="status">[]</code> Assert the boundary per window via <code>assert_pre_t0</code>; document the O(windows × build) cost in the docstring (see Questionables).</li>
+      </ul>
+
+      <h4>3. Persistent materialization option <span class="pill safe">decided: persist, temp default</span></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a <code>persist: bool</code> (or <code>on_commit</code>) parameter to <code>materialize()</code>: <code>create temp … on commit drop</code> (default, today's behavior) vs a persistent <code>create table</code> for real Dagster/Snakemake assets (ADR-0003 wiring).</li>
+      </ul>
+
+      <h4>4. Model-vintage metadata (pretrained-model leakage guard) <span class="pill care">decided: metadata + document</span></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add an optional <code>model_vintage</code> (training-cutoff date) attribute to <code>BridgeComputer</code>; model-bearing bridges declare it and pin the model version. <code>None</code> = "unknown vintage".</li>
+        <li><code class="status">[]</code> Surface it through the bridge's metadata so a strict backtest can assert <code>model_vintage &lt;= as_of</code> (opt-in). Document loudly that <code>assert_pre_t0</code> guards <em>fitted</em> models only — a pretrained snapshot trained on post-t₀ data is silent leakage.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>Pure-Python contract tests (no DB) for the new shapes, mirroring <code>tests/test_bridge.py</code>; a fake/stub <code>compute</code> exercises multi-column and snapshot keying. DB materialize is covered in each family's integration test. <strong>Regression check is mandatory</strong> (per the decision): the existing single-column/vector path must stay byte-identical.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge.py -q</code> — existing contract still green (no regression — the additive-contract guarantee).</li>
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_multicolumn.py -q</code> — multi-column compute/emit_yaml shape + snapshot keying + vintage attribute proven.</li>
+        <li><code class="status">[]</code> <code>uv run basedpyright featurizer/bridge/base.py</code> — types clean.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- ===== PHASE 2 ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: Text substrate — Path 1 (reduce → aggregate) <span class="pill safe">safe</span> <span class="pill safe">decided: multilingual default, per-bridge language=</span></h3>
+      <p>The highest-value, cheapest, most causal-safe path: collapse each document to per-event scalars that the
+      existing temporal spine then trends and drifts (sentiment slope, topic-share KL/Wasserstein drift already
+      exist as spine aggregations). Only the families that genuinely need Python become bridges — the surface
+      lexical features (word/char counts, caps/punct ratios) are already SQL-native transformers and stay there.</p>
+
+      <h4>1. Sentiment / dictionary scores (per-document, multilingual)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>SentimentBridge</code> in <code>featurizer/bridge/nlp.py</code> — lexicon-based valence/arousal per document. Default lexicon is <strong>multilingual / Spanish-register</strong> (not English, per doc §E); expose a <code>language=</code> parameter so English/other is a one-line override.</li>
+        <li><code class="status">[]</code> Emit as a per-event numeric column; the spine gets sentiment slope, recency-of-negative, volatility for free.</li>
+      </ul>
+
+      <h4>2. NER counts (multi-column)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>NERCountsBridge</code> — spaCy, <strong>multilingual/es model by default</strong> via the shared <code>language=</code> parameter; <code>compute()</code> returns <code>{pk: {persons, orgs, locations, money, dates}}</code> using the Phase-1 multi-column contract (one parse, many columns).</li>
+        <li><code class="status">[]</code> Guard the optional <code>spacy</code> import with the ImportError→install-hint pattern; declare the pinned model's <code>model_vintage</code> (Phase 1) so strict backtests can assert it.</li>
+      </ul>
+
+      <h4>3. Readability &amp; language id</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>ReadabilityBridge</code> (Flesch / syllable-based) and <code>LanguageIdBridge</code> — per-document scalars.</li>
+      </ul>
+
+      <h4>4. Dependencies &amp; exports</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add <code>spacy</code> + a sentiment lexicon (e.g. multilingual VADER-style or a Spanish lexicon) to the <code>[bridge]</code> extra; <code>uv sync --extra bridge</code>.</li>
+        <li><code class="status">[]</code> Export the new bridges from <code>__init__.py</code>; move them out of the "abstract interfaces only" list.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>DB-free: hand-computed expectations on tiny documents for sentiment sign, NER counts, readability; a
+      known Spanish + English pair proves the multilingual default. DB-gated: materialize + a spine aggregation
+      over a seeded events table.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_nlp.py -q</code> — per-family compute matches hand values; multilingual case covered.</li>
+        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no spine/registry regression.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q</code> — materialize → spine aggregates the φ columns.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- ===== PHASE 3 ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Graph substrate — centralities &amp; community <span class="pill care">care</span> <span class="pill safe">decided: cheap default, heavy opt-in · defer SBM</span></h3>
+      <p>Follow <code>PageRankBridge</code>'s per-node override, but use the Phase-1 multi-column + snapshot loop so
+      one graph build per window yields many centralities keyed by <code>(node, as_of_date)</code>. This is the
+      causal-correct form the single-snapshot exemplar only gestured at (non-locality: one future edge changes
+      every centrality, so the graph must be rebuilt strictly from pre-t₀ edges per window).</p>
+      <figure>
+        <svg viewBox="0 0 820 190" role="img" aria-label="For each as-of date, rebuild the graph from edges before t0, compute centralities per node, and emit a per node per date stream.">
+          <text x="410" y="20" text-anchor="middle" font-weight="700" font-size="13">Temporal graph = snapshot per as-of window</text>
+          <g font-size="10">
+            <rect class="box" x="30" y="45" width="120" height="120" rx="8"/><text x="90" y="64" text-anchor="middle" font-weight="700">edge stream</text>
+            <text x="90" y="86" text-anchor="middle" class="lbl">(src, dst, ts)</text>
+            <line class="edge" x1="60" y1="100" x2="120" y2="100"/><line class="edge" x1="60" y1="118" x2="120" y2="118"/><line class="edge" x1="60" y1="136" x2="120" y2="136"/>
+          </g>
+          <path class="edge-accent" d="M150 105 H210" marker-end="url(#ah4)"/>
+          <rect class="amber-box" x="212" y="52" width="176" height="106" rx="8"/>
+          <text x="300" y="74" text-anchor="middle" font-size="11" font-weight="700">for each as-of t₀</text>
+          <text x="300" y="96" text-anchor="middle" class="lbl" font-size="10">graph = edges where ts &lt; t₀</text>
+          <text x="300" y="112" text-anchor="middle" class="lbl" font-size="10">assert_pre_t0 ✓</text>
+          <text x="300" y="128" text-anchor="middle" class="lbl" font-size="10">centralities per node</text>
+          <path class="edge-accent" d="M388 105 H448" marker-end="url(#ah4)"/>
+          <rect class="accent-box" x="450" y="52" width="180" height="106" rx="8"/>
+          <text x="540" y="74" text-anchor="middle" font-size="11" font-weight="700">(node, t₀, degree,</text>
+          <text x="540" y="90" text-anchor="middle" font-size="11" font-weight="700">betweenness, …)</text>
+          <text x="540" y="116" text-anchor="middle" class="lbl" font-size="10">event stream keyed</text>
+          <text x="540" y="131" text-anchor="middle" class="lbl" font-size="10">by (node, as_of_date)</text>
+          <path class="edge-accent" d="M630 105 H690" marker-end="url(#ah4)"/>
+          <rect class="box" x="692" y="70" width="100" height="70" rx="8"/><text x="742" y="100" text-anchor="middle" font-size="11" font-weight="700">spine</text><text x="742" y="118" text-anchor="middle" class="lbl" font-size="9">trend / drift</text>
+          <defs><marker id="ah4" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="fill-accent"/></marker></defs>
+        </svg>
+        <figcaption>Rebuild per window from pre-t₀ edges — never compute one graph and slice it (that leaks the future).</figcaption>
+      </figure>
+
+      <h4>1. Multi-metric centrality bridge <span class="pill safe">cheap default, heavy opt-in</span></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>CentralityBridge</code> in <code>featurizer/bridge/centrality.py</code> — one networkx build → many columns. <strong>Cheap tier on by default</strong> (degree in/out/weighted, coreness, clustering coefficient); <strong>heavy metrics opt-in behind a flag</strong> (betweenness O(VE), eigenvector, closeness) so features never get silently 100× slower.</li>
+        <li><code class="status">[]</code> Wire the Phase-1 snapshot loop for per-<code>(node, as_of)</code> output; keep a single-snapshot fast path for static/given graphs. Document the O(windows × build) cost knob (the decided default keeps it bounded).</li>
+      </ul>
+
+      <h4>2. Community / block membership</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>CommunityBridge</code> in <code>featurizer/bridge/community.py</code> — Louvain/Leiden membership (categorical) + modularity (numeric) via a pip-installable lib (<code>python-louvain</code> / <code>leidenalg</code>). Emit membership as a categorical variable (spine one-hots it via the existing ADR-0007 path).</li>
+        <li><code class="status">[]</code> Defer SBM / MDL-surprise (needs <code>graph-tool</code>, not pip-installable) — see Questionables; document the interface only.</li>
+      </ul>
+
+      <h4>3. Dependencies &amp; exports</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add <code>python-louvain</code>/<code>leidenalg</code> to <code>[bridge]</code>; networkx already present. Export the bridges; update the interfaces list.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>DB-free: centralities on a hand-drawn tiny graph with known values (a triangle + a bridge node);
+      snapshot keying proven by feeding edges spanning two as-of dates and asserting the pre-t₀ graph excludes the
+      later edge. DB-gated: materialize per-node table + spine join to the node entity.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_graph.py -q</code> — centralities match hand-computed values; future edge excluded per window.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k graph</code> — per-node materialize + join.</li>
+        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no regression.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- ===== PHASE 4 (native cheap-graph SQL pass) ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: Native cheap-graph tier — 1-hop neighbour aggregation (SQL planner pass) <span class="pill safe">decided: build in 0.9.0</span></h3>
+      <p>The doc's cheapest graph tier (§C③ "neighbour aggregation" + the cheap-tier SQL example), built
+      <strong>in-spine</strong> — no Python, no <code>[bridge]</code> dependency. This is a deliberate
+      <strong>engine change</strong> (the one exception to "no planner changes"): a config-level graph/edge concept
+      plus a generated recursive/1-hop SQL pass, modeled on the existing <code>peer_groups</code> /
+      <code>spatial_relationships</code> planner passes (not a registry primitive).</p>
+      <figure>
+        <svg viewBox="0 0 820 150" role="img" aria-label="An edge table plus neighbour states, both bounded before t0, produce degree and neighbour aggregates in pure SQL.">
+          <text x="410" y="20" text-anchor="middle" font-weight="700" font-size="13">1-hop aggregate, as-of, no future edges or states</text>
+          <rect class="box" x="30" y="45" width="150" height="34" rx="6"/><text x="105" y="67" text-anchor="middle" font-size="11">edges (src,dst,ts)</text>
+          <rect class="box" x="30" y="90" width="150" height="34" rx="6"/><text x="105" y="112" text-anchor="middle" font-size="11">neighbour states</text>
+          <path class="edge" d="M180 62 H250"/><path class="edge" d="M180 107 H250"/>
+          <rect class="amber-box" x="252" y="55" width="240" height="52" rx="8"/>
+          <text x="372" y="76" text-anchor="middle" font-size="10">where e.ts &lt; as_of</text>
+          <text x="372" y="94" text-anchor="middle" font-size="10">and n.valid_at &lt; as_of  (no leak)</text>
+          <path class="edge-accent" d="M492 81 H560" marker-end="url(#ah5)"/>
+          <rect class="accent-box" x="562" y="55" width="230" height="52" rx="8"/>
+          <text x="677" y="76" text-anchor="middle" font-size="11" font-weight="700">degree_90d, peer_flag_share</text>
+          <text x="677" y="94" text-anchor="middle" class="lbl" font-size="10">feature columns, pure SQL</text>
+          <defs><marker id="ah5" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" class="fill-accent"/></marker></defs>
+        </svg>
+        <figcaption>Restricted to 1-hop and pre-t₀ neighbour states — avoids the 2-hop temporal-GNN leakage the doc warns about.</figcaption>
+      </figure>
+
+      <h4>1. Config surface + validation</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> A <code>graph_relationships</code> (or <code>event_edges</code>) config block declaring the edge source (src, dst, ts columns) and the neighbour property to aggregate — parallel to the <code>peer_groups</code> / <code>spatial_relationships</code> blocks.</li>
+        <li><code class="status">[]</code> Extend <code>featurizer/validation.py</code> to validate the block (columns exist, types, temporal column present) with the same error/typo-suggestion quality as the rest.</li>
+      </ul>
+
+      <h4>2. Planner pass (as-of 1-hop SQL)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Generate the as-of aggregate in <code>featurizer/planner.py</code>: <code>degree_&lt;window&gt;</code> and 1-hop neighbour mean/share, bounded by <code>e.ts &lt; aod.as_of_date</code> <strong>and</strong> the neighbour state <code>valid_at &lt; as_of_date</code> (the doc's cheap-tier SQL is the template). Emit as feature columns keyed by <code>(entity, as_of_date)</code> — a planner pass, not a registry primitive.</li>
+        <li><code class="status">[]</code> <strong>1-hop only for 0.9.0</strong>: explicitly do not generate 2-hop aggregates (the canonical temporal-GNN leakage — 2-hop pulls neighbours' future labels). Enforce/document the boundary.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>DB-free planner test asserts the generated SQL carries both as-of bounds and stays 1-hop. DB-gated: a seeded
+      edge + neighbour-state table with a <em>planted future edge and a future neighbour state</em> that must both be
+      excluded from the result.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py -q</code> — generated SQL has <code>e.ts &lt; as_of</code> + <code>valid_at &lt; as_of</code>, no 2-hop join.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_graph_neighbour_pass.py -q</code> — planted future edge/state excluded; degree + neighbour share correct.</li>
+        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no regression in the existing planner passes.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- ===== PHASE 5 (was 4) ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Trajectory, sequence &amp; text→graph edges (Paths 2 &amp; 3) <span class="pill care">0.9.1</span></h3>
+      <p>The composition payoff: embedding-trajectory novelty/drift, change-point/periodicity over the event
+      stream, and the Path-2 move where text <em>induces</em> edges that feed the Phase-3 graph bridges
+      (text-similarity × temporal synchrony is the coordination signature).</p>
+
+      <h4>1. Embedding trajectory features</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>EmbeddingTrajectoryBridge</code> in <code>trajectory.py</code> — from the per-event embeddings (reuse <code>SentenceEmbeddingBridge</code>): novelty = <code>1 − max cosine</code> to the entity's own pre-t₀ history, drift vs a reference centroid, semantic volatility. Multi-column, per-event, causal-guarded to pre-t₀ history.</li>
+      </ul>
+
+      <h4>2. Sequence extensions</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>ChangePointBridge</code> and <code>PeriodicityBridge</code> (FFT peak) in <code>changepoint.py</code> — scipy-based; per-entity scores over the pre-t₀ event series.</li>
+      </ul>
+
+      <h4>3. Text-induced edges (Path 2 → Phase 3)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>NearDuplicateEdgeBridge</code> (MinHash/LSH via <code>datasketch</code>) and <code>CoMentionEdgeBridge</code> in <code>edges.py</code> — output an <em>edge table</em> (src, dst, ts) that is the input to <code>CentralityBridge</code>/<code>CommunityBridge</code>. Document the two-stage wiring (text bridge → edge table → graph bridge).</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>DB-free: novelty/drift on a hand-built embedding sequence with a planted outlier; near-dup edges on a
+      copy-paste pair vs a distinct pair; change-point on a synthetic step series. DB-gated: the two-stage
+      text→edges→centrality pipeline end to end.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_trajectory.py tests/test_bridge_edges.py -q</code> — planted signals recovered.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k pipeline</code> — text→edges→centrality→spine.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <!-- ===== PHASE 6 (was 5) ===== -->
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 6: ADR, docs, example &amp; 0.9.0 release</h3>
+      <p>Record the contract decision, teach the pattern, prove it end to end, and cut the release. <strong>0.9.0
+      bundles Phases 1–4</strong> (harness + text + graph bridges + native 1-hop pass); Phase 5 (trajectory /
+      sequence / edges) ships next as <strong>0.9.1</strong>.</p>
+
+      <h4>1. ADR-0014 + taxonomy sync</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Write <code>docs/adr/0014-multi-column-bridge-and-temporal-snapshots.md</code> (Status/Context/Decision/Consequences): why multi-column + snapshot-sequence, the cost trade-off, and the pretrained-model-vintage caveat.</li>
+        <li><code class="status">[]</code> Extend <code>ADR_THEMES</code> in <code>site/gen.py</code> so 0014 lands in a real theme bucket, not "Other" (closes the standing TODO).</li>
+        <li><code class="status">[]</code> Flip the <code>[GAP]</code> markers in <code>temporal-features-network-text.org</code> for every family now shipped.</li>
+      </ul>
+
+      <h4>2. Docs hub + example</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>src/content/docs/engineering/bridge-cookbook.md</code> — wiring + one worked example per modality; add to the sidebar. Update the FAQ's "planner passes vs primitives" answer to mention bridge families.</li>
+        <li><code class="status">[]</code> Optional <code>examples/06-graph-text-bridge/</code> — end-to-end (create_data → bridges → config fragment → spine → matrix), tutorial notebook with committed outputs (docs site renders it).</li>
+      </ul>
+
+      <h4>3. Release 0.9.0</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>CHANGELOG.md</code> <code>## [0.9.0]</code> section (new bridge families, contract extension, ADR-0014); bump <code>pyproject.toml</code> version.</li>
+        <li><code class="status">[]</code> Tag per CONTRIBUTING (<code>release.yml</code> builds sdist+wheel, creates the GitHub release). Confirm <code>pages.yml</code> redeploys the docs.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>Whole-suite green across tiers + the docs build/link-check that already gates deploys.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just test-fast</code> — full DB-free tier green.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier (incl. new bridge materialize) green.</li>
+        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs (incl. cookbook) build + link-check clean.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>uv sync --extra bridge</code> — every new heavy dep resolves and installs.</li>
+      <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — all DB-free tests (contract + per-family compute) pass; SQL spine unaffected.</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — all bridge materialize + spine-aggregation integration tests pass.</li>
+      <li><code class="status">[]</code> <code>uv run basedpyright featurizer/bridge/</code> — bridge package type-checks clean.</li>
+      <li><code class="status">[]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py tests/integration/test_graph_neighbour_pass.py -q</code> — the native 1-hop pass emits as-of-bounded SQL and excludes planted future edges/states.</li>
+      <li><code class="status">[]</code> <code>uv run python -c "import featurizer.bridge as b; print(b.__all__)"</code> — new bridges exported; interfaces list shrunk.</li>
+      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs hub (cookbook + ADR-0014 + flipped taxonomy) builds and link-checks.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely impossible, mark it <code>[f]</code> and move on if possible.</strong></div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <p class="muted"><strong>All resolved 2026-07-16</strong> (via AskUserQuestion). Each decision is folded into the
+    phases above; kept here as the decision log.</p>
+    <figure>
+      <svg viewBox="0 0 720 120" role="img" aria-label="Two axes of open decisions: dependency weight versus feature value, and cheap SQL-native versus heavy precompute.">
+        <text x="360" y="22" text-anchor="middle" font-weight="700" font-size="13">The open decisions cluster on two axes</text>
+        <line class="edge" x1="60" y1="95" x2="660" y2="95"/><text x="60" y="112" class="lbl" font-size="10">cheap / SQL-native</text><text x="660" y="112" text-anchor="end" class="lbl" font-size="10">heavy / precompute</text>
+        <circle class="fill-accent" cx="150" cy="70" r="6"/><text x="150" y="58" text-anchor="middle" font-size="9">1-hop nbr</text>
+        <circle class="fill-accent" cx="330" cy="60" r="6"/><text x="330" y="48" text-anchor="middle" font-size="9">centralities</text>
+        <circle class="fill-muted" cx="520" cy="70" r="6"/><text x="520" y="58" text-anchor="middle" font-size="9">SBM (graph-tool)</text>
+        <circle class="fill-muted" cx="610" cy="62" r="6"/><text x="610" y="50" text-anchor="middle" font-size="9">temporal GNN</text>
+      </svg>
+      <figcaption>Where a family sits decides bridge-vs-native and which dependency tier it needs.</figcaption>
+    </figure>
+
+    <details>
+      <summary>✓ Decided — Multi-column output: <strong>extend the contract</strong> (verify no regression)</summary>
+      <p class="qa-answer"><code>MultiColumnBridge</code>: <code>compute → {pk: {col: val}}</code>, one pass emits many
+      columns. The base single-column/vector path stays for backward compat — purely additive, and a mandatory
+      regression test proves the existing path is byte-identical (Phase 1, task 5). This is the ADR-0014 decision.</p>
+    </details>
+    <details>
+      <summary>✓ Decided — Temporal graph cost: <strong>cheap centralities default, ALL heavier metrics opt-in</strong></summary>
+      <p class="qa-answer">Non-locality forces a per-window rebuild. Default to the cheap tier (degree, coreness,
+      clustering); <em>every</em> heavier metric — betweenness, eigenvector, closeness — is opt-in behind a flag
+      (not just betweenness). No snapshot-binning approximation. Document the O(windows × build) cost knob so
+      features never get silently 100× slower (Phase 3, task 1).</p>
+    </details>
+    <details>
+      <summary>✓ Decided — SBM: <strong>defer; ship Louvain/Leiden (pip) now</strong></summary>
+      <p class="qa-answer">graph-tool is not pip-installable and would break <code>pip install 'featurizer[bridge]'</code>.
+      SBM / MDL-surprise (the coordination engine) lands later behind a separate documented <code>[bridge-graph]</code>
+      path; Louvain/Leiden cover community detection in 0.9.0 (Phase 3, task 2).</p>
+    </details>
+    <details>
+      <summary>✓ Decided — Cheap 1-hop neighbour aggregates: <strong>build the native SQL planner pass in 0.9.0</strong></summary>
+      <p class="qa-answer"><strong>Changed from the initial "defer to 0.10" recommendation.</strong> The cheapest,
+      highest-value graph tier (degree, 1-hop neighbour mean/share) is built <em>in-spine</em> now — no Python, no
+      <code>[bridge]</code> dep — as a new <code>graph_relationships</code> config block + generated as-of SQL,
+      modeled on <code>peer_groups</code>/<code>spatial_relationships</code>. This is the one deliberate engine change,
+      now its own <strong>Phase 4</strong>. 1-hop only (2-hop leaks neighbours' future labels).</p>
+    </details>
+    <details>
+      <summary>✓ Decided — Pretrained-model vintage: <strong>record metadata + document</strong></summary>
+      <p class="qa-answer"><code>assert_pre_t0</code> guards <em>fitted</em> models only; a pretrained snapshot trained on
+      post-t₀ data is silent leakage. Add an optional <code>model_vintage</code> attribute to <code>BridgeComputer</code>,
+      pin model versions, surface the training cutoff in metadata so a strict backtest can assert
+      <code>vintage ≤ as_of</code>, and document the caveat in ADR-0014 + the cookbook (Phase 1, task 4).</p>
+    </details>
+    <details>
+      <summary>✓ Decided — NLP language: <strong>multilingual defaults, per-bridge <code>language=</code></strong></summary>
+      <p class="qa-answer">The working domains are Spanish. Default to multilingual/es models (spaCy
+      <code>xx_</code>/<code>es_core_news</code>, a multilingual sentence-transformer, a Spanish sentiment lexicon);
+      expose a per-bridge <code>language=</code> parameter so English/other is a one-line override (Phase 2).</p>
+    </details>
+    <details>
+      <summary>✓ Decided — Materialization: <strong>add persist option, temp default</strong></summary>
+      <p class="qa-answer">Keep <code>create temp … on commit drop</code> as today's default (reference flow); add a
+      persistent <code>create table</code> for real Dagster/Snakemake assets (Phase 1, task 3; ADR-0003 wiring).</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>New dependencies (<code>[bridge]</code> extra)</h3>
+    <p>Added via <code>uv add --optional bridge &lt;pkg&gt;</code>. All pip-installable — the one non-pip dep
+    (graph-tool, for SBM) is deliberately deferred (see Questionables).</p>
+    <table>
+      <tr><th>Package</th><th>Family</th><th>Phase</th></tr>
+      <tr><td><code>spacy</code> + a multilingual model</td><td>NER counts</td><td>2</td></tr>
+      <tr><td>a Spanish/multilingual sentiment lexicon</td><td>sentiment</td><td>2</td></tr>
+      <tr><td><code>python-louvain</code> / <code>leidenalg</code></td><td>community</td><td>3</td></tr>
+      <tr><td><code>datasketch</code></td><td>near-dup edges (MinHash/LSH)</td><td>4</td></tr>
+      <tr><td><code>scipy</code> (already transitively present via sklearn)</td><td>change-point / FFT</td><td>4</td></tr>
+    </table>
+
+    <h3>Invariants this plan must not break</h3>
+    <ul>
+      <li><strong>No second feature framework.</strong> Every bridge family ends as a materialized column the existing
+      spine aggregates — bridges need zero engine change. The <em>one</em> deliberate engine addition is Phase 4's
+      native 1-hop neighbour pass (a new <code>graph_relationships</code> block + generated SQL, in 0.9.0 by decision),
+      built like the existing <code>peer_groups</code>/<code>spatial_relationships</code> passes.</li>
+      <li><strong>Causal boundary (ADR-0001).</strong> Every fitted model asserts <code>assert_pre_t0</code>; the
+      snapshot loop re-asserts per window. Pretrained-model vintage is the one gap — documented, not silently ignored.</li>
+      <li><strong>Optional deps stay optional (ADR-0003).</strong> The SQL spine never imports bridge deps; each
+      bridge guards its import with the install-hint pattern. <code>uv sync</code> (no extra) must still type-check
+      and run the fast suite.</li>
+      <li><strong>Categorical outputs</strong> (community membership) flow through the existing ADR-0007 fixed-vocabulary
+      one-hot path — no new categorical machinery.</li>
+    </ul>
+
+    <h3>Rejected / deferred approaches</h3>
+    <ul>
+      <li><strong>One bridge per metric</strong> — rejected: wasteful re-computation; multi-column is strictly better.</li>
+      <li><strong>SBM / MDL-surprise (graph-tool)</strong> — deferred (decided): not pip-installable; lands later behind a separate <code>[bridge-graph]</code> path. Louvain/Leiden (pip) cover community detection in 0.9.0.</li>
+      <li><strong>2-hop neighbour aggregates &amp; temporal-GNN</strong> — deferred: 2-hop pulls neighbours' future labels (the canonical leakage); the native pass is 1-hop-only for 0.9.0.</li>
+      <li><strong>LLM structured extraction (Path 3)</strong> — out of scope here: once extracted, the fields are
+      ordinary columns (back to Path 1), but the extraction harness (schema, model, cost) is its own effort.</li>
+    </ul>
+
+    <h3>Recommended sequencing</h3>
+    <p>Phase 1 is the keystone — do it first and get ADR-0014 reviewed before building families on the new
+    contract. Phases 2 (text bridges), 3 (graph bridges), and 4 (native SQL pass) are largely independent and can be
+    built in parallel once Phase 1 lands — Phase 4 is engine-side and doesn't depend on the bridge families. Phase 5
+    (trajectory/sequence/edges) depends on 2 &amp; 3 (trajectory needs embeddings; text-induced edges feed the graph
+    bridges). <strong>Cut 0.9.0 after Phase 4</strong> (via Phase 6's release steps); Phase 5 ships as 0.9.1.</p>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <p class="muted">(none yet — append-only history of post-execution changes)</p>
+  </section>
+
+</main>
+</body>
+</html>

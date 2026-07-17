@@ -478,7 +478,7 @@ def generate_api() -> Path:
 # generator prints a reminder when that bucket is non-empty.
 ADR_THEMES: dict[str, list[str]] = {
     "Sharding & performance": ["0005", "0006", "0009", "0010", "0012", "0013"],
-    "Correctness & leakage": ["0001", "0008"],
+    "Correctness & leakage": ["0001", "0008", "0014"],
     "Feature families": ["0002", "0004", "0007", "0011"],
     "Operations & boundaries": ["0003"],
 }
