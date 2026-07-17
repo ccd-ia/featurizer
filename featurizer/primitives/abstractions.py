@@ -66,6 +66,7 @@ class ERGraph:
         entities: List[Dict[str, Any]],
         relationships: Optional[List[Dict[str, Any]]],
         spatial_relationships: Optional[List[Dict[str, Any]]] = None,
+        graph_relationships: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.entities: Dict[str, Entity] = {e["alias"]: Entity(**e) for e in entities}
 
@@ -116,6 +117,22 @@ class ERGraph:
                 features=s.get("features"),
             )
             for s in (spatial_relationships or [])
+        ]
+
+        # Native 1-hop graph relationships (as-of degree + neighbour-state
+        # aggregates over an edge stream — the taxonomy's cheap graph tier).
+        self.graph_relationships: List[GraphRelationshipSpec] = [
+            GraphRelationshipSpec(
+                name=g["name"],
+                left=g["left"],
+                edges=g["edges"],
+                right=g.get("right"),
+                directed=g.get("directed", True),
+                measures=g.get("measures"),
+                shares=g.get("shares"),
+                features=g.get("features"),
+            )
+            for g in (graph_relationships or [])
         ]
 
     def get_edges_for_node(self, entity: Entity) -> List["EdgeSpec"]:
@@ -634,3 +651,66 @@ class SpatialRelationshipSpec:
 
     def __repr__(self) -> str:
         return f"SpatialRelationshipSpec({self.name}: {self.left} near {self.right})"
+
+
+#: Native 1-hop graph feature families. ``degree`` counts as-of edge
+#: incidences (plus one windowed count per configured interval);
+#: ``neighbour_mean`` averages a numeric neighbour-state column and
+#: ``neighbour_share`` a boolean one — both restricted to pre-t₀ edges *and*
+#: pre-t₀ neighbour states. Deliberately 1-hop only: 2-hop aggregation pulls
+#: neighbours' future labels (the canonical temporal-GNN leakage).
+GRAPH_RELATIONSHIP_FAMILIES = (
+    "degree",
+    "neighbour_mean",
+    "neighbour_share",
+)
+
+
+class GraphRelationshipSpec:
+    """A native 1-hop graph relationship declared at config top level.
+
+    For each ``left`` entity row (the ego), features are computed over its
+    1-hop neighbourhood in an edge stream: ``edges`` declares the edge table
+    and its ``source`` / ``target`` node-id columns plus a **required**
+    ``timestamp`` (the pass is as-of by construction — a static edge table
+    cannot be causally bounded). ``right`` (default: ``left``) is the entity
+    whose rows are the neighbour *states*; when it has a ``temporal_ix`` the
+    state scan is bounded ``<= aod.as_of_date`` too — the double bound of the
+    taxonomy's cheap tier. ``measures`` (numeric, default: right's numeric
+    variables) feed ``neighbour_mean``; ``shares`` (boolean, default: right's
+    boolean variables) feed ``neighbour_share``.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        left: str,
+        edges: Dict[str, Any],
+        right: Optional[str] = None,
+        directed: bool = True,
+        measures: Optional[List[str]] = None,
+        shares: Optional[List[str]] = None,
+        features: Optional[List[str]] = None,
+    ) -> None:
+        self.name: str = name
+        self.left: str = left
+        self.edge_table: str = edges["table"]
+        self.source: str = edges["source"]
+        self.target: str = edges["target"]
+        self.timestamp: str = edges["timestamp"]
+        self.right: str = right or left
+        self.directed: bool = directed
+        # ``None`` means "default to the right entity's numeric / boolean
+        # variables" (resolved by the planner); explicit lists are honoured.
+        self.measures: Optional[List[str]] = (
+            list(measures) if measures is not None else None
+        )
+        self.shares: Optional[List[str]] = list(shares) if shares is not None else None
+        self.features: List[str] = (
+            list(features) if features else list(GRAPH_RELATIONSHIP_FAMILIES)
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"GraphRelationshipSpec({self.name}: {self.left} " f"via {self.edge_table})"
+        )

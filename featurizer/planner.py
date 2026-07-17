@@ -27,6 +27,7 @@ from .boundary import (
     DEFAULT_BOUNDARY,
     AsOfBoundary,
     causal_predicate,
+    daterange_window,
     use_boundary,
 )
 from .categoricals import (
@@ -39,6 +40,7 @@ from .primitives import (
     Entity,
     ERGraph,
     Feature,
+    GraphRelationshipSpec,
     PeerGroupSpec,
     Relationship,
     SpatialIx,
@@ -303,6 +305,7 @@ class FeaturePlanner:
         self._build_graph_features(target_entity)
         self._build_peer_group_features(target_entity)
         self._build_spatial_features(target_entity)
+        self._build_graph_relationship_features(target_entity)
         self._build_transformations(target_entity)
         # Snapshot what this entity's transform actually projects, in
         # deterministic order. Later consumers (sibling/parallel relationships)
@@ -1069,6 +1072,198 @@ class FeaturePlanner:
         for name, _ in select_cols:
             left_sources[name] = (cte_name, join)
 
+    # ------------------------------------------------------------------ #
+    # Native 1-hop graph relationships (0.9.0 Phase 4 — the cheap tier)
+    # ------------------------------------------------------------------ #
+
+    def _build_graph_relationship_features(self, entity: Entity) -> None:
+        """Attach native 1-hop graph features for every ``graph_relationships``
+        spec whose ``left`` is ``entity`` (as-of degree + neighbour-state
+        aggregates over an edge stream — pure SQL, no bridge dependency)."""
+        specs = getattr(self.graph, "graph_relationships", None)
+        if not specs:
+            return
+        for spec in specs:
+            if spec.left == entity.alias:
+                self._build_graph_relationship_cte(entity, spec)
+
+    @staticmethod
+    def _graph_rel_feature_name(
+        metric: str,
+        spec: GraphRelationshipSpec,
+        detail: str | None = None,
+        interval: str | None = None,
+    ) -> str:
+        inner = f"{spec.name}.{detail}" if detail else spec.name
+        suffix = f"|interval={interval}" if interval else ""
+        return pg_identifier(f"{metric}({inner}{suffix})")
+
+    @staticmethod
+    def _boolean_variable_names(entity: Entity) -> List[str]:
+        """Default ``shares``: the entity's boolean variables (sorted)."""
+        return sorted(
+            feature.name for feature in entity.features if feature.type == "boolean"
+        )
+
+    def _build_graph_relationship_cte(
+        self, left: Entity, spec: GraphRelationshipSpec
+    ) -> None:
+        """Emit the as-of 1-hop CTE for one ``graph_relationships`` spec.
+
+        The taxonomy's cheap-tier SQL is the template: an incidence subquery
+        bounded ``e.<ts> <= aod.as_of_date`` yields per-ego degree (total plus
+        one windowed count per configured interval), and a second subquery
+        joins the incidences to the ``right`` entity's rows — bounded by that
+        entity's ``temporal_ix`` when it has one — for the neighbour-state
+        mean/share. Both bounds together are the leakage guard: pre-t₀ edges
+        *and* pre-t₀ neighbour states.
+
+        **1-hop only, by design.** No 2-hop aggregate is ever generated —
+        2-hop pulls neighbours' future labels through the intermediate node
+        (the canonical temporal-GNN leakage). Neighbour aggregates follow the
+        template's incidence semantics: a neighbour reached by two knowable
+        edges (or carrying several knowable state rows) weighs proportionally.
+        """
+        if left.id is None:
+            logger.warning(
+                "Graph relationship {} needs an id on entity {}; skipping.",
+                spec.name,
+                left.alias,
+            )
+            return
+        right = self.graph.entities.get(spec.right)
+        if right is None:
+            logger.warning(
+                "Graph relationship {} references unknown right entity {}; "
+                "skipping.",
+                spec.name,
+                spec.right,
+            )
+            return
+
+        id_col = left.id.name
+        edge_causal = causal_predicate(f"e.{spec.timestamp}", prefix="where")
+        incidence = (
+            f"select e.{spec.source} as node_id, e.{spec.target} as nbr, "
+            f"e.{spec.timestamp} as ts from {spec.edge_table} e{edge_causal}"
+        )
+        if not spec.directed:
+            incidence += (
+                " union all "
+                f"select e.{spec.target} as node_id, e.{spec.source} as nbr, "
+                f"e.{spec.timestamp} as ts from {spec.edge_table} e{edge_causal}"
+            )
+
+        degree_cols: List[tuple[str, str]] = []
+        if "degree" in spec.features:
+            degree_cols.append(
+                (self._graph_rel_feature_name("DEGREE", spec), "count(*)")
+            )
+            for interval in self.intervals:
+                degree_cols.append(
+                    (
+                        self._graph_rel_feature_name("DEGREE", spec, interval=interval),
+                        "count(*) filter (where "
+                        f"{daterange_window(interval, column='inc.ts')})",
+                    )
+                )
+
+        nbr_cols: List[tuple[str, str]] = []
+        if "neighbour_mean" in spec.features:
+            measures = spec.measures
+            if measures is None:
+                measures = self._numeric_variable_names(right)
+            nbr_cols.extend(
+                (
+                    self._graph_rel_feature_name("NEIGHBOUR_MEAN", spec, m),
+                    f"avg(n.{m})",
+                )
+                for m in measures
+            )
+        if "neighbour_share" in spec.features:
+            shares = spec.shares
+            if shares is None:
+                shares = self._boolean_variable_names(right)
+            nbr_cols.extend(
+                (
+                    self._graph_rel_feature_name("NEIGHBOUR_SHARE", spec, s),
+                    f"avg((n.{s})::int)",
+                )
+                for s in shares
+            )
+        if not degree_cols and not nbr_cols:
+            logger.warning(
+                "Graph relationship {} resolved no feature columns; skipping.",
+                spec.name,
+            )
+            return
+        if nbr_cols and right.id is None:
+            logger.warning(
+                "Graph relationship {} needs an id on right entity {} for "
+                "neighbour aggregates; keeping degree only.",
+                spec.name,
+                spec.right,
+            )
+            nbr_cols = []
+
+        select_parts: List[str] = ["d.node_id"]
+        select_parts += [f"d.{name}" for name, _ in degree_cols]
+        select_parts += [f"s.{name}" for name, _ in nbr_cols]
+
+        degree_rendered = (
+            ",\n        ".join(f"{expr} as {name}" for name, expr in degree_cols)
+            or "count(*) as _incidences"
+        )
+        degree_sub = (
+            f"select inc.node_id,\n        {degree_rendered}\n"
+            f"        from ( {incidence} ) inc\n"
+            "        group by inc.node_id"
+        )
+
+        nbr_join = ""
+        if nbr_cols:
+            assert right.id is not None  # narrowed above
+            right_causal = (
+                causal_predicate(f"n.{right.temporal_ix.name}", prefix="and")
+                if right.temporal_ix
+                else ""
+            )
+            nbr_rendered = ",\n        ".join(
+                f"{expr} as {name}" for name, expr in nbr_cols
+            )
+            nbr_join = (
+                "\n        left join (\n"
+                f"        select inc.node_id,\n        {nbr_rendered}\n"
+                f"        from ( {incidence} ) inc\n"
+                f"        inner join {right.table} n "
+                f"on n.{right.id.name} = inc.nbr{right_causal}\n"
+                "        group by inc.node_id\n"
+                "        ) s on s.node_id = d.node_id"
+            )
+
+        cte_name = f"graph_rel_{spec.name}_for_{left.alias}"
+        cte_query = f"""
+        -- graph relationship {spec.name}: as-of 1-hop neighbour aggregates for {left.alias}
+        {cte_name} as (
+        select {", ".join(select_parts)}
+        from (
+        {degree_sub}
+        ) d{nbr_join}
+        )
+        """
+        join = f" {cte_name} on {cte_name}.node_id = {left.table}.{id_col} "
+        self._joins[left.alias].append(join)
+        self._emit_verbatim(cte_name, cte_query)
+        all_cols = [name for name, _ in degree_cols] + [name for name, _ in nbr_cols]
+        self._features[left.alias].update(
+            Feature(name=name, type="numeric", definition=name, entity=left)
+            for name in all_cols
+        )
+        # Graph columns become synth columns of ``left``; record their source.
+        left_sources = self._synth_column_source.setdefault(left.alias, {})
+        for name in all_cols:
+            left_sources[name] = (cte_name, join)
+
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship
     ) -> None:
@@ -1422,12 +1617,12 @@ class FeaturePlanner:
         reduction_where = spec0.reduction_where
         for feature in agg_features:
             assert feature.preagg is not None
-            assert feature.preagg.prepass_sql == prepass, (
-                f"pre-agg family {family_key!r} has inconsistent pre-passes"
-            )
-            assert feature.preagg.reduction_where == reduction_where, (
-                f"pre-agg family {family_key!r} has inconsistent reduction filters"
-            )
+            assert (
+                feature.preagg.prepass_sql == prepass
+            ), f"pre-agg family {family_key!r} has inconsistent pre-passes"
+            assert (
+                feature.preagg.reduction_where == reduction_where
+            ), f"pre-agg family {family_key!r} has inconsistent reduction filters"
 
         child_key = relationship.child_key
         # 63-byte-capped, parallel-relationship-safe (naming_alias), interval- and

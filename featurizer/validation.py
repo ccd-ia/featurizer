@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Optional, Set
 
 import yaml
 
-from .primitives import GRAPH_FEATURE_FAMILIES, SPATIAL_FEATURE_FAMILIES
+from .primitives import (
+    GRAPH_FEATURE_FAMILIES,
+    GRAPH_RELATIONSHIP_FAMILIES,
+    SPATIAL_FEATURE_FAMILIES,
+)
 
 
 @dataclass
@@ -233,6 +237,17 @@ class ConfigValidator:
                     message="'spatial_relationships' must be a list "
                     f"(got: {type(spatial).__name__})",
                     location="spatial_relationships",
+                )
+            )
+
+        # Validate graph_relationships (if present)
+        graph_rels = config.get("graph_relationships")
+        if graph_rels is not None and not isinstance(graph_rels, list):
+            self.errors.append(
+                ValidationError(
+                    message="'graph_relationships' must be a list "
+                    f"(got: {type(graph_rels).__name__})",
+                    location="graph_relationships",
                 )
             )
 
@@ -871,6 +886,149 @@ class ConfigValidator:
                                 ),
                             )
                         )
+
+        # Validate graph_relationships: edge columns, entity refs, families.
+        graph_rels = config.get("graph_relationships")
+        if isinstance(graph_rels, list):
+            for gi, grel in enumerate(graph_rels):
+                if not isinstance(grel, dict):
+                    self.errors.append(
+                        ValidationError(
+                            message="Graph relationship must be a mapping "
+                            f"(got: {type(grel).__name__})",
+                            location=f"graph_relationships[{gi}]",
+                        )
+                    )
+                    continue
+                for required in ("name", "left", "edges"):
+                    if grel.get(required) in (None, ""):
+                        self.errors.append(
+                            ValidationError(
+                                message="Graph relationship missing required "
+                                f"'{required}'",
+                                location=f"graph_relationships[{gi}].{required}",
+                                suggestion="Example: {name: contacts, left: a, "
+                                "edges: {table: t, source: src, target: dst, "
+                                "timestamp: ts}}",
+                            )
+                        )
+                edges = grel.get("edges")
+                if edges is not None and not isinstance(edges, dict):
+                    self.errors.append(
+                        ValidationError(
+                            message="Graph relationship 'edges' must be a mapping "
+                            f"(got: {type(edges).__name__})",
+                            location=f"graph_relationships[{gi}].edges",
+                        )
+                    )
+                elif isinstance(edges, dict):
+                    for required in ("table", "source", "target", "timestamp"):
+                        if edges.get(required) in (None, ""):
+                            hint = (
+                                "The pass is as-of by construction: a static "
+                                "edge table cannot be causally bounded"
+                                if required == "timestamp"
+                                else "Example: edges: {table: t, source: src, "
+                                "target: dst, timestamp: ts}"
+                            )
+                            self.errors.append(
+                                ValidationError(
+                                    message="Graph relationship edges missing "
+                                    f"required '{required}'",
+                                    location=f"graph_relationships[{gi}]"
+                                    f".edges.{required}",
+                                    suggestion=hint,
+                                )
+                            )
+                for side in ("left", "right"):
+                    ref = grel.get(side)
+                    if not isinstance(ref, str):
+                        continue
+                    if ref not in entity_aliases:
+                        suggestion = self._suggest_similar(ref, entity_aliases)
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Graph relationship '{side}' references "
+                                f"unknown entity '{ref}'",
+                                location=f"graph_relationships[{gi}].{side}",
+                                suggestion=(
+                                    f"Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else f"Available: {', '.join(sorted(entity_aliases))}"
+                                ),
+                            )
+                        )
+                for family in grel.get("features") or []:
+                    if family not in GRAPH_RELATIONSHIP_FAMILIES:
+                        suggestion = self._suggest_similar(
+                            str(family), set(GRAPH_RELATIONSHIP_FAMILIES)
+                        )
+                        self.errors.append(
+                            ValidationError(
+                                message="Unknown graph relationship feature "
+                                f"family: '{family}' (the pass is 1-hop only — "
+                                "2-hop aggregates leak neighbours' future "
+                                "labels and are deliberately not offered)",
+                                location=f"graph_relationships[{gi}].features",
+                                suggestion=(
+                                    f"Did you mean '{suggestion}'?"
+                                    if suggestion
+                                    else "Valid: "
+                                    + ", ".join(GRAPH_RELATIONSHIP_FAMILIES)
+                                ),
+                            )
+                        )
+                right_alias = grel.get("right") or grel.get("left")
+                right_vars = (
+                    (entity_map.get(right_alias) or {}).get("variables") or {}
+                    if isinstance(right_alias, str)
+                    else {}
+                )
+                for kind, expected in (("measures", "numeric"), ("shares", "boolean")):
+                    cols = grel.get(kind)
+                    if cols is None:
+                        continue
+                    if not isinstance(cols, list):
+                        self.errors.append(
+                            ValidationError(
+                                message=f"Graph relationship '{kind}' must be a "
+                                f"list (got: {type(cols).__name__})",
+                                location=f"graph_relationships[{gi}].{kind}",
+                            )
+                        )
+                        continue
+                    for col in cols:
+                        declared = (
+                            right_vars.get(col, {}).get("type")
+                            if isinstance(right_vars.get(col), dict)
+                            else None
+                        )
+                        if right_vars and col not in right_vars:
+                            suggestion = self._suggest_similar(
+                                str(col), set(right_vars)
+                            )
+                            self.errors.append(
+                                ValidationError(
+                                    message=f"Graph relationship {kind} column "
+                                    f"'{col}' is not a variable of "
+                                    f"'{right_alias}'",
+                                    location=f"graph_relationships[{gi}].{kind}",
+                                    suggestion=(
+                                        f"Did you mean '{suggestion}'?"
+                                        if suggestion
+                                        else None
+                                    ),
+                                )
+                            )
+                        elif declared is not None and declared != expected:
+                            self.warnings.append(
+                                ValidationWarning(
+                                    message=f"Graph relationship {kind} column "
+                                    f"'{col}' is declared '{declared}'; "
+                                    f"{'neighbour_mean assumes a numeric column' if expected == 'numeric' else 'neighbour_share assumes a boolean column'}",
+                                    location=f"graph_relationships[{gi}].{kind}",
+                                )
+                            )
 
         # Detect circular relationships
         if isinstance(relationships, list) and len(relationships) > 1:

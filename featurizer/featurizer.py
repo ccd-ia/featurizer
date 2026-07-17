@@ -124,6 +124,7 @@ class Featurizer:
             config["entities"],
             config["relationships"],
             config.get("spatial_relationships"),
+            config.get("graph_relationships"),
         )
         self.target: Entity = self._get_entity(config["target"])
 
