@@ -3,7 +3,7 @@ title: Configuration reference
 description: >-
   Every key of featurizer's YAML configuration — entities, variables and
   roles, relationships, temporal joins, intervals, primitive selection,
-  peer groups and spatial features.
+  peer groups, spatial features and 1-hop graph features.
 sidebar:
   order: 2
 ---
@@ -53,6 +53,7 @@ primitive names get a "did you mean?" from the registry. Disable with
 | `entities` | yes | the tables — see below |
 | `relationships` | no | foreign-key links — see below |
 | `spatial_relationships` | no | second-table spatial features — see below |
+| `graph_relationships` | no | native 1-hop graph features over an edge table (0.9.0) — see below |
 
 The runtime also expects an **`as_of_dates` table** (one `as_of_date` column)
 in the database at execution time — it is the outer spine every feature is
@@ -154,6 +155,51 @@ spatial_relationships:
 
 Synthesizes `COLOCATION_COUNT`, `DISTANCE_TO_NEAREST`, and `KDE_INTENSITY`
 features between the two tables.
+
+## Graph relationships (planner pass)
+
+The taxonomy's cheap graph tier, in pure SQL — as-of degree and 1-hop
+neighbour aggregates over an edge stream, no Python and no `[bridge]`
+dependency:
+
+```yaml
+graph_relationships:
+  - name: contacts             # required — feature-name token
+    left: facilities           # required — node entity; features attach here
+    right: states              # optional — neighbour-STATE entity (default: left)
+    edges:                     # required — the edge stream
+      table: contact_edges     # may be schema-qualified
+      source: src_id           # edge source node-id column
+      target: dst_id           # edge target node-id column
+      timestamp: contacted_at  # REQUIRED — the pass is as-of by construction
+    directed: true             # optional — false unions both directions
+    measures: [risk_score]     # optional — default: right's numeric variables
+    shares:   [flagged]        # optional — default: right's boolean variables
+    features: [degree, neighbour_mean, neighbour_share]  # optional — default: all
+```
+
+Synthesizes, per `left` row:
+
+- `DEGREE(<name>)` — edge incidences knowable as-of, plus one windowed
+  `DEGREE(<name>|interval=P3M)` variant per configured interval;
+- `NEIGHBOUR_MEAN(<name>.<measure>)` — mean of each numeric `measures`
+  column over the 1-hop neighbours' state rows;
+- `NEIGHBOUR_SHARE(<name>.<flag>)` — share of each boolean `shares` column
+  (e.g. the flagged-neighbour rate).
+
+Two causal bounds apply together: the **edge timestamp** and — when `right`
+declares a `temporal_ix` — the **neighbour state's** timestamp, both cut at
+the as-of date. That is why `edges.timestamp` is required: a static edge
+table cannot be causally bounded. The pass is deliberately **1-hop only**;
+2-hop aggregation pulls neighbours' future labels (the classic temporal-GNN
+leakage) and is not offered. A neighbour reached by two knowable edges (or
+carrying several knowable state rows) weighs proportionally in the
+mean/share.
+
+For heavier graph features (centralities, community membership) see the
+[bridge cookbook](/featurizer/engineering/bridge-cookbook/) — including the
+Path-2 move where near-duplicate or co-mention **text induces the edge
+table** this block then consumes.
 
 ## Selecting primitives
 
