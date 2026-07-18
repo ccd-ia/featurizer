@@ -6,6 +6,46 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-18
+
+Phase 5 of the text/graph plan: trajectory, sequence extensions, and the
+Path-2 move where text *induces* the graph. Everything here is a φ-bridge or
+edge builder — zero engine change.
+
+### Added
+
+- **`EmbeddingTrajectoryBridge`** (`featurizer/bridge/trajectory.py`, numpy
+  only): per-event `novelty` (1 − max cosine to the entity's own
+  strictly-prior embeddings — "out of character?"), `drift` (distance to the
+  prior-history centroid), and `volatility` (step distance to the previous
+  event). First events are NULL (no history ≠ maximal novelty); accepts
+  Python sequences, PostgreSQL arrays, or pgvector text — a materialized
+  `SentenceEmbeddingBridge` table reads back directly.
+- **Sequence extensions** (`featurizer/bridge/changepoint.py`, numpy only,
+  snapshot-aware per ADR-0014): `ChangePointBridge` — strongest mean shift in
+  an entity's pre-t₀ measure series (binary-segmentation score + 0–1
+  position); `PeriodicityBridge` — FFT-peak strength and dominant period of
+  the binned event-count series (7 with daily bins and a weekly rhythm).
+- **Text-induced edges** (`featurizer/bridge/edges.py`, Path 2): a small
+  `EdgeBridge` base whose `materialize_edges` writes an `(src, dst, ts)`
+  table — exactly what the graph bridges and the native
+  `graph_relationships` stage consume. `NearDuplicateEdgeBridge` (MinHash/LSH
+  via datasketch; an edge between the *entities* of near-duplicate documents,
+  knowable at the *later* document's timestamp; self-copies excluded) and
+  `CoMentionEdgeBridge` (names mentioned together per document; naive
+  built-in extractor, `extract=` pluggable). The two-stage
+  text→edges→centrality→spine wiring is integration-tested end to end and
+  documented in the bridge cookbook.
+- Shared bridge plumbing (`load_rows`, `fit_slice`, `create_table_sql`,
+  `value_sql_type`) promoted to public module functions in
+  `featurizer/bridge/base.py`; `word_tokens` public in `.nlp`. Behaviour
+  unchanged.
+- Deps: `datasketch` joins the `[bridge]` extra and the dev group (the
+  near-duplicate tests execute under plain `uv sync`).
+- Tests: 24 new DB-free (planted outlier / step / weekly-rhythm / copy-paste
+  signals all recovered; per-entity and strictly-prior history isolation) +
+  the live-PG two-stage pipeline test.
+
 ## [0.9.0] - 2026-07-17
 
 The text/graph feature-family release (plan:

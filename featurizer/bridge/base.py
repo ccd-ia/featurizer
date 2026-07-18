@@ -400,33 +400,20 @@ class BridgeComputer(ABC):
     def _load_rows(
         conn: Any, source_table: str, select_cols: Sequence[str]
     ) -> List[Dict[str, Any]]:
-        with conn.cursor() as cur:
-            cur.execute(f"select {', '.join(select_cols)} from {source_table}")
-            names = [d.name for d in cur.description]
-            return [dict(zip(names, r)) for r in cur.fetchall()]
+        return load_rows(conn, source_table, select_cols)
 
     @staticmethod
     def _fit_slice(
         rows: List[Dict[str, Any]], causal_col: Optional[str], fit_before: Any
     ) -> List[Dict[str, Any]]:
         """The pre-t₀ fit subset, boundary-asserted; all rows when uncut."""
-        if not (causal_col and fit_before is not None):
-            return rows
-        fit_rows = [
-            r
-            for r in rows
-            if r.get(causal_col) is not None and r[causal_col] <= fit_before
-        ]
-        assert_pre_t0(fit_rows, fit_before, causal_col)
-        return fit_rows
+        return fit_slice(rows, causal_col, fit_before)
 
     @staticmethod
     def _create_table_sql(output_table: str, cols_ddl: str, persist: bool) -> str:
         """``create table`` DDL: session-temporary by default, real when
         ``persist`` (an orchestrated asset, ADR-0003/ADR-0014)."""
-        if persist:
-            return f"create table {output_table} ({cols_ddl})"
-        return f"create temp table {output_table} ({cols_ddl}) on commit drop"
+        return create_table_sql(output_table, cols_ddl, persist)
 
     def _column_type(self, values: Dict[Any, Any]) -> str:
         if self.value_type == "vector":
@@ -439,13 +426,58 @@ class BridgeComputer(ABC):
             return f"vector({dim})"
         return "double precision"
 
-    @staticmethod
-    def _python_sql_type(value: Any) -> Optional[str]:
-        """SQL type for one non-null Python value, or None to keep looking."""
-        import datetime
+    @classmethod
+    def _value_sql_type(cls, values: Sequence[Any]) -> str:
+        """Best-effort SQL type from a sequence of Python values."""
+        return value_sql_type(values)
 
+    @classmethod
+    def _carry_type(cls, col: str, rows: List[Dict[str, Any]]) -> str:
+        """Best-effort SQL type for a carried column from its Python values."""
+        return value_sql_type([row.get(col) for row in rows])
+
+
+# ---- shared plumbing (public: edge builders and future companions) -------- #
+
+
+def load_rows(
+    conn: Any, source_table: str, select_cols: Sequence[str]
+) -> List[Dict[str, Any]]:
+    """Fetch ``select_cols`` from ``source_table`` as a list of dicts."""
+    with conn.cursor() as cur:
+        cur.execute(f"select {', '.join(select_cols)} from {source_table}")
+        names = [d.name for d in cur.description]
+        return [dict(zip(names, r)) for r in cur.fetchall()]
+
+
+def fit_slice(
+    rows: List[Dict[str, Any]], causal_col: Optional[str], fit_before: Any
+) -> List[Dict[str, Any]]:
+    """The pre-t₀ fit subset, boundary-asserted; all rows when uncut."""
+    if not (causal_col and fit_before is not None):
+        return rows
+    fit_rows = [
+        r for r in rows if r.get(causal_col) is not None and r[causal_col] <= fit_before
+    ]
+    assert_pre_t0(fit_rows, fit_before, causal_col)
+    return fit_rows
+
+
+def create_table_sql(output_table: str, cols_ddl: str, persist: bool) -> str:
+    """``create table`` DDL: session-temporary by default, real when
+    ``persist`` (an orchestrated asset, ADR-0003/ADR-0014)."""
+    if persist:
+        return f"create table {output_table} ({cols_ddl})"
+    return f"create temp table {output_table} ({cols_ddl}) on commit drop"
+
+
+def value_sql_type(values: Sequence[Any]) -> str:
+    """Best-effort SQL type from a sequence of Python values."""
+    import datetime
+
+    for value in values:
         if value is None:
-            return None
+            continue
         if isinstance(value, bool):
             return "boolean"
         if isinstance(value, int):
@@ -457,20 +489,7 @@ class BridgeComputer(ABC):
         if isinstance(value, datetime.date):
             return "date"
         return "text"
-
-    @classmethod
-    def _value_sql_type(cls, values: Sequence[Any]) -> str:
-        """Best-effort SQL type from a sequence of Python values."""
-        for value in values:
-            typ = cls._python_sql_type(value)
-            if typ is not None:
-                return typ
-        return "text"
-
-    @classmethod
-    def _carry_type(cls, col: str, rows: List[Dict[str, Any]]) -> str:
-        """Best-effort SQL type for a carried column from its Python values."""
-        return cls._value_sql_type([row.get(col) for row in rows])
+    return "text"
 
 
 class MultiColumnBridge(BridgeComputer):

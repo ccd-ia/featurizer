@@ -28,6 +28,15 @@ Shipped bridges by modality:
   (categorical) + modularity (python-louvain).
 - :class:`~featurizer.bridge.embeddings.SentenceEmbeddingBridge` — sentence
   embeddings → pgvector (sentence-transformers + the pgvector extension).
+- :class:`~featurizer.bridge.trajectory.EmbeddingTrajectoryBridge` — per-event
+  novelty / drift / volatility over an embedding stream (numpy only).
+- Sequence extensions (:mod:`.changepoint`): :class:`ChangePointBridge` and
+  :class:`PeriodicityBridge` — per-entity mean-shift and FFT-peak scores over
+  the pre-t₀ event series (numpy only, snapshot-aware).
+- Text-induced edges (:mod:`.edges`, Path 2):
+  :class:`NearDuplicateEdgeBridge` (MinHash/LSH, datasketch) and
+  :class:`CoMentionEdgeBridge` — emit an ``(src, dst, ts)`` edge table that
+  feeds the graph bridges or the native ``graph_relationships`` stage.
 
 The optional dependencies live in the ``[bridge]`` extra
 (``pip install 'featurizer[bridge]'``).
@@ -39,15 +48,12 @@ a :class:`~featurizer.bridge.base.BridgeComputer` (or
 
   Text/NLP      POS/dependency stats, toxicity, keyphrase rates, coreference
                 density, LLM structured extraction.
-  Embeddings    drift vs a reference centroid, novelty (1 - max cosine to
-                history), cluster assignment, outlier score, nearest-prototype
-                distance.
+  Embeddings    cluster assignment, outlier score, nearest-prototype distance.
   Graph         SBM block membership / MDL surprise (graph-tool; deliberately
                 deferred — not pip-installable), temporal-motif counts,
                 embedding (node2vec).
-  Sequence      HMM state posterior, change-point score, motif/n-gram surprisal,
-                edit distance to a prototype, survival/hazard estimates,
-                periodicity (FFT peak), trend (STL) components.
+  Sequence      HMM state posterior, motif/n-gram surprisal, edit distance to
+                a prototype, survival/hazard estimates, trend (STL) components.
   Geospatial    road-network travel time, isochrone population, POI density by
                 category, trajectory stay-points, map-matched route features.
 
@@ -60,7 +66,9 @@ from __future__ import annotations
 
 from .base import BridgeComputer, MultiColumnBridge, assert_pre_t0
 from .centrality import CentralityBridge
+from .changepoint import ChangePointBridge, PeriodicityBridge
 from .community import CommunityBridge
+from .edges import CoMentionEdgeBridge, EdgeBridge, NearDuplicateEdgeBridge
 from .embeddings import SentenceEmbeddingBridge
 from .graph import PageRankBridge
 from .nlp import (
@@ -71,6 +79,7 @@ from .nlp import (
 )
 from .sequence import MarkovSurprisalBridge
 from .text import TfidfTopicShareBridge
+from .trajectory import EmbeddingTrajectoryBridge
 
 __all__ = [
     "BridgeComputer",
@@ -86,4 +95,10 @@ __all__ = [
     "CentralityBridge",
     "CommunityBridge",
     "SentenceEmbeddingBridge",
+    "EmbeddingTrajectoryBridge",
+    "ChangePointBridge",
+    "PeriodicityBridge",
+    "EdgeBridge",
+    "NearDuplicateEdgeBridge",
+    "CoMentionEdgeBridge",
 ]

@@ -1,6 +1,6 @@
 [project]
 name = "featurizer"
-version = "0.9.0"
+version = "0.9.1"
 description = "DFS implementation for PostgreSQL temporal datasources"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -66,6 +66,8 @@ bridge = [
   # bridges (sentiment/readability/language-id) need none of these.
   "spacy>=3.7",
   "python-louvain>=0.16",
+  # 0.9.1: MinHash/LSH for NearDuplicateEdgeBridge.
+  "datasketch>=1.6",
 ]
 parquet = [
     "pyarrow>=24.0.0",
@@ -95,6 +97,9 @@ dev = [
     # deps (torch via sentence-transformers, spaCy) stay extra-only.
     "networkx>=3",
     "python-louvain>=0.16",
+    # datasketch (numpy-only, small) likewise: the near-duplicate edge tests
+    # execute rather than skip under plain `uv sync`.
+    "datasketch>=1.6",
     "pytest>=8.2",
     "pytest-cov>=7.0.0",
 ]

@@ -400,3 +400,107 @@ def test_graph_community_membership_materializes_per_node(pg_conn):
         )
         == "text"
     )
+
+
+def test_pipeline_text_to_edges_to_centrality_to_spine(pg_conn):
+    """The Path-2 two-stage wiring end to end on real PG: near-duplicate text
+    induces an edge table; the centrality bridge snapshots it per window; the
+    spine trends the metric. The copy-paste pair completes only in September,
+    so the June window has no graph at all."""
+    from featurizer.bridge import NearDuplicateEdgeBridge
+
+    paste = (
+        "El contrato fue firmado sin licitación previa por la empresa "
+        "constructora del corredor interoceánico en marzo"
+    )
+    create_temp_table(
+        pg_conn, "authors", [("author_id", "text")], [("a",), ("b",), ("c",)]
+    )
+    create_temp_table(
+        pg_conn,
+        "posts",
+        [
+            ("post_id", "int"),
+            ("author_id", "text"),
+            ("posted_at", "date"),
+            ("body", "text"),
+        ],
+        [
+            (1, "a", date(2020, 1, 10), paste),
+            (2, "b", date(2020, 9, 10), paste),  # the copy appears here
+            (3, "c", date(2020, 2, 1), "sin coincidencias con nadie más"),
+        ],
+    )
+
+    # Stage 1: text -> edge table (knowable at the LATER document).
+    edge_bridge = NearDuplicateEdgeBridge(
+        pk_col="post_id", entity_col="author_id", text_col="body", ts_col="posted_at"
+    )
+    edge_bridge.materialize_edges(
+        pg_conn,
+        source_table="posts",
+        output_table="text_edges",
+        content_cols=["post_id", "author_id", "posted_at", "body"],
+    )
+    assert expect_sql(pg_conn, "select count(*) from text_edges") == 1
+    assert expect_sql(pg_conn, "select ts from text_edges") == date(2020, 9, 10)
+
+    # Stage 2: edge table -> per-(node, as_of) centrality snapshots.
+    centrality = CentralityBridge(source_col="src", target_col="dst", directed=False)
+    centrality.materialize_snapshots(
+        pg_conn,
+        source_table="text_edges",
+        output_table="text_centrality",
+        as_of_dates=[date(2020, 6, 1), date(2020, 12, 31)],
+        causal_col="ts",
+        content_cols=["src", "dst"],
+        entity_col="node_id",
+        as_of_col="as_of_date",
+    )
+    # June window: the pair is not knowable yet -> no graph, no rows.
+    assert (
+        expect_sql(
+            pg_conn,
+            "select count(*) from text_centrality where as_of_date = %s",
+            (date(2020, 6, 1),),
+        )
+        == 0
+    )
+
+    # Stage 3: the spine aggregates the snapshot stream as-of.
+    fragment = centrality.emit_yaml(
+        output_table="text_centrality",
+        pk="node_id",
+        parent_alias="authors",
+        parent_key="author_id",
+        fk="node_id",
+        temporal_ix="as_of_date",
+    )
+    config = {
+        "target": "authors",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": ["max"],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "authors", "table": "authors", "id": "author_id"},
+            fragment["entity"],
+        ],
+        "relationships": [fragment["relationship"]],
+    }
+    make_as_of_dates(pg_conn, ["2020-06-01", "2020-12-31"])
+    rows = run_featurizer(pg_conn, config)
+
+    def degree(as_of, author):
+        return feature(
+            rows,
+            as_of=as_of,
+            id_col="author_id",
+            entity_id=author,
+            col_substr="MAX(centrality.degree)",
+        )
+
+    assert degree("2020-06-01", "a") is None  # nothing knowable in June
+    assert float(degree("2020-12-31", "a")) == 1.0
+    assert float(degree("2020-12-31", "b")) == 1.0
+    assert degree("2020-12-31", "c") is None  # never in the induced graph

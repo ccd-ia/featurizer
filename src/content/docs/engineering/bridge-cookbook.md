@@ -143,6 +143,56 @@ pre-t₀ neighbour states. It is deliberately **1-hop only**: 2-hop aggregation
 pulls neighbours' future labels (the canonical temporal-GNN leakage) and is not
 offered.
 
+## Worked example — text induces the graph (Path 2, two-stage)
+
+Documents can *create* edges — the copy-paste signature of coordination. The
+edge builders emit an `(src, dst, ts)` table that is the **input** to the
+graph bridges (or the native `graph_relationships` block); causality lives on
+the edge timestamp, which for a near-duplicate pair is the *later* document's
+— the pair does not exist until the copy appears.
+
+```python
+from featurizer.bridge import CentralityBridge, NearDuplicateEdgeBridge
+
+# Stage 1: text -> induced edge table (MinHash/LSH, datasketch).
+NearDuplicateEdgeBridge(
+    pk_col="post_id", entity_col="author_id",
+    text_col="body", ts_col="posted_at",
+).materialize_edges(
+    conn,
+    source_table="posts",
+    output_table="text_edges",
+    content_cols=["post_id", "author_id", "posted_at", "body"],
+)
+
+# Stage 2: edge table -> per-(node, as_of) centrality snapshots -> spine.
+CentralityBridge(source_col="src", target_col="dst", directed=False)
+    .materialize_snapshots(
+        conn, source_table="text_edges", output_table="text_centrality",
+        as_of_dates=cohort_dates, causal_col="ts",
+        content_cols=["src", "dst"],
+    )
+```
+
+`CoMentionEdgeBridge` induces edges between names mentioned together in one
+document (its default extractor is a deliberately naive capitalized-sequence
+heuristic — pass `extract=` for an NER-based one).
+
+## Trajectory & sequence extensions (0.9.1)
+
+`EmbeddingTrajectoryBridge` scores each event against the entity's **own
+strictly-prior** embedding history: `novelty` (1 − max cosine — "out of
+character?"), `drift` (distance to the history centroid), `volatility` (step
+distance to the previous event). It reads a precomputed embedding column —
+`SentenceEmbeddingBridge` output works directly — and needs only numpy. The
+first event is NULL: no history is not the same as maximal novelty.
+
+`ChangePointBridge` (strongest mean shift in a measure series, with its 0–1
+position) and `PeriodicityBridge` (FFT-peak strength and period of the
+event-count series) are **per-entity** scores over the pre-t₀ series — pair
+them with `materialize_nodes` for one snapshot or `materialize_snapshots` for
+a backtest cohort, exactly like the graph bridges.
+
 ## Writing your own bridge
 
 Subclass `BridgeComputer` (one value column) or `MultiColumnBridge`
@@ -192,6 +242,10 @@ Rules of the road:
 | PageRank, multi-metric centrality | `PageRankBridge`, `CentralityBridge` | networkx |
 | Community (Louvain) | `CommunityBridge` | python-louvain |
 | Sentence embeddings | `SentenceEmbeddingBridge` | sentence-transformers + pgvector |
+| Embedding trajectory (novelty/drift/volatility) | `EmbeddingTrajectoryBridge` | none (numpy) |
+| Change point, periodicity | `ChangePointBridge`, `PeriodicityBridge` | none (numpy) |
+| Near-duplicate edges (MinHash/LSH) | `NearDuplicateEdgeBridge` | datasketch |
+| Co-mention edges | `CoMentionEdgeBridge` | none |
 | 1-hop degree / neighbour mean / share | *(native `graph_relationships`)* | none — pure SQL |
 
 Install the heavy set with `pip install 'featurizer[bridge]'`; spaCy models

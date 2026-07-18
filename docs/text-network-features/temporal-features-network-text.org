@@ -200,10 +200,14 @@ The most interpretable and most causal-safe path.
 Documents create edges, which then feed every network family above.
 
 - =[safe ●●○]= *Near-duplicate / shared-content edges* — MinHash / LSH; the
-  copy-paste signature of coordination.
+  copy-paste signature of coordination. =shipped 0.9.1= as
+  ~NearDuplicateEdgeBridge~ (edge knowable at the *later* document; feeds the
+  graph bridges or the native ~graph_relationships~ stage).
 - =[safe ●●○]= *Citation network* — documents / cases citing one another (the
   natural object for legal corpora).
 - =[safe ●●○]= *Co-mention entity graph* — entities mentioned together.
+  =shipped 0.9.1= as ~CoMentionEdgeBridge~ (naive extractor built in,
+  ~extract=~ pluggable).
 - =[care ●●●]= *Semantic-similarity graph* — embed, connect by cosine threshold,
   detect communities over content.
 - =[care ●●●]= *Then run substrate C on the induced graph* — text-similarity
@@ -213,7 +217,9 @@ Documents create edges, which then feed every network family above.
 - =[care ●●●]= *Per-event sentence embeddings.*
 - =[care ●●●]= *Embedding trajectory* — distance travelled (semantic drift),
   volatility, *novelty* (distance of a new message from the entity's own
-  centroid — "out of character?").
+  centroid — "out of character?"). =shipped 0.9.1= as
+  ~EmbeddingTrajectoryBridge~ (per-event novelty / drift / volatility over
+  the strictly-prior history).
 - =[care ●●●]= *Sequence model over the document stream.*
 - =[care ●●●]= *LLM structured extraction* — parse free text into typed fields
   against a schema; the fields are then ordinary columns and you are back in
@@ -250,12 +256,15 @@ Documents create edges, which then feed every network family above.
 - Net new GAP families introduced here: peer / network-autocorrelation
   aggregation, SBM posterior-entropy & MDL-surprise, temporal global dynamics,
   and the entire text substrate. All re-enter the same spine after φ.
-- Status as of 0.9.0: Path 1's core reductions (sentiment, NER counts,
+- Status as of 0.9.1: Path 1's core reductions (sentiment, NER counts,
   readability, language id), the multi-metric centralities, Louvain
-  community, and the native 1-hop neighbour aggregation are shipped (see the
-  =shipped 0.9.0= markers above). Remaining GAPs: peer churn, Moran's I, SBM
-  entropy / MDL surprise, community persistence, global temporal dynamics;
-  trajectory / change-point / text-induced edges are the 0.9.1 line.
+  community, and the native 1-hop neighbour aggregation shipped in 0.9.0;
+  Path 2's induced edges (near-duplicate, co-mention), Path 3's embedding
+  trajectory (novelty / drift / volatility), and the change-point /
+  periodicity sequence scores shipped in 0.9.1 (see the =shipped= markers).
+  Remaining GAPs: peer churn, Moran's I, SBM entropy / MDL surprise,
+  community persistence, global temporal dynamics, LLM structured
+  extraction.
 
 #  Local Variables:
 #  org-image-actual-width: 1100

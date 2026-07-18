@@ -34,7 +34,7 @@ from .base import BridgeComputer, MultiColumnBridge
 # --------------------------------------------------------------------------- #
 
 
-def _words(text: str) -> List[str]:
+def word_tokens(text: str) -> List[str]:
     """Lowercased word tokens, Unicode-aware (keeps áéíóúüñ etc.)."""
     return re.findall(r"[^\W\d_]+", text.lower())
 
@@ -141,7 +141,7 @@ class SentimentBridge(BridgeComputer):
         for row in rows:
             scores = [
                 self.lexicon[w]
-                for w in _words(str(row.get(self.text_col) or ""))
+                for w in word_tokens(str(row.get(self.text_col) or ""))
                 if w in self.lexicon
             ]
             out[row[self.pk_col]] = sum(scores) / len(scores) if scores else None
@@ -215,7 +215,7 @@ class ReadabilityBridge(BridgeComputer):
         self.language = language
 
     def _score(self, text: str) -> Optional[float]:
-        words = _words(text)
+        words = word_tokens(text)
         if not words:
             return None
         sentences = _sentences(text)
@@ -300,7 +300,7 @@ class LanguageIdBridge(MultiColumnBridge):
         self.value_col = value_col
 
     def _detect(self, text: str) -> Optional[str]:
-        words = _words(text)
+        words = word_tokens(text)
         best: Optional[str] = None
         best_hits = 0
         for lang in self.languages:
