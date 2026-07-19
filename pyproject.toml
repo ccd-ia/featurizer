@@ -1,6 +1,6 @@
 [project]
 name = "featurizer"
-version = "0.9.1"
+version = "1.0.0"
 description = "DFS implementation for PostgreSQL temporal datasources"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -26,6 +26,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Database",
   "Topic :: Scientific/Engineering",
   "Typing :: Typed",

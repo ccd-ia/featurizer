@@ -6,6 +6,95 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-19
+
+The stability release: no new feature families — 1.0.0 is the *right to
+rely* on what 0.9.x already shipped. Every claimed compatibility is now
+tested, every known sharp edge is guarded or loudly documented, the 0.9.x
+families are validated at realistic scale, and the public surface is frozen
+under a written commitment a human actually reviewed
+([ADR-0015](docs/adr/0015-v1-api-stability-commitment.md)).
+
+### Added
+
+- **API freeze (ADR-0015, human-reviewed 2026-07-19).** Frozen: the YAML
+  config schema (incl. the `peer_groups` / `spatial_relationships` /
+  `graph_relationships` planner-pass blocks), the `Featurizer` public
+  surface and return shapes, the ADR-0007 output-naming contract (incl.
+  63-byte capping), the opt-in imputation contract, and the ADR-0001/0014
+  φ-bridge contract. Not frozen: planner/renderer internals, CTE names,
+  SQL text, module layout. Semver + a ≥-one-minor loguru deprecation policy
+  in CONTRIBUTING; classifier → `Development Status :: 5 - Production/Stable`.
+- **CI compatibility matrix.** The DB-free tier runs on Python
+  3.10/3.11/3.12/3.13; the integration tier executes the generated SQL on
+  PostgreSQL 14/16/17. README + FAQ state the tested matrix.
+- **`to_tables` heap-row-width pre-flight.** A ~1,000+-column group that
+  SELECTs fine used to fail CTAS with `row is too big` (a heap tuple must
+  fit one 8 KiB page). `to_tables` now estimates each group's row width and
+  re-partitions with a heap-safe cap — more, narrower tables instead of a
+  crash; SELECT/fetch paths unchanged.
+- **Docs snapshot per release.** `release.yml` builds the docs site and
+  attaches `docs-site-vX.Y.Z.tar.gz` to every release — versioned docs with
+  zero standing infrastructure (the starlight-versions switcher was
+  evaluated and rejected: it would snapshot generated, gitignored content).
+- **Committed benchmark harnesses.** `benchmarks/final_matrix.py` (the
+  3-DB × 3-variant live matrix; earlier snapshots came from uncommitted
+  scripts), `benchmarks/bridge_workloads.py` (graph/centrality/text at
+  scale), `benchmarks/render_v100_pages.py` (artifact pages as a pure
+  function of the committed raw JSON).
+
+### Fixed
+
+- **Manifest-under-sharding guard.** The silent `group_000` fallback in the
+  persisted `<stem>_manifest` is gone: the manifest writer now receives the
+  exact partition the group tables were written from, and an orphaned
+  column raises instead of silently mis-tagging lineage (triage joins on
+  `feature_group`). Also fixes the latent case where a config that fits one
+  query but partitions into >1 groups wrote tables inconsistent with the
+  manifest.
+- **Imputation × materialization, proven together.** `to_arrow(impute=True)`
+  and `to_dataframe(impute=True)` over the oversized-child TEMP-table path
+  are now integration-tested end to end: counts fill 0, measures keep NULL
+  plus `__missing` indicators, and the Arrow and pandas paths agree
+  value-for-value.
+
+### Validated
+
+- **Live 3-DB revalidation** (committed:
+  `specs/live-db-revalidation-v100/`): no regression vs v0.8.0 — dirtyduck
+  all-agg/wide 7.0/60.2s (was 7.5/63.2), chicago311 5.7/47.5s (was
+  6.0/49.2), donorschoose 8.3/501.1s (was 7.6/470.1; wide's +6.6% tracks
+  its +6% feature growth at identical per-column throughput; 39,022
+  features / 33 shards / 0 duplicate names).
+- **The 0.9.x families measured at scale for the first time**: the native
+  `graph_relationships` pass over 13,950 live chain edges × the full
+  22,169-facility cohort × 3 as-of dates in 7.8s (DEGREE hand-SQL-verified);
+  `CentralityBridge.materialize_snapshots` cheap tier 0.5s vs
+  `include_heavy` 17.2s over 3 windows (the measured 34× reason heavy
+  metrics are opt-in); `SentimentBridge` over 50,000 real inspector
+  comments materialized and spine-aggregated end to end (hand-SQL-verified).
+
+### Documented
+
+- The as-of-LATERAL materialization residual stays a **loud, deliberate
+  boundary** (`NotImplementedError` with both workarounds), now pinned by
+  tests and documented in the FAQ and the configuration reference.
+- The pyright/coverage carve-outs on the two dynamic primitive modules and
+  the 70% coverage floor are documented in CONTRIBUTING as intentional,
+  with the reason (the execution tiers are their real coverage).
+- `docs/featurizer-overview.org` retired (stale counts, DSaPP-era branding;
+  superseded by the docs hub's concepts/walkthrough/internals pages).
+
+### Decisions (recorded so they stop recurring)
+
+- **No PyPI, reaffirmed.** Derived from dssg/featurizer and the name is
+  generic; GitHub releases + git-tag pins are the working distribution
+  channel (triage consumes them today). Revisit only on real external
+  demand.
+- **No upstream dssg PR.** The tree has diverged by essentially everything
+  (engine rewrite, 150 registry primitives, planner passes, φ-bridges, docs
+  hub); a PR is unreviewable. The public ccd-ia repo is the continuation.
+
 ## [0.9.1] - 2026-07-18
 
 Phase 5 of the text/graph plan: trajectory, sequence extensions, and the
