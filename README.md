@@ -399,6 +399,40 @@ interactive exploration.
     generated SQL references each side's own column. See ADR-0008.
 
 
+## Planner Passes & φ-Bridge Families (beyond the registry)
+
+Some feature families are not registry primitives — they are **planner
+passes** driven by their own config blocks, or **φ-bridge** precomputes
+(heavy Python that materializes a column the SQL spine then aggregates):
+
+-   **Peer groups** (`peer_groups` on an entity): leave-one-out comparisons
+    against peers sharing a categorical — `PEER_GROUP_SIZE`, `PEER_MEAN`,
+    `PEER_ZSCORE`, `PEER_PCTILE`, `EGO_MINUS_PEER_MEAN`, `PEER_EVENT_RATE`.
+-   **Spatial relationships** (`spatial_relationships`, top-level):
+    co-location count, distance-to-nearest, and KDE intensity between two
+    entities with lat/lon indexes.
+-   **Graph relationships** (`graph_relationships`, top-level, v0.9.0):
+    native 1-hop graph features over an edge table, in pure SQL — as-of
+    `DEGREE` (plus windowed variants per interval) and neighbour-state
+    `NEIGHBOUR_MEAN` / `NEIGHBOUR_SHARE`, bounded by *both* the edge
+    timestamp and the neighbour state's timestamp. Strictly 1-hop by
+    design (2-hop leaks neighbours' future labels).
+-   **φ-bridge families** (`featurizer/bridge/`, the `[bridge]` extra):
+    sentiment / readability / language-id / NER counts, multi-metric
+    centralities and Louvain community over per-window snapshot rebuilds,
+    sentence embeddings, embedding-trajectory novelty/drift/volatility,
+    change-point and periodicity scores, and text-induced edge builders
+    (near-duplicate MinHash/LSH, co-mentions) that feed the graph
+    features. See ADR-0001/ADR-0014 for the causal contract.
+
+Full documentation:
+[configuration reference](https://ccd-ia.github.io/featurizer/reference/configuration/)
+(every config block) and the
+[bridge cookbook](https://ccd-ia.github.io/featurizer/engineering/bridge-cookbook/)
+(worked examples per modality, two-stage text→edges→graph wiring,
+dependency matrix).
+
+
 <a id="org7cae9fd"></a>
 
 ## Feature Primitive Registries
