@@ -269,8 +269,8 @@ a validation error with a "did you mean?" suggestion.
 
 ## Examples
 
-The `examples/` directory contains four self-contained tutorials with
-SQLite databases:
+The `examples/` directory contains six self-contained tutorials that run
+against PostgreSQL (`just db-up` starts a throwaway container):
 
 <table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
 
@@ -318,6 +318,12 @@ SQLite databases:
 <td class="org-left"><a href="examples/05-categoricals-output/">05-categoricals-output</a></td>
 <td class="org-left">Food Inspections (Facilities → Inspections)</td>
 <td class="org-left">Categorical one-hot, manifest, output &amp; imputation (executes on PostgreSQL)</td>
+</tr>
+
+<tr>
+<td class="org-left"><a href="examples/06-graph-text-bridge/">06-graph-text-bridge</a></td>
+<td class="org-left">Coordination detection (Authors → Posts)</td>
+<td class="org-left">φ-bridges: sentiment, near-duplicate edges, centrality snapshots → spine (executes on PostgreSQL)</td>
 </tr>
 </tbody>
 </table>
@@ -589,6 +595,6 @@ Run the test suite with:
 -   `featurizer/` &#x2013; Core modules (planner, sql, executor, validation)
 -   `featurizer/primitives/` &#x2013; Aggregation and transformation primitives
 -   `tests/` &#x2013; Test suite (385 tests)
--   `examples/` &#x2013; Four self-contained examples with SQLite databases
+-   `examples/` &#x2013; Six self-contained examples executing against PostgreSQL
 -   `docs/` &#x2013; Session history and primitives reference
 

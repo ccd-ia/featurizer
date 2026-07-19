@@ -63,6 +63,18 @@ against a fixed vocabulary, the feature manifest, the output formats
 count-vs-measure). Unlike examples 1–4, this one **executes** against
 PostgreSQL, so it shows the actual feature matrix.
 
+### [06-graph-text-bridge](./06-graph-text-bridge/)
+**Difficulty:** Advanced — Coordination Detection (Authors → Posts)
+
+The φ-bridge two-stage pipeline (ADR-0001/ADR-0014): `SentimentBridge`
+reduces each post to a valence scalar (Path 1), `NearDuplicateEdgeBridge`
+turns copy-paste text into an `(src, dst, ts)` edge table (Path 2), and
+`CentralityBridge.materialize_snapshots` rebuilds the graph per as-of window
+into `(node, as_of_date)` snapshot rows the spine trends. All bridge outputs
+are persisted tables (`persist=True`) and `run_example.py` asserts
+`config.yaml` equals the bridges' `emit_yaml()` fragments. **Executes**
+against PostgreSQL.
+
 ## Quick Start
 
 ```bash
@@ -70,7 +82,7 @@ PostgreSQL, so it shows the actual feature matrix.
 just db-up
 
 # Seed + run a single example end to end (NAME is a prefix):
-just example 01            # or 02, 03, 04, 05
+just example 01            # or 02, 03, 04, 05, 06
 # ...or run all of them:
 just examples
 
@@ -99,6 +111,7 @@ uv run python examples/01-basic-aggregations/run_example.py --show-sql
 3. **Example 3** — deep nesting
 4. **Example 4** — custom primitives
 5. **Example 5** — direct categoricals, output formats & imputation (executes on PostgreSQL)
+6. **Example 6** — φ-bridges: text → edges → centrality snapshots → spine (executes on PostgreSQL)
 
 ## Common Patterns
 

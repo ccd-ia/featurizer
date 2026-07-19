@@ -1,0 +1,50 @@
+# Example 6: text → edges → centrality → spine (the Path-2 two-stage wiring).
+#
+# The two child entities below are BRIDGE OUTPUT tables, persisted by
+# run_example.py before the spine runs (persist=True — the ADR-0014
+# orchestrated-asset flow):
+#
+#   bridge_sentiment — SentimentBridge over posts (Path 1: reduce → aggregate)
+#   post_centrality  — CentralityBridge snapshots over the near-duplicate edge
+#                      table (Path 2), keyed (node_id, as_of_date): an ordinary
+#                      event stream the spine trends
+#
+# run_example.py asserts these declarations equal the bridges' emit_yaml()
+# fragments, so this file cannot drift from the code.
+
+target: authors
+max_depth: 2
+intervals: []
+
+aggregations: [mean, max, count]
+transformations: [identity]
+
+entities:
+  - alias: authors
+    table: authors
+    id: author_id
+
+  - alias: sentiment
+    table: bridge_sentiment
+    id: post_id
+    temporal_ix: posted_at
+    variables:
+      sentiment: {type: numeric}
+
+  - alias: centrality
+    table: post_centrality
+    id: node_id
+    temporal_ix: as_of_date
+    variables:
+      degree: {type: numeric}
+      in_degree: {type: numeric}
+      out_degree: {type: numeric}
+      weighted_degree: {type: numeric}
+      coreness: {type: numeric}
+      clustering: {type: numeric}
+
+relationships:
+  - parent: {entity: authors, key: author_id}
+    child: {entity: sentiment, key: author_id}
+  - parent: {entity: authors, key: author_id}
+    child: {entity: centrality, key: node_id}

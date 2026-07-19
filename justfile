@@ -65,6 +65,7 @@ examples:
     just example 03
     just example 04
     just example 05
+    just example 06
 
 typecheck:
     uv run basedpyright
