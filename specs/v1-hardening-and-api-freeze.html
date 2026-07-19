@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: v1.0 — Hardening &amp; API Freeze</title>
+<style>
+:root{
+  --bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;
+  --accent:#1d4ed8;--accent-soft:#dbeafe;--accent-2:#b45309;--accent-2-soft:#fef3c7;
+  --border:#e2e4e0;--code-bg:#f1f3f0;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+  --sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#15181e;--surface:#1e232b;--fg:#e7eaf0;--muted:#98a1af;
+  --accent:#93b4f8;--accent-soft:#1e3a8a;--accent-2:#f5b45e;--accent-2-soft:#4a3008;
+  --border:#333a45;--code-bg:#262c36}
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.55;margin:0;padding:1.2rem}
+main{max-width:900px;margin:0 auto}
+h1{font-size:1.5rem;margin:.2rem 0 .6rem;line-height:1.2}
+h2{font-size:1.15rem;margin:1.8rem 0 .5rem;color:var(--accent);border-bottom:1px solid var(--border);padding-bottom:.25rem}
+h3{font-size:1rem;margin:1.2rem 0 .35rem}
+h4{font-size:.9rem;margin:.9rem 0 .3rem;color:var(--accent-2)}
+p,li{font-size:.88rem}
+.muted{color:var(--muted)}
+code{font-family:var(--mono);font-size:.82em;background:var(--code-bg);padding:.05em .35em;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;overflow-x:auto;font-family:var(--mono);font-size:.76rem;line-height:1.45}
+pre code{background:none;padding:0}
+a{color:var(--accent)}
+header .meta{margin:.4rem 0 0}
+.meta summary{cursor:pointer;font-size:.78rem;color:var(--muted);font-weight:700}
+.meta dl{display:grid;grid-template-columns:max-content 1fr;gap:.15rem .8rem;font-size:.76rem;margin:.5rem 0 0;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem}
+.meta dt{color:var(--muted);font-weight:700}
+.meta dd{margin:0;font-family:var(--mono);word-break:break-word}
+figure{margin:1rem 0;text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{font-size:.75rem;color:var(--muted);margin-top:.4rem}
+.tag{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:.08rem .4rem;border-radius:999px}
+.tag.existing{background:var(--code-bg);color:var(--muted)}
+.tag.new{background:var(--accent-soft);color:var(--accent)}
+.files ul{list-style:none;padding-left:0}
+.files li{margin:.3rem 0}
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.6rem 1rem 1rem;margin:1rem 0}
+.status{background:var(--accent-2-soft);color:var(--accent-2);font-weight:700}
+.checklist{list-style:none;padding-left:.2rem}
+.checklist li{margin:.28rem 0;padding-left:.2rem}
+.loop{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:6px;padding:.5rem .75rem;margin:.6rem 0;font-size:.8rem}
+.pill{display:inline-block;font-size:.66rem;font-weight:700;border-radius:999px;padding:.1rem .45rem;margin-left:.35rem}
+.pill.safe{background:var(--accent-soft);color:var(--accent)}
+.pill.care{background:var(--accent-2-soft);color:var(--accent-2)}
+.pill.human{background:var(--accent-2-soft);color:var(--accent-2);border:1px dashed var(--accent-2)}
+#amendments details{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:.55rem .8rem;margin:.5rem 0}
+#amendments summary{cursor:pointer;font-weight:700;font-size:.85rem}
+table{border-collapse:collapse;width:100%;font-size:.8rem;margin:.6rem 0}
+th,td{border:1px solid var(--border);padding:.35rem .55rem;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);color:var(--accent)}
+/* SVG palette — resolves the page CSS vars so diagrams are theme-aware */
+svg text{fill:var(--fg);font-family:var(--sans)}
+svg .lbl{fill:var(--muted)}
+svg .box{fill:var(--surface);stroke:var(--border);stroke-width:1.5}
+svg .accent-box{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+svg .amber-box{fill:var(--accent-2-soft);stroke:var(--accent-2);stroke-width:1.5}
+svg .muted-box{fill:var(--code-bg);stroke:var(--border);stroke-width:1.5;stroke-dasharray:4 3}
+svg .edge{stroke:var(--muted);fill:none;stroke-width:1.5}
+svg .edge-accent{stroke:var(--accent);fill:none;stroke-width:2}
+svg .fill-accent{fill:var(--accent)}
+svg .fill-muted{fill:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: v1.0 — Hardening &amp; API Freeze</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-07-18T23:20-06:00</dd>
+        <dt>modified</dt>     <dd>2026-07-18T23:20-06:00</dd>
+        <dt>commits</dt>      <dd>(pending — planning only)</dd>
+        <dt>agent name</dt>   <dd>claude-fable-5</dd>
+        <dt>session id</dt>   <dd>4158abd7-1f32-445d-af1c-07980456124e</dd>
+        <dt>back refs</dt>    <dd>specs/incorporating-text-graph-feature-families.html (executed, v0.9.0/0.9.1), specs/live-db-revalidation-v080/, specs/feature-materialization-performance.html, docs/adr/0007, 0010, 0014, TODO.org open [#C] items</dd>
+        <dt>forward refs</dt> <dd>docs/adr/0015-v1-api-stability-commitment.md (to write), specs/live-db-revalidation-v100/ (to create), CHANGELOG.md 1.0.0</dd>
+      </dl>
+    </details>
+  </header>
+
+  <!-- Hero image — five pillars carrying the v1.0 tag -->
+  <figure>
+    <svg viewBox="0 0 720 190" role="img" aria-label="Five hardening pillars carry the v1.0 tag">
+      <rect class="accent-box" x="255" y="18" width="210" height="44" rx="10"/>
+      <text x="360" y="45" text-anchor="middle" font-size="19" font-weight="700">v1.0.0</text>
+      <g font-size="12" font-weight="600" text-anchor="middle">
+        <rect class="box" x="20"  y="110" width="124" height="52" rx="8"/>
+        <text x="82"  y="133">Guards</text><text class="lbl" x="82" y="150" font-size="10">4 open edges</text>
+        <rect class="box" x="160" y="110" width="124" height="52" rx="8"/>
+        <text x="222" y="133">CI matrix</text><text class="lbl" x="222" y="150" font-size="10">py × PG</text>
+        <rect class="box" x="300" y="110" width="124" height="52" rx="8"/>
+        <text x="362" y="133">Live proof</text><text class="lbl" x="362" y="150" font-size="10">0.9.x at scale</text>
+        <rect class="amber-box" x="440" y="110" width="124" height="52" rx="8"/>
+        <text x="502" y="133">API freeze</text><text class="lbl" x="502" y="150" font-size="10">ADR-0015 ✍</text>
+        <rect class="box" x="580" y="110" width="124" height="52" rx="8"/>
+        <text x="642" y="133">Docs</text><text class="lbl" x="642" y="150" font-size="10">per release</text>
+      </g>
+      <g class="edge">
+        <line x1="82"  y1="110" x2="300" y2="62"/><line x1="222" y1="110" x2="330" y2="62"/>
+        <line x1="362" y1="110" x2="360" y2="62"/>
+        <line x1="502" y1="110" x2="392" y2="62"/><line x1="642" y1="110" x2="422" y2="62"/>
+      </g>
+    </svg>
+    <figcaption>v1.0 is a hardening release: five pillars, no new feature families. The amber pillar needs a human signature.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Cut <strong>Featurizer 1.0.0</strong> as a <em>stability promise</em>, not a feature release.
+    The surface is already there (150 registry primitives, three planner passes, 18 φ-bridge
+    families, sharding, manifest, categoricals — v0.9.1). What 1.0 adds is the right to rely on it:
+    every claimed compatibility is tested, every known sharp edge is guarded or loudly documented,
+    the 0.9.x families are validated at realistic scale, and the public surface is declared frozen
+    under a written semver/deprecation policy (ADR-0015) that a human has actually reviewed.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The gap between what the project <em>claims</em> and what it <em>verifies</em>:
+    <code>requires-python &gt;=3.10</code> is claimed but CI runs one Python on one PostgreSQL (16);
+    the 0.9.x families passed synthetic integration tests but never the live 3-DB matrix that
+    v0.6.0 and v0.8.0 earned their releases against; four known sharp edges sit open in TODO.org
+    (a silent <code>group_000</code> manifest fallback, the <code>to_tables</code> 8160-byte
+    heap-row limit, the untested <code>impute × materialized</code> combination, the as-of-LATERAL
+    materialization residual); ADR-0014 — the contract 18 families now stand on — was self-reviewed
+    only; and there is no written statement of what is frozen, so "stable" would be a vibe, not a
+    commitment.</p>
+    <figure>
+      <svg viewBox="0 0 720 168" role="img" aria-label="Claimed versus verified gap">
+        <text x="180" y="26" text-anchor="middle" font-size="13" font-weight="700">Claimed</text>
+        <text x="540" y="26" text-anchor="middle" font-size="13" font-weight="700">Verified today</text>
+        <g font-size="11.5">
+          <rect class="box" x="40"  y="40"  width="280" height="30" rx="6"/><text x="52" y="59">python ≥ 3.10 · PostgreSQL-native</text>
+          <rect class="box" x="40"  y="78"  width="280" height="30" rx="6"/><text x="52" y="97">0.9.x families point-in-time correct</text>
+          <rect class="box" x="40"  y="116" width="280" height="30" rx="6"/><text x="52" y="135">"stable" API surface</text>
+          <rect class="amber-box" x="400" y="40"  width="280" height="30" rx="6"/><text x="412" y="59">one Python · one PG version in CI</text>
+          <rect class="amber-box" x="400" y="78"  width="280" height="30" rx="6"/><text x="412" y="97">synthetic tests only, no live matrix</text>
+          <rect class="amber-box" x="400" y="116" width="280" height="30" rx="6"/><text x="412" y="135">no freeze doc · ADR-0014 unreviewed</text>
+        </g>
+        <g class="edge"><line x1="320" y1="55" x2="400" y2="55"/><line x1="320" y1="93" x2="400" y2="93"/><line x1="320" y1="131" x2="400" y2="131"/></g>
+      </svg>
+      <figcaption>Each claim on the left is honest work away from being a verified fact on the right.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Six phases, cheapest-first so every later phase runs on a hardened base: (1) close the four
+    engineering guards; (2) widen CI into the claimed compatibility matrix; (3) re-run the live-DB
+    revalidation matrix <em>including new graph/text workloads</em> and commit the artifacts
+    (house convention: <code>specs/live-db-revalidation-v100/</code>); (4) write the API-freeze
+    ADR-0015 + deprecation policy and put ADR-0014/0015 through an explicit <strong>human review
+    gate</strong>; (5) ship docs-per-release and retire the stale org overview; (6) cut 1.0.0
+    through the existing tag-triggered pipeline. No new feature families anywhere in this plan —
+    the taxonomy's remaining GAPs (peer churn, Moran's I, SBM, temporal motifs, LLM extraction)
+    are explicitly post-1.0 lines.</p>
+    <figure>
+      <svg viewBox="0 0 720 120" role="img" aria-label="Phase pipeline with human gate before the tag">
+        <g font-size="11.5" font-weight="600" text-anchor="middle">
+          <rect class="box" x="12"  y="40" width="92" height="40" rx="8"/><text x="58"  y="64">1 Guards</text>
+          <rect class="box" x="118" y="40" width="92" height="40" rx="8"/><text x="164" y="64">2 CI matrix</text>
+          <rect class="box" x="224" y="40" width="102" height="40" rx="8"/><text x="275" y="64">3 Live proof</text>
+          <rect class="box" x="340" y="40" width="102" height="40" rx="8"/><text x="391" y="64">4 Freeze</text>
+          <rect class="box" x="456" y="40" width="92" height="40" rx="8"/><text x="502" y="64">5 Docs</text>
+          <rect class="accent-box" x="616" y="40" width="92" height="40" rx="8"/><text x="662" y="64">6 Tag 1.0</text>
+        </g>
+        <g class="edge"><line x1="104" y1="60" x2="118" y2="60"/><line x1="210" y1="60" x2="224" y2="60"/>
+          <line x1="326" y1="60" x2="340" y2="60"/><line x1="442" y1="60" x2="456" y2="60"/>
+          <line x1="548" y1="60" x2="568" y2="60"/><line x1="604" y1="60" x2="616" y2="60"/></g>
+        <rect class="amber-box" x="568" y="44" width="36" height="32" rx="16"/>
+        <text x="586" y="65" text-anchor="middle" font-size="14">✍</text>
+        <text class="lbl" x="586" y="100" text-anchor="middle" font-size="10">human review gate</text>
+      </svg>
+      <figcaption>The tag is unreachable without the human signature on ADR-0014/0015 — by design.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/featurizer.py</code> — <code>_write_manifest_table</code> defaults an unmatched column to <code>"group_000"</code> (~L675): the silent mis-tag to replace with an assertion.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> — the as-of-LATERAL materialization residual (fail-loud <code>NotImplementedError</code>, ~L1103) and the column-group split logic <code>to_tables</code> reuses.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/imputation.py</code> + <code>featurizer/arrow.py</code> — the impute path to exercise together with oversized-child materialization.</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/test.yml</code> — single-Python, PG-16-only today; grows the compatibility matrix. <code>release.yml</code> gains the docs-archive asset.</li>
+      <li><span class="tag existing">existing</span> <code>benchmarks/</code> (incl. <code>final_matrix.py</code>, <code>preagg_cases.py</code>) + <code>tests/integration/datasets.py</code> — the live-DB matrix harness that produced <code>specs/live-db-revalidation-v080/</code>.</li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/</code> + <code>site/gen.py</code> <code>ADR_THEMES</code> — ADR-0015 lands here and must be themed (the "Other-bucket" reminder fires otherwise).</li>
+      <li><span class="tag existing">existing</span> <code>CONTRIBUTING.md</code> — gains the stability &amp; deprecation policy section; release procedure unchanged.</li>
+      <li><span class="tag existing">existing</span> <code>pyproject.toml</code> — classifier <code>4 - Beta</code> → <code>5 - Production/Stable</code>, version 1.0.0; <code>pyrightconfig.json</code> + coverage carve-outs get documented, not silently kept.</li>
+      <li><span class="tag existing">existing</span> <code>docs/featurizer-overview.org</code> — stale (43/71 counts, DSaPP branding); retired this release.</li>
+      <li><span class="tag existing">existing</span> <code>src/content/docs/faq.md</code>, <code>reference/configuration.md</code>, <code>engineering/internals.md</code> — receive the new limits/stability notes and the measured 0.9.x numbers.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>docs/adr/0015-v1-api-stability-commitment.md</code> — the freeze: what is stable, what semver means here, how deprecation works.</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_manifest_sharding_guard.py</code> — every manifest column maps to a real group; the fallback is dead.</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_impute_with_materialization.py</code> — <code>impute=True</code> × oversized-child temp-table path, combined.</li>
+      <li><span class="tag new">new</span> <code>tests/test_to_tables_row_width.py</code> (+ integration case) — the heap-row-width guard fires before PostgreSQL's "row is too big".</li>
+      <li><span class="tag new">new</span> <code>specs/live-db-revalidation-v100/</code> + <code>specs/live-db-revalidation-v100.html</code> — committed per-DB artifacts incl. the new graph/text workloads.</li>
+      <li><span class="tag new">new</span> <code>benchmarks/bridge_workloads.py</code> — the measured 0.9.x additions: <code>graph_relationships</code> on real edge tables + bridge snapshot costs on the real cohort.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 1: Close the engineering guards <span class="pill safe">small, unblocks everything</span></h3>
+      <p>The four known sharp edges from TODO.org. Each becomes either a hard guard with a test or a
+      loud, documented boundary — nothing stays silent.</p>
+
+      <h4>1. Manifest-under-sharding assertion</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Replace the <code>column_to_group.get(entry.column, "group_000")</code> fallback in <code>_write_manifest_table</code> (featurizer.py ~L675) with a fail-loud error naming the orphaned column and the available groups (a mis-tagged manifest silently corrupts lineage downstream — triage consumes this table).</li>
+        <li><code class="status">[]</code> Integration test: build a sharded config, read back <code>&lt;stem&gt;_manifest</code>, assert every row's <code>feature_group</code> is a real persisted table and every output column appears exactly once.</li>
+      </ul>
+
+      <h4>2. <code>to_tables</code> heap-row-width guard</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Pre-flight in <code>to_tables</code>: estimate per-group row width (numeric = 8 bytes + header; text unbounded → skip estimate, document); when a group's fixed-width estimate exceeds ~8000 bytes, split that group further (reuse the column-group splitter with a lower cap) rather than let PostgreSQL fail with "row is too big".</li>
+        <li><code class="status">[]</code> DB-free test pinning the estimator + the downshift decision; integration test with a ~1200-numeric-column group proving CTAS succeeds where it previously crashed.</li>
+        <li><code class="status">[]</code> Document the limit + behaviour in the FAQ ("row is too big") and <code>engineering/internals.md</code>.</li>
+      </ul>
+
+      <h4>3. <code>impute=True</code> × materialized oversized-child path</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Integration test combining both: a config that triggers oversized-child temp-table materialization, executed via <code>to_arrow(impute=True)</code> and <code>to_dataframe(impute=True)</code>; assert count-features → 0, measures keep NULL + <code>__missing</code> indicators, and values equal the unimputed run everywhere else.</li>
+      </ul>
+
+      <h4>4. As-of-LATERAL materialization residual — keep loud, teach it</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Keep the fail-loud <code>NotImplementedError</code> (sharding.py ~L1103) — implementing flat materialization of a correlated LATERAL is feature work, not hardening. Add/verify a test asserting the error fires with its actionable message.</li>
+        <li><code class="status">[]</code> Document the boundary in the FAQ and the configuration reference's temporal-join section (when it bites, the two workarounds the message names).</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>Standard tiers; the new integration tests ride the ephemeral DB. The existing 1,156-test
+      suite is the regression net.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — fast tier green including the new estimator tests.</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — all guards proven against live PostgreSQL.</li>
+        <li><code class="status">[]</code> <code>uv run basedpyright</code> — clean.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 2: CI compatibility matrix <span class="pill safe">infra only</span></h3>
+      <p>Test what <code>requires-python &gt;=3.10</code> and "PostgreSQL-native" claim. Kept cheap:
+      the DB-free tier fans out across Pythons; the integration tier fans out across PostgreSQL
+      versions on one Python. ~7 jobs total, all under the existing concurrency group and timeouts.</p>
+
+      <h4>1. Fast tier × Python</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>test.yml</code>: matrix the DB-free job over Python <code>3.10 / 3.11 / 3.12 / 3.13</code> via <code>astral-sh/setup-uv</code> + <code>uv python pin</code>; coverage floor stays enforced on one designated leg (3.12) so the threshold isn't quadruplicated.</li>
+      </ul>
+
+      <h4>2. Integration tier × PostgreSQL</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Matrix the integration job's service container over <code>postgres:14 / 16 / 17</code> (single Python). Fix anything version-specific that surfaces — or record an explicit floor (e.g. "PG ≥ 14") in README + docs if 14 genuinely cannot hold.</li>
+        <li><code class="status">[]</code> README/docs: state the tested matrix explicitly (a support claim you test is a promise; one you don't is a bug report waiting).</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>The matrix proves itself in CI; locally only the oldest Python is spot-checked.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv python install 3.10 &amp;&amp; uv run --python 3.10 pytest -q -m "not integration"</code> — oldest-floor smoke before pushing.</li>
+        <li><code class="status">[]</code> <code>gh run watch &lt;test.yml run&gt; --exit-status</code> — every matrix leg green on master.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 3: Live-DB revalidation incl. 0.9.x workloads <span class="pill care">the heavy one</span></h3>
+      <p>The release discipline v0.6.0 and v0.8.0 earned their tags with — now owed to 0.9.x. Re-run
+      the 3-DB × 3-variant matrix to prove no regression, then add what no release has measured yet:
+      the native graph pass and the bridge families on <em>real</em> data. Numbers land in committed
+      artifacts and replace the docs' cost assertions.</p>
+
+      <h4>1. Regression matrix (as before)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>benchmarks/final_matrix.py</code> narrow / all-agg / wide × dirtyduck / chicago311 / donorschoose against v1.0-rc; compare to the v0.8.0 numbers (all-agg seconds everywhere; donorschoose wide ~8 min) — investigate any &gt;20% regression before proceeding.</li>
+      </ul>
+
+      <h4>2. New: native graph pass at scale</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>benchmarks/bridge_workloads.py</code>: a <code>graph_relationships</code> config over dirtyduck's <code>chain_edges</code> (and donorschoose's <code>project_edges</code>) on the real cohort + as-of dates — verify values against hand SQL on a sample, record wall-clock and EXPLAIN shape.</li>
+      </ul>
+
+      <h4>3. New: bridge families at scale</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>CentralityBridge.materialize_snapshots</code> over the real edge tables across the cohort's as-of dates — measure the O(windows × build) wall-clock that the docs currently only assert; record the cheap-tier vs <code>include_heavy</code> gap.</li>
+        <li><code class="status">[]</code> One text bridge (sentiment or language-id — dependency-free) over a real text column, materialized and spine-aggregated end to end.</li>
+      </ul>
+
+      <h4>4. Artifacts + docs sync</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Commit <code>specs/live-db-revalidation-v100/</code> per-DB artifacts + summary page (house convention); the pages workflow serves them pass-through.</li>
+        <li><code class="status">[]</code> Replace asserted costs in <code>engineering/internals.md</code> and the bridge cookbook with the measured numbers.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>The matrix IS the test. Environment note: the three live DBs are the triage-side Docker
+      containers (see memory: <code>*-database.yaml</code>); the repo's own <code>just seed</code>
+      datasets cover dirtyduck/donorschoose if a container is unavailable — mark chicago311
+      <code>[f]</code> with a note rather than fake it.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just seed &amp;&amp; just test-realistic</code> — the realistic tier still green on v1.0-rc.</li>
+        <li><code class="status">[]</code> All matrix cells green (or explicitly <code>[f]</code>-annotated with cause) in the committed summary.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 4: API freeze — ADR-0015 + the human gate <span class="pill human">requires user sign-off</span></h3>
+      <p>Write down what "stable" means, then have a human agree. The freeze covers surfaces, not
+      internals: the planner/renderer stay refactorable as long as the frozen contracts hold.</p>
+
+      <h4>1. ADR-0015: the stability commitment</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Write <code>docs/adr/0015-v1-api-stability-commitment.md</code> declaring frozen: the YAML config schema (all top-level keys incl. the three planner-pass blocks), the <code>Featurizer</code> public methods (<code>query</code>, <code>to_dataframe/arrow/parquet/tables</code>, <code>feature_manifest</code>, <code>manifest_dataframe</code>), the output-naming contract (ADR-0007, incl. 63-byte capping), the bridge contract (ADR-0014: <code>compute</code>/<code>materialize*</code>/<code>emit_yaml</code> shapes), and the <code>emit_yaml</code> fragment schema. Declare NOT frozen: planner internals, CTE names, SQL text, module layout under <code>featurizer/primitives/</code>.</li>
+        <li><code class="status">[]</code> Semver rules + deprecation policy: breaking = major; additive = minor; deprecations warn (loguru, once per process) for ≥ one minor before removal. Add the policy to <code>CONTRIBUTING.md</code>.</li>
+        <li><code class="status">[]</code> Theme 0015 in <code>site/gen.py</code> <code>ADR_THEMES</code> (no Other-bucket reminder on build).</li>
+      </ul>
+
+      <h4>2. The human review gate <span class="pill human">human</span></h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <strong>User reads and signs off ADR-0014 and ADR-0015</strong> (they become frozen API at the tag). This box can only be checked by the user — the build workflow must stop here and ask, listing any objections as amendments before proceeding.</li>
+      </ul>
+
+      <h4>3. Declare it in the metadata</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>pyproject.toml</code>: classifier <code>Development Status :: 5 - Production/Stable</code>; README + FAQ gain a short stability statement linking ADR-0015.</li>
+        <li><code class="status">[]</code> Document the deliberate carve-outs where contributors look: <code>pyrightconfig.json</code> ignores and coverage exclusions for the two primitive modules, and the 70% floor — stated in CONTRIBUTING as known, intentional, with the reason (dynamic primitive variants; the integration tiers are their real coverage).</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>Docs-level phase; the gate is procedural, the build is the check.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run python site/gen.py</code> — 15 ADRs, all themed, no reminder line.</li>
+        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — 0 broken.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked — including the human signature.</strong></div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Docs per release + stale cleanup</h3>
+      <p>Once 1.0 promises stability across versions, the docs must exist per version. Primary path
+      is a release-attached snapshot (zero new infra); the in-site version switcher is attempted and
+      allowed to fail gracefully.</p>
+
+      <h4>1. Docs archive per release (primary — cheap, robust)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>release.yml</code>: after the build steps, run the docs build (<code>site/gen.py</code> + <code>astro build</code> + link check) and attach <code>docs-site-vX.Y.Z.tar.gz</code> (the <code>dist/</code>) as a release asset — every release carries its own browsable docs snapshot from now on.</li>
+      </ul>
+
+      <h4>2. In-site version switcher (secondary — attempt, may <code>[f]</code>)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Evaluate the <code>starlight-versions</code> plugin against our Starlight version; adopt if it works cleanly (versioned copies under <code>src/content/docs/</code>, switcher in the nav). If it fights the base-path/sidebar gotchas already learned the hard way, mark <code>[f]</code> with a note — the Phase-5.1 archives already satisfy the requirement.</li>
+      </ul>
+
+      <h4>3. Retire the stale org overview</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Delete <code>docs/featurizer-overview.org</code> (stale 43/71 counts, DSaPP branding; superseded by the native concepts/walkthrough/internals pages — same rationale that retired the deep-dive deck). History keeps it; the commit message says where its content lives now.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — site clean after any switcher/cleanup changes.</li>
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — gen seams still green.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 6: Release 1.0.0</h3>
+      <p>The existing pipeline, with the stability story in the notes. Version <code>0.9.1 →
+      1.0.0</code>; the CHANGELOG entry is the hardening summary + the ADR-0015 commitment, and it
+      records the two standing decisions (no-PyPI reaffirmed; no upstream dssg PR — see Notes).</p>
+
+      <h4>1. Cut the release</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>CHANGELOG.md</code> <code>## [1.0.0]</code> (guards, matrix, revalidation numbers, ADR-0015, docs-per-release, decisions); bump <code>pyproject.toml</code>; <code>uv lock</code>.</li>
+        <li><code class="status">[]</code> Push master, wait for the full matrix to go green, tag <code>v1.0.0</code> per CONTRIBUTING; <code>release.yml</code> publishes with wheel + sdist + the new docs archive; confirm pages redeploys.</li>
+        <li><code class="status">[]</code> Post-release: update CLAUDE.md/TODO.org state; assess the triage pin bump to v1.0.0 (additive-only — same procedure as the v0.9.1 assessment).</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer</code> — published, Latest, three assets (wheel, sdist, docs archive).</li>
+        <li><code class="status">[]</code> <code>curl -s https://ccd-ia.github.io/featurizer/ | grep -c 1.0</code> — the hub reflects the release.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — full DB-free tier green (incl. new guard tests).</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier green (manifest guard, row-width guard, impute×materialization).</li>
+      <li><code class="status">[]</code> <code>just seed &amp;&amp; just test-realistic</code> — realistic tier green on 1.0.</li>
+      <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      <li><code class="status">[]</code> CI matrix on master: every python × PG leg green (<code>gh run list</code>).</li>
+      <li><code class="status">[]</code> <code>ls specs/live-db-revalidation-v100/</code> — committed artifacts exist; summary page linked and deployed.</li>
+      <li><code class="status">[]</code> ADR-0014 + ADR-0015 carry the user's review sign-off (recorded in the Amendments here or the ADR Status line).</li>
+      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs clean, 15 themed ADRs.</li>
+      <li><code class="status">[]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer --json assets</code> — wheel + sdist + docs archive.</li>
+    </ul>
+    <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong></div>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Decisions made in this plan (QUESTIONABLE=false — decided with rationale, amendable)</h3>
+    <table>
+      <tr><th>Decision</th><th>Call</th><th>Why</th></tr>
+      <tr><td>PyPI</td><td><strong>Reaffirm no-PyPI</strong>; record in CHANGELOG 1.0.0</td><td>The standing rationale holds (derived from dssg/featurizer; generic name). GitHub releases + git-tag pins are working distribution — triage consumes them today. Revisit only on real external demand.</td></tr>
+      <tr><td>Upstream dssg PR</td><td><strong>No PR; retire the recurring TODO</strong></td><td>The tree has diverged by ~everything (engine rewrite, 150 primitives, bridges, docs hub). A PR is unreviewable; the public ccd-ia repo IS the continuation. Record so the TODO stops recurring.</td></tr>
+      <tr><td>Coverage / typecheck carve-outs</td><td><strong>Keep, but document</strong> in CONTRIBUTING</td><td>The two primitive modules are dynamic-variant heavy; their real coverage is the execution tiers (every registered primitive executes on live PG). Honest documentation beats a vanity number.</td></tr>
+      <tr><td>Coverage floor</td><td><strong>Keep 70%</strong>, one matrix leg enforces it</td><td>Raising the floor is orthogonal to stability; do it opportunistically, not as a 1.0 gate.</td></tr>
+      <tr><td>CI matrix breadth</td><td>py 3.10–3.13 (fast) × PG 14/16/17 (integration)</td><td>Covers the claimed floor and current majors at ~7 jobs; a full cross-product buys little for the cost.</td></tr>
+      <tr><td>As-of-LATERAL materialization</td><td><strong>Stays a loud error</strong>, not implemented</td><td>Implementing correlated-LATERAL flattening is feature work with real design risk; 1.0 hardens boundaries, it does not move them.</td></tr>
+      <tr><td>Versioned docs</td><td>Release-asset archive primary; switcher plugin best-effort</td><td>The archive is zero-infra and cannot rot; the Starlight version-switcher fights the base-path/sidebar gotchas already catalogued — worth an attempt, not a dependency.</td></tr>
+      <tr><td>graph-tool / SBM, Moran's I, peer churn, temporal motifs, LLM extraction</td><td><strong>Post-1.0 lines</strong>, unplanned here</td><td>1.0 is hardening-only; the taxonomy doc's GAP markers remain the honest roadmap.</td></tr>
+    </table>
+
+    <h3>Dependencies &amp; environment</h3>
+    <ul>
+      <li>No new runtime dependencies anywhere in this plan. Possible dev-only addition: the <code>starlight-versions</code> npm package (Phase 5.2, best-effort).</li>
+      <li>Phase 3 needs the triage-side live-DB containers for chicago311; dirtyduck/donorschoose come from <code>just seed</code>. Port collisions with other projects' containers are a known hazard — use <code>just --set pg_port &lt;alt&gt;</code> (learned in the 0.9.x builds).</li>
+      <li>Phase 2's oldest-Python leg may surface syntax/typing drift (e.g. <code>3.10</code>-incompatible unions in newer files) — fix forward, never raise the floor silently.</li>
+    </ul>
+
+    <h3>Risks</h3>
+    <ul>
+      <li><strong>PG 14 leg fails</strong> on some SQL construct → decide floor honestly: fix if cheap, else declare "PG ≥ 16 tested, ≥ 14 best-effort" in README — but never claim untested support.</li>
+      <li><strong>Live matrix regression</strong> vs v0.8.0 numbers → stop-the-line for Phase 6; the perf history (ADR-0010/0012/0013) shows regressions here are findable and fixable.</li>
+      <li><strong>Human gate stalls</strong> → the plan is deliberately sequenced so Phases 1–3 are unaffected; only the tag waits on the signature.</li>
+    </ul>
+
+    <h3>What 1.0 explicitly is not</h3>
+    <p>No new feature families, no engine changes, no PyPI, no GUI, no second framework. Anything
+    that adds surface belongs to 1.1+ plans referencing the taxonomy GAPs and the deferred
+    <code>[bridge-graph]</code> path.</p>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <p class="muted">(none yet — append-only history of post-execution changes)</p>
+  </section>
+
+</main>
+</body>
+</html>
