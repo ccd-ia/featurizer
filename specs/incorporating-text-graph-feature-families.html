@@ -85,7 +85,7 @@ svg .fill-muted{fill:var(--muted)}
       <dl>
         <dt>created</dt>      <dd>2026-07-16T15:06-06:00</dd>
         <dt>modified</dt>     <dd>2026-07-16T15:06-06:00, 2026-07-16T15:21-06:00</dd>
-        <dt>commits</dt>      <dd>(pending — planning only)</dd>
+        <dt>commits</dt>      <dd>356cd6d (P1) · 94a4f93 (P2) · a8350eb (P3) · 6894bf9 (P4) · c23f225 (P6/0.9.0) · aa643eb (P5/0.9.1) · 72f7925 + 4eed24b (config-reference + README follow-ups) — releases v0.9.0 (2026-07-17) and v0.9.1 (2026-07-18), both published by release.yml</dd>
         <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
         <dt>session id</dt>   <dd>ee7ddd4f-c10a-4a61-9913-d795ee2b732b</dd>
         <dt>back refs</dt>    <dd>docs/text-network-features/temporal-features-network-text.org, featurizer/bridge/ (ADR-0001, ADR-0003)</dd>
@@ -270,7 +270,7 @@ svg .fill-muted{fill:var(--muted)}
 
     <!-- ===== PHASE 1 ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 1: Bridge harness extensions (the enablers)</h3>
+      <h3><code class="status">[x]</code> Phase 1: Bridge harness extensions (the enablers)</h3>
       <p>Remove the two structural limits before adding families. All additive — the current single-column,
       single-snapshot path keeps working. This is the phase that earns ADR-0014.</p>
       <figure>
@@ -297,42 +297,42 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. Multi-column output contract</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add a <code>MultiColumnBridge</code> subclass (or a <code>value_cols: list[str]</code> mode on the base) whose <code>compute()</code> returns <code>{pk: {col: val}}</code>; keep the scalar/vector base untouched for backward compat.</li>
-        <li><code class="status">[]</code> Generalize <code>materialize()</code> to build the DDL and INSERT for N value columns (reuse <code>_carry_type</code> / <code>_column_type</code> per column).</li>
-        <li><code class="status">[]</code> Generalize <code>emit_yaml()</code> to declare one <code>Variable</code> per value column with correct per-column types.</li>
+        <li><code class="status">[x]</code> Add a <code>MultiColumnBridge</code> subclass (or a <code>value_cols: list[str]</code> mode on the base) whose <code>compute()</code> returns <code>{pk: {col: val}}</code>; keep the scalar/vector base untouched for backward compat.</li>
+        <li><code class="status">[x]</code> Generalize <code>materialize()</code> to build the DDL and INSERT for N value columns (reuse <code>_carry_type</code> / <code>_column_type</code> per column).</li>
+        <li><code class="status">[x]</code> Generalize <code>emit_yaml()</code> to declare one <code>Variable</code> per value column with correct per-column types.</li>
       </ul>
 
       <h4>2. Temporal snapshot-sequence helper</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add a helper that, given a set of as-of dates, rebuilds the graph/model on the pre-t₀ slice <em>per window</em> and keys the output by <code>(entity, as_of_date)</code> — the causal-correct "snapshot sequence" representation from the doc §C②.</li>
-        <li><code class="status">[]</code> Emit the snapshot output as an event stream (carry <code>as_of_date</code> as the <code>temporal_ix</code>) so the existing spine aggregates "trend in centrality" as a normal window over a metric.</li>
-        <li><code class="status">[]</code> Assert the boundary per window via <code>assert_pre_t0</code>; document the O(windows × build) cost in the docstring (see Questionables).</li>
+        <li><code class="status">[x]</code> Add a helper that, given a set of as-of dates, rebuilds the graph/model on the pre-t₀ slice <em>per window</em> and keys the output by <code>(entity, as_of_date)</code> — the causal-correct "snapshot sequence" representation from the doc §C②.</li>
+        <li><code class="status">[x]</code> Emit the snapshot output as an event stream (carry <code>as_of_date</code> as the <code>temporal_ix</code>) so the existing spine aggregates "trend in centrality" as a normal window over a metric.</li>
+        <li><code class="status">[x]</code> Assert the boundary per window via <code>assert_pre_t0</code>; document the O(windows × build) cost in the docstring (see Questionables).</li>
       </ul>
 
       <h4>3. Persistent materialization option <span class="pill safe">decided: persist, temp default</span></h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add a <code>persist: bool</code> (or <code>on_commit</code>) parameter to <code>materialize()</code>: <code>create temp … on commit drop</code> (default, today's behavior) vs a persistent <code>create table</code> for real Dagster/Snakemake assets (ADR-0003 wiring).</li>
+        <li><code class="status">[x]</code> Add a <code>persist: bool</code> (or <code>on_commit</code>) parameter to <code>materialize()</code>: <code>create temp … on commit drop</code> (default, today's behavior) vs a persistent <code>create table</code> for real Dagster/Snakemake assets (ADR-0003 wiring).</li>
       </ul>
 
       <h4>4. Model-vintage metadata (pretrained-model leakage guard) <span class="pill care">decided: metadata + document</span></h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add an optional <code>model_vintage</code> (training-cutoff date) attribute to <code>BridgeComputer</code>; model-bearing bridges declare it and pin the model version. <code>None</code> = "unknown vintage".</li>
-        <li><code class="status">[]</code> Surface it through the bridge's metadata so a strict backtest can assert <code>model_vintage &lt;= as_of</code> (opt-in). Document loudly that <code>assert_pre_t0</code> guards <em>fitted</em> models only — a pretrained snapshot trained on post-t₀ data is silent leakage.</li>
+        <li><code class="status">[x]</code> Add an optional <code>model_vintage</code> (training-cutoff date) attribute to <code>BridgeComputer</code>; model-bearing bridges declare it and pin the model version. <code>None</code> = "unknown vintage".</li>
+        <li><code class="status">[x]</code> Surface it through the bridge's metadata so a strict backtest can assert <code>model_vintage &lt;= as_of</code> (opt-in). Document loudly that <code>assert_pre_t0</code> guards <em>fitted</em> models only — a pretrained snapshot trained on post-t₀ data is silent leakage.</li>
       </ul>
 
       <h4>5. Testing Strategy</h4>
       <p>Pure-Python contract tests (no DB) for the new shapes, mirroring <code>tests/test_bridge.py</code>; a fake/stub <code>compute</code> exercises multi-column and snapshot keying. DB materialize is covered in each family's integration test. <strong>Regression check is mandatory</strong> (per the decision): the existing single-column/vector path must stay byte-identical.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge.py -q</code> — existing contract still green (no regression — the additive-contract guarantee).</li>
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_multicolumn.py -q</code> — multi-column compute/emit_yaml shape + snapshot keying + vintage attribute proven.</li>
-        <li><code class="status">[]</code> <code>uv run basedpyright featurizer/bridge/base.py</code> — types clean.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_bridge.py -q</code> — existing contract still green (no regression — the additive-contract guarantee).</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_bridge_multicolumn.py -q</code> — multi-column compute/emit_yaml shape + snapshot keying + vintage attribute proven.</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright featurizer/bridge/base.py</code> — types clean.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- ===== PHASE 2 ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 2: Text substrate — Path 1 (reduce → aggregate) <span class="pill safe">safe</span> <span class="pill safe">decided: multilingual default, per-bridge language=</span></h3>
+      <h3><code class="status">[x]</code> Phase 2: Text substrate — Path 1 (reduce → aggregate) <span class="pill safe">safe</span> <span class="pill safe">decided: multilingual default, per-bridge language=</span></h3>
       <p>The highest-value, cheapest, most causal-safe path: collapse each document to per-event scalars that the
       existing temporal spine then trends and drifts (sentiment slope, topic-share KL/Wasserstein drift already
       exist as spine aggregations). Only the families that genuinely need Python become bridges — the surface
@@ -340,25 +340,25 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. Sentiment / dictionary scores (per-document, multilingual)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>SentimentBridge</code> in <code>featurizer/bridge/nlp.py</code> — lexicon-based valence/arousal per document. Default lexicon is <strong>multilingual / Spanish-register</strong> (not English, per doc §E); expose a <code>language=</code> parameter so English/other is a one-line override.</li>
-        <li><code class="status">[]</code> Emit as a per-event numeric column; the spine gets sentiment slope, recency-of-negative, volatility for free.</li>
+        <li><code class="status">[x]</code> <code>SentimentBridge</code> in <code>featurizer/bridge/nlp.py</code> — lexicon-based valence/arousal per document. Default lexicon is <strong>multilingual / Spanish-register</strong> (not English, per doc §E); expose a <code>language=</code> parameter so English/other is a one-line override.</li>
+        <li><code class="status">[x]</code> Emit as a per-event numeric column; the spine gets sentiment slope, recency-of-negative, volatility for free.</li>
       </ul>
 
       <h4>2. NER counts (multi-column)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>NERCountsBridge</code> — spaCy, <strong>multilingual/es model by default</strong> via the shared <code>language=</code> parameter; <code>compute()</code> returns <code>{pk: {persons, orgs, locations, money, dates}}</code> using the Phase-1 multi-column contract (one parse, many columns).</li>
-        <li><code class="status">[]</code> Guard the optional <code>spacy</code> import with the ImportError→install-hint pattern; declare the pinned model's <code>model_vintage</code> (Phase 1) so strict backtests can assert it.</li>
+        <li><code class="status">[x]</code> <code>NERCountsBridge</code> — spaCy, <strong>multilingual/es model by default</strong> via the shared <code>language=</code> parameter; <code>compute()</code> returns <code>{pk: {persons, orgs, locations, money, dates}}</code> using the Phase-1 multi-column contract (one parse, many columns).</li>
+        <li><code class="status">[x]</code> Guard the optional <code>spacy</code> import with the ImportError→install-hint pattern; declare the pinned model's <code>model_vintage</code> (Phase 1) so strict backtests can assert it.</li>
       </ul>
 
       <h4>3. Readability &amp; language id</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>ReadabilityBridge</code> (Flesch / syllable-based) and <code>LanguageIdBridge</code> — per-document scalars.</li>
+        <li><code class="status">[x]</code> <code>ReadabilityBridge</code> (Flesch / syllable-based) and <code>LanguageIdBridge</code> — per-document scalars.</li>
       </ul>
 
       <h4>4. Dependencies &amp; exports</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add <code>spacy</code> + a sentiment lexicon (e.g. multilingual VADER-style or a Spanish lexicon) to the <code>[bridge]</code> extra; <code>uv sync --extra bridge</code>.</li>
-        <li><code class="status">[]</code> Export the new bridges from <code>__init__.py</code>; move them out of the "abstract interfaces only" list.</li>
+        <li><code class="status">[x]</code> Add <code>spacy</code> + a sentiment lexicon (e.g. multilingual VADER-style or a Spanish lexicon) to the <code>[bridge]</code> extra; <code>uv sync --extra bridge</code>.</li>
+        <li><code class="status">[x]</code> Export the new bridges from <code>__init__.py</code>; move them out of the "abstract interfaces only" list.</li>
       </ul>
 
       <h4>5. Testing Strategy</h4>
@@ -366,16 +366,16 @@ svg .fill-muted{fill:var(--muted)}
       known Spanish + English pair proves the multilingual default. DB-gated: materialize + a spine aggregation
       over a seeded events table.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_nlp.py -q</code> — per-family compute matches hand values; multilingual case covered.</li>
-        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no spine/registry regression.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q</code> — materialize → spine aggregates the φ columns.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_bridge_nlp.py -q</code> — per-family compute matches hand values; multilingual case covered.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — no spine/registry regression.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q</code> — materialize → spine aggregates the φ columns.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- ===== PHASE 3 ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Graph substrate — centralities &amp; community <span class="pill care">care</span> <span class="pill safe">decided: cheap default, heavy opt-in · defer SBM</span></h3>
+      <h3><code class="status">[x]</code> Phase 3: Graph substrate — centralities &amp; community <span class="pill care">care</span> <span class="pill safe">decided: cheap default, heavy opt-in · defer SBM</span></h3>
       <p>Follow <code>PageRankBridge</code>'s per-node override, but use the Phase-1 multi-column + snapshot loop so
       one graph build per window yields many centralities keyed by <code>(node, as_of_date)</code>. This is the
       causal-correct form the single-snapshot exemplar only gestured at (non-locality: one future edge changes
@@ -409,19 +409,19 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. Multi-metric centrality bridge <span class="pill safe">cheap default, heavy opt-in</span></h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>CentralityBridge</code> in <code>featurizer/bridge/centrality.py</code> — one networkx build → many columns. <strong>Cheap tier on by default</strong> (degree in/out/weighted, coreness, clustering coefficient); <strong>heavy metrics opt-in behind a flag</strong> (betweenness O(VE), eigenvector, closeness) so features never get silently 100× slower.</li>
-        <li><code class="status">[]</code> Wire the Phase-1 snapshot loop for per-<code>(node, as_of)</code> output; keep a single-snapshot fast path for static/given graphs. Document the O(windows × build) cost knob (the decided default keeps it bounded).</li>
+        <li><code class="status">[x]</code> <code>CentralityBridge</code> in <code>featurizer/bridge/centrality.py</code> — one networkx build → many columns. <strong>Cheap tier on by default</strong> (degree in/out/weighted, coreness, clustering coefficient); <strong>heavy metrics opt-in behind a flag</strong> (betweenness O(VE), eigenvector, closeness) so features never get silently 100× slower.</li>
+        <li><code class="status">[x]</code> Wire the Phase-1 snapshot loop for per-<code>(node, as_of)</code> output; keep a single-snapshot fast path for static/given graphs. Document the O(windows × build) cost knob (the decided default keeps it bounded).</li>
       </ul>
 
       <h4>2. Community / block membership</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>CommunityBridge</code> in <code>featurizer/bridge/community.py</code> — Louvain/Leiden membership (categorical) + modularity (numeric) via a pip-installable lib (<code>python-louvain</code> / <code>leidenalg</code>). Emit membership as a categorical variable (spine one-hots it via the existing ADR-0007 path).</li>
-        <li><code class="status">[]</code> Defer SBM / MDL-surprise (needs <code>graph-tool</code>, not pip-installable) — see Questionables; document the interface only.</li>
+        <li><code class="status">[x]</code> <code>CommunityBridge</code> in <code>featurizer/bridge/community.py</code> — Louvain/Leiden membership (categorical) + modularity (numeric) via a pip-installable lib (<code>python-louvain</code> / <code>leidenalg</code>). Emit membership as a categorical variable (spine one-hots it via the existing ADR-0007 path).</li>
+        <li><code class="status">[x]</code> Defer SBM / MDL-surprise (needs <code>graph-tool</code>, not pip-installable) — see Questionables; document the interface only.</li>
       </ul>
 
       <h4>3. Dependencies &amp; exports</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Add <code>python-louvain</code>/<code>leidenalg</code> to <code>[bridge]</code>; networkx already present. Export the bridges; update the interfaces list.</li>
+        <li><code class="status">[x]</code> Add <code>python-louvain</code>/<code>leidenalg</code> to <code>[bridge]</code>; networkx already present. Export the bridges; update the interfaces list.</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
@@ -429,16 +429,16 @@ svg .fill-muted{fill:var(--muted)}
       snapshot keying proven by feeding edges spanning two as-of dates and asserting the pre-t₀ graph excludes the
       later edge. DB-gated: materialize per-node table + spine join to the node entity.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_graph.py -q</code> — centralities match hand-computed values; future edge excluded per window.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k graph</code> — per-node materialize + join.</li>
-        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no regression.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_bridge_graph.py -q</code> — centralities match hand-computed values; future edge excluded per window.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k graph</code> — per-node materialize + join.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — no regression.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- ===== PHASE 4 (native cheap-graph SQL pass) ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: Native cheap-graph tier — 1-hop neighbour aggregation (SQL planner pass) <span class="pill safe">decided: build in 0.9.0</span></h3>
+      <h3><code class="status">[x]</code> Phase 4: Native cheap-graph tier — 1-hop neighbour aggregation (SQL planner pass) <span class="pill safe">decided: build in 0.9.0</span></h3>
       <p>The doc's cheapest graph tier (§C③ "neighbour aggregation" + the cheap-tier SQL example), built
       <strong>in-spine</strong> — no Python, no <code>[bridge]</code> dependency. This is a deliberate
       <strong>engine change</strong> (the one exception to "no planner changes"): a config-level graph/edge concept
@@ -464,14 +464,14 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. Config surface + validation</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> A <code>graph_relationships</code> (or <code>event_edges</code>) config block declaring the edge source (src, dst, ts columns) and the neighbour property to aggregate — parallel to the <code>peer_groups</code> / <code>spatial_relationships</code> blocks.</li>
-        <li><code class="status">[]</code> Extend <code>featurizer/validation.py</code> to validate the block (columns exist, types, temporal column present) with the same error/typo-suggestion quality as the rest.</li>
+        <li><code class="status">[x]</code> A <code>graph_relationships</code> (or <code>event_edges</code>) config block declaring the edge source (src, dst, ts columns) and the neighbour property to aggregate — parallel to the <code>peer_groups</code> / <code>spatial_relationships</code> blocks.</li>
+        <li><code class="status">[x]</code> Extend <code>featurizer/validation.py</code> to validate the block (columns exist, types, temporal column present) with the same error/typo-suggestion quality as the rest.</li>
       </ul>
 
       <h4>2. Planner pass (as-of 1-hop SQL)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Generate the as-of aggregate in <code>featurizer/planner.py</code>: <code>degree_&lt;window&gt;</code> and 1-hop neighbour mean/share, bounded by <code>e.ts &lt; aod.as_of_date</code> <strong>and</strong> the neighbour state <code>valid_at &lt; as_of_date</code> (the doc's cheap-tier SQL is the template). Emit as feature columns keyed by <code>(entity, as_of_date)</code> — a planner pass, not a registry primitive.</li>
-        <li><code class="status">[]</code> <strong>1-hop only for 0.9.0</strong>: explicitly do not generate 2-hop aggregates (the canonical temporal-GNN leakage — 2-hop pulls neighbours' future labels). Enforce/document the boundary.</li>
+        <li><code class="status">[x]</code> Generate the as-of aggregate in <code>featurizer/planner.py</code>: <code>degree_&lt;window&gt;</code> and 1-hop neighbour mean/share, bounded by <code>e.ts &lt; aod.as_of_date</code> <strong>and</strong> the neighbour state <code>valid_at &lt; as_of_date</code> (the doc's cheap-tier SQL is the template). Emit as feature columns keyed by <code>(entity, as_of_date)</code> — a planner pass, not a registry primitive.</li>
+        <li><code class="status">[x]</code> <strong>1-hop only for 0.9.0</strong>: explicitly do not generate 2-hop aggregates (the canonical temporal-GNN leakage — 2-hop pulls neighbours' future labels). Enforce/document the boundary.</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
@@ -479,33 +479,33 @@ svg .fill-muted{fill:var(--muted)}
       edge + neighbour-state table with a <em>planted future edge and a future neighbour state</em> that must both be
       excluded from the result.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py -q</code> — generated SQL has <code>e.ts &lt; as_of</code> + <code>valid_at &lt; as_of</code>, no 2-hop join.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_graph_neighbour_pass.py -q</code> — planted future edge/state excluded; degree + neighbour share correct.</li>
-        <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — no regression in the existing planner passes.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py -q</code> — generated SQL has <code>e.ts &lt; as_of</code> + <code>valid_at &lt; as_of</code>, no 2-hop join.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_graph_neighbour_pass.py -q</code> — planted future edge/state excluded; degree + neighbour share correct.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — no regression in the existing planner passes.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- ===== PHASE 5 (was 4) ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 5: Trajectory, sequence &amp; text→graph edges (Paths 2 &amp; 3) <span class="pill care">0.9.1</span></h3>
+      <h3><code class="status">[x]</code> Phase 5: Trajectory, sequence &amp; text→graph edges (Paths 2 &amp; 3) <span class="pill care">0.9.1</span></h3>
       <p>The composition payoff: embedding-trajectory novelty/drift, change-point/periodicity over the event
       stream, and the Path-2 move where text <em>induces</em> edges that feed the Phase-3 graph bridges
       (text-similarity × temporal synchrony is the coordination signature).</p>
 
       <h4>1. Embedding trajectory features</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>EmbeddingTrajectoryBridge</code> in <code>trajectory.py</code> — from the per-event embeddings (reuse <code>SentenceEmbeddingBridge</code>): novelty = <code>1 − max cosine</code> to the entity's own pre-t₀ history, drift vs a reference centroid, semantic volatility. Multi-column, per-event, causal-guarded to pre-t₀ history.</li>
+        <li><code class="status">[x]</code> <code>EmbeddingTrajectoryBridge</code> in <code>trajectory.py</code> — from the per-event embeddings (reuse <code>SentenceEmbeddingBridge</code>): novelty = <code>1 − max cosine</code> to the entity's own pre-t₀ history, drift vs a reference centroid, semantic volatility. Multi-column, per-event, causal-guarded to pre-t₀ history.</li>
       </ul>
 
       <h4>2. Sequence extensions</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>ChangePointBridge</code> and <code>PeriodicityBridge</code> (FFT peak) in <code>changepoint.py</code> — scipy-based; per-entity scores over the pre-t₀ event series.</li>
+        <li><code class="status">[x]</code> <code>ChangePointBridge</code> and <code>PeriodicityBridge</code> (FFT peak) in <code>changepoint.py</code> — scipy-based; per-entity scores over the pre-t₀ event series.</li>
       </ul>
 
       <h4>3. Text-induced edges (Path 2 → Phase 3)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>NearDuplicateEdgeBridge</code> (MinHash/LSH via <code>datasketch</code>) and <code>CoMentionEdgeBridge</code> in <code>edges.py</code> — output an <em>edge table</em> (src, dst, ts) that is the input to <code>CentralityBridge</code>/<code>CommunityBridge</code>. Document the two-stage wiring (text bridge → edge table → graph bridge).</li>
+        <li><code class="status">[x]</code> <code>NearDuplicateEdgeBridge</code> (MinHash/LSH via <code>datasketch</code>) and <code>CoMentionEdgeBridge</code> in <code>edges.py</code> — output an <em>edge table</em> (src, dst, ts) that is the input to <code>CentralityBridge</code>/<code>CommunityBridge</code>. Document the two-stage wiring (text bridge → edge table → graph bridge).</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
@@ -513,44 +513,44 @@ svg .fill-muted{fill:var(--muted)}
       copy-paste pair vs a distinct pair; change-point on a synthetic step series. DB-gated: the two-stage
       text→edges→centrality pipeline end to end.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_bridge_trajectory.py tests/test_bridge_edges.py -q</code> — planted signals recovered.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k pipeline</code> — text→edges→centrality→spine.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_bridge_trajectory.py tests/test_bridge_edges.py -q</code> — planted signals recovered.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; uv run pytest tests/integration/test_bridge_families.py -q -k pipeline</code> — text→edges→centrality→spine.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
 
     <!-- ===== PHASE 6 (was 5) ===== -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 6: ADR, docs, example &amp; 0.9.0 release</h3>
+      <h3><code class="status">[x]</code> Phase 6: ADR, docs, example &amp; 0.9.0 release</h3>
       <p>Record the contract decision, teach the pattern, prove it end to end, and cut the release. <strong>0.9.0
       bundles Phases 1–4</strong> (harness + text + graph bridges + native 1-hop pass); Phase 5 (trajectory /
       sequence / edges) ships next as <strong>0.9.1</strong>.</p>
 
       <h4>1. ADR-0014 + taxonomy sync</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Write <code>docs/adr/0014-multi-column-bridge-and-temporal-snapshots.md</code> (Status/Context/Decision/Consequences): why multi-column + snapshot-sequence, the cost trade-off, and the pretrained-model-vintage caveat.</li>
-        <li><code class="status">[]</code> Extend <code>ADR_THEMES</code> in <code>site/gen.py</code> so 0014 lands in a real theme bucket, not "Other" (closes the standing TODO).</li>
-        <li><code class="status">[]</code> Flip the <code>[GAP]</code> markers in <code>temporal-features-network-text.org</code> for every family now shipped.</li>
+        <li><code class="status">[x]</code> Write <code>docs/adr/0014-multi-column-bridge-and-temporal-snapshots.md</code> (Status/Context/Decision/Consequences): why multi-column + snapshot-sequence, the cost trade-off, and the pretrained-model-vintage caveat.</li>
+        <li><code class="status">[x]</code> Extend <code>ADR_THEMES</code> in <code>site/gen.py</code> so 0014 lands in a real theme bucket, not "Other" (closes the standing TODO).</li>
+        <li><code class="status">[x]</code> Flip the <code>[GAP]</code> markers in <code>temporal-features-network-text.org</code> for every family now shipped.</li>
       </ul>
 
       <h4>2. Docs hub + example</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>src/content/docs/engineering/bridge-cookbook.md</code> — wiring + one worked example per modality; add to the sidebar. Update the FAQ's "planner passes vs primitives" answer to mention bridge families.</li>
+        <li><code class="status">[x]</code> <code>src/content/docs/engineering/bridge-cookbook.md</code> — wiring + one worked example per modality; add to the sidebar. Update the FAQ's "planner passes vs primitives" answer to mention bridge families.</li>
         <li><code class="status">[]</code> Optional <code>examples/06-graph-text-bridge/</code> — end-to-end (create_data → bridges → config fragment → spine → matrix), tutorial notebook with committed outputs (docs site renders it).</li>
       </ul>
 
       <h4>3. Release 0.9.0</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>CHANGELOG.md</code> <code>## [0.9.0]</code> section (new bridge families, contract extension, ADR-0014); bump <code>pyproject.toml</code> version.</li>
-        <li><code class="status">[]</code> Tag per CONTRIBUTING (<code>release.yml</code> builds sdist+wheel, creates the GitHub release). Confirm <code>pages.yml</code> redeploys the docs.</li>
+        <li><code class="status">[x]</code> <code>CHANGELOG.md</code> <code>## [0.9.0]</code> section (new bridge families, contract extension, ADR-0014); bump <code>pyproject.toml</code> version.</li>
+        <li><code class="status">[x]</code> Tag per CONTRIBUTING (<code>release.yml</code> builds sdist+wheel, creates the GitHub release). Confirm <code>pages.yml</code> redeploys the docs.</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
       <p>Whole-suite green across tiers + the docs build/link-check that already gates deploys.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>just test-fast</code> — full DB-free tier green.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier (incl. new bridge materialize) green.</li>
-        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs (incl. cookbook) build + link-check clean.</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — full DB-free tier green.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier (incl. new bridge materialize) green.</li>
+        <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs (incl. cookbook) build + link-check clean.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
@@ -561,13 +561,13 @@ svg .fill-muted{fill:var(--muted)}
     <h2>Validation Commands</h2>
     <p>Execute these to validate the entire plan is complete:</p>
     <ul class="checklist">
-      <li><code class="status">[]</code> <code>uv sync --extra bridge</code> — every new heavy dep resolves and installs.</li>
-      <li><code class="status">[]</code> <code>uv run pytest -m "not integration" -q</code> — all DB-free tests (contract + per-family compute) pass; SQL spine unaffected.</li>
-      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — all bridge materialize + spine-aggregation integration tests pass.</li>
-      <li><code class="status">[]</code> <code>uv run basedpyright featurizer/bridge/</code> — bridge package type-checks clean.</li>
-      <li><code class="status">[]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py tests/integration/test_graph_neighbour_pass.py -q</code> — the native 1-hop pass emits as-of-bounded SQL and excludes planted future edges/states.</li>
-      <li><code class="status">[]</code> <code>uv run python -c "import featurizer.bridge as b; print(b.__all__)"</code> — new bridges exported; interfaces list shrunk.</li>
-      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs hub (cookbook + ADR-0014 + flipped taxonomy) builds and link-checks.</li>
+      <li><code class="status">[x]</code> <code>uv sync --extra bridge</code> — every new heavy dep resolves and installs.</li>
+      <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — all DB-free tests (contract + per-family compute) pass; SQL spine unaffected.</li>
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — all bridge materialize + spine-aggregation integration tests pass.</li>
+      <li><code class="status">[x]</code> <code>uv run basedpyright featurizer/bridge/</code> — bridge package type-checks clean.</li>
+      <li><code class="status">[x]</code> <code>uv run pytest tests/test_graph_neighbour_pass.py tests/integration/test_graph_neighbour_pass.py -q</code> — the native 1-hop pass emits as-of-bounded SQL and excludes planted future edges/states.</li>
+      <li><code class="status">[x]</code> <code>uv run python -c "import featurizer.bridge as b; print(b.__all__)"</code> — new bridges exported; interfaces list shrunk.</li>
+      <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs hub (cookbook + ADR-0014 + flipped taxonomy) builds and link-checks.</li>
     </ul>
     <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If a step is genuinely impossible, mark it <code>[f]</code> and move on if possible.</strong></div>
   </section>
@@ -687,7 +687,39 @@ svg .fill-muted{fill:var(--muted)}
   <!-- ===== AMENDMENTS ===== -->
   <section id="amendments">
     <h2>Amendments</h2>
-    <p class="muted">(none yet — append-only history of post-execution changes)</p>
+    <ul>
+      <li><strong>2026-07-17/18 — executed in full; all boxes checked except the optional example.</strong>
+        Phases 1–4 + the Phase-6 release steps shipped as v0.9.0; Phase 5 shipped as v0.9.1 the next day
+        (both tag-triggered releases green, docs redeployed). Deviations from the written plan, with reasons:</li>
+      <li><strong>Sentiment lexicon: no pip dependency.</strong> The plan said "add a sentiment lexicon to
+        <code>[bridge]</code>", but no maintained pip-installable Spanish/multilingual lexicon exists
+        (NRC/LIWC are license-restricted; vaderSentiment is English-only, contradicting the multilingual
+        rule). Shipped compact built-in es/en/xx starter lexicons + a pluggable <code>lexicon=</code>
+        for licensed/domain lexicons instead — SentimentBridge, ReadabilityBridge and LanguageIdBridge
+        are dependency-free by design.</li>
+      <li><strong>Change-point / periodicity: pure numpy, not scipy.</strong> A binary-segmentation
+        mean-shift score and <code>np.fft.rfft</code> need nothing from scipy; numpy is already a hard
+        transitive dependency, so the sequence extensions run without the <code>[bridge]</code> extra.</li>
+      <li><strong>Community: python-louvain only; leidenalg not added.</strong> leidenalg drags in
+        python-igraph; Louvain (pip, networkx-native, <code>random_state=0</code>) covers 0.9.0–0.9.1.
+        SBM stays deferred as decided.</li>
+      <li><strong>Test-execution decision:</strong> networkx, python-louvain and datasketch were also added
+        to the dev dependency group (pyarrow precedent) so the graph/edge tests <em>execute</em> rather
+        than skip under plain <code>uv sync</code>, locally and in CI. Heavy deps (torch via
+        sentence-transformers, spaCy) stay extra-only; spaCy-model tests are skip-gated.</li>
+      <li><strong>Windowed-degree naming</strong> follows the house interval style
+        <code>DEGREE(name|interval=P3M)</code> (not the plan sketch's <code>degree_90d</code>), matching
+        the aggregation registry so 63-byte capping and the manifest behave identically.</li>
+      <li><strong>Shared bridge plumbing went public</strong> in 0.9.1 (<code>load_rows</code>,
+        <code>fit_slice</code>, <code>create_table_sql</code>, <code>value_sql_type</code>,
+        <code>word_tokens</code>) so the EdgeBridge base reuses it without protected-member violations;
+        behaviour unchanged.</li>
+      <li><strong>Open (deliberately):</strong> <code>examples/06-graph-text-bridge/</code> — the one
+        optional box left unchecked; the integration test
+        <code>test_pipeline_text_to_edges_to_centrality_to_spine</code> covers the same wiring
+        end-to-end, and the cookbook documents it. ADR-0014 was self-reviewed only — flagged for a
+        human read.</li>
+    </ul>
   </section>
 
 </main>
