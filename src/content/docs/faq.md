@@ -55,6 +55,16 @@ The CI-tested matrix (v1.0): **Python 3.10–3.13** on the DB-free tier, and
 SQL actually executes. Versions outside the matrix may work but are not
 verified — we only claim what we test.
 
+### What does "stable" mean since 1.0?
+
+A written commitment, not a vibe: the config schema, the `Featurizer`
+public surface and return shapes, the output-naming contract, the
+imputation contract, and the φ-bridge contract are **frozen** — breaking
+any of them requires a major version, and removals warn for at least one
+minor first. Internals (CTE names, SQL text, module layout) stay free to
+change. The full text is
+[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/).
+
 ## Concepts
 
 ### What does "as-of" / point-in-time correctness mean, and why should I care?

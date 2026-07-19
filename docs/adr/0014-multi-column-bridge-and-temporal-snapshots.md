@@ -1,6 +1,6 @@
 # 0014 — Multi-column bridges and temporal snapshot sequences
 
-**Status:** Accepted
+**Status:** Accepted (human-reviewed at the v1.0 freeze gate, 2026-07-19 — frozen by [[0015-v1-api-stability-commitment]])
 
 **Date:** 2026-07-17
 

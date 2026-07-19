@@ -333,7 +333,7 @@ svg .fill-muted{fill:var(--muted)}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: API freeze — ADR-0015 + the human gate <span class="pill human">requires user sign-off</span></h3>
+      <h3><code class="status">[x]</code> Phase 4: API freeze — ADR-0015 + the human gate <span class="pill human">requires user sign-off</span></h3>
       <p>Write down what "stable" means, then have a human agree. The freeze covers surfaces, not
       internals: the planner/renderer stay refactorable as long as the frozen contracts hold.</p>
 
@@ -346,20 +346,20 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>2. The human review gate <span class="pill human">human</span></h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <strong>User reads and signs off ADR-0014 and ADR-0015</strong> (they become frozen API at the tag). This box can only be checked by the user — the build workflow must stop here and ask, listing any objections as amendments before proceeding.</li>
+        <li><code class="status">[x]</code> <strong>User reads and signs off ADR-0014 and ADR-0015</strong> (they become frozen API at the tag). This box can only be checked by the user — the build workflow must stop here and ask, listing any objections as amendments before proceeding.</li>
       </ul>
 
       <h4>3. Declare it in the metadata</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>pyproject.toml</code>: classifier <code>Development Status :: 5 - Production/Stable</code>; README + FAQ gain a short stability statement linking ADR-0015.</li>
-        <li><code class="status">[]</code> Document the deliberate carve-outs where contributors look: <code>pyrightconfig.json</code> ignores and coverage exclusions for the two primitive modules, and the 70% floor — stated in CONTRIBUTING as known, intentional, with the reason (dynamic primitive variants; the integration tiers are their real coverage).</li>
+        <li><code class="status">[x]</code> <code>pyproject.toml</code>: classifier <code>Development Status :: 5 - Production/Stable</code>; README + FAQ gain a short stability statement linking ADR-0015.</li>
+        <li><code class="status">[x]</code> Document the deliberate carve-outs where contributors look: <code>pyrightconfig.json</code> ignores and coverage exclusions for the two primitive modules, and the 70% floor — stated in CONTRIBUTING as known, intentional, with the reason (dynamic primitive variants; the integration tiers are their real coverage).</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
       <p>Docs-level phase; the gate is procedural, the build is the check.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run python site/gen.py</code> — 15 ADRs, all themed, no reminder line.</li>
-        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — 0 broken.</li>
+        <li><code class="status">[x]</code> <code>uv run python site/gen.py</code> — 15 ADRs, all themed, no reminder line.</li>
+        <li><code class="status">[x]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — 0 broken.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked — including the human signature.</strong></div>
     </div>
@@ -426,7 +426,7 @@ svg .fill-muted{fill:var(--muted)}
       <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
       <li><code class="status">[]</code> CI matrix on master: every python × PG leg green (<code>gh run list</code>).</li>
       <li><code class="status">[]</code> <code>ls specs/live-db-revalidation-v100/</code> — committed artifacts exist; summary page linked and deployed.</li>
-      <li><code class="status">[]</code> ADR-0014 + ADR-0015 carry the user's review sign-off (recorded in the Amendments here or the ADR Status line).</li>
+      <li><code class="status">[x]</code> ADR-0014 + ADR-0015 carry the user's review sign-off (recorded in the Amendments here or the ADR Status line).</li>
       <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs clean, 15 themed ADRs.</li>
       <li><code class="status">[]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer --json assets</code> — wheel + sdist + docs archive.</li>
     </ul>
@@ -473,7 +473,20 @@ svg .fill-muted{fill:var(--muted)}
   <!-- ===== AMENDMENTS ===== -->
   <section id="amendments">
     <h2>Amendments</h2>
-    <p class="muted">(none yet — append-only history of post-execution changes)</p>
+    <p class="muted">(append-only history of post-execution changes)</p>
+    <ul>
+      <li><b>2026-07-19 — human gate passed.</b> The user read and signed off
+      ADR-0014 and ADR-0015 with no objections ("Signed off — ADR-0014 and
+      ADR-0015 approved, proceed"). Both ADR Status lines record the review;
+      ADR-0015 moves Proposed → Accepted.</li>
+      <li><b>2026-07-19 — Phase 3 correction.</b> The plan listed
+      <code>benchmarks/final_matrix.py</code> as an existing file; it never
+      existed (the v0.6.0/v0.8.0 snapshots came from uncommitted scripts).
+      Reconstructed and committed, with variant definitions recovered by
+      count-calibration against the v0.8.0 artifacts (narrow/all-agg exact;
+      wide exact on dirtyduck/chicago311, donorschoose +6% from 0.9.x planner
+      evolution).</li>
+    </ul>
   </section>
 
 </main>

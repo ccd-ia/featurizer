@@ -1,6 +1,6 @@
 # 0015 — v1.0 API stability commitment
 
-**Status:** Proposed (awaiting user sign-off — becomes Accepted at the v1.0.0 tag)
+**Status:** Accepted (user sign-off 2026-07-19; frozen at the v1.0.0 tag)
 
 **Date:** 2026-07-19
 

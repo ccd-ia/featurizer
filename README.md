@@ -587,6 +587,16 @@ Run the test suite with:
     # With coverage report
     uv run pytest --cov=featurizer --cov-report=term-missing
 
+### Stability (v1.0+)
+
+Featurizer 1.0 is a **written stability commitment**, not just a version
+number: the YAML config schema, the `Featurizer` public surface and its
+return shapes, the output-naming contract, the imputation contract, and the
+φ-bridge contract are frozen — breaking any of them requires a major
+version, and deprecations warn for at least one minor release first.
+Planner internals, CTE names, and generated SQL text stay refactorable.
+The full commitment: [ADR-0015](docs/adr/0015-v1-api-stability-commitment.md).
+
 ### Tested compatibility matrix
 
 Every release is CI-tested on this matrix — a support claim we test is a
