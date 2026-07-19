@@ -75,6 +75,23 @@ jobs:
       - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Docs-per-release (ADR-0015 era): every release carries its own
+      # browsable docs snapshot as an asset — zero standing infra, cannot rot.
+      # Built FIRST: astro wipes dist/ (its outDir), which is also uv build's
+      # output directory — the snapshot is tarred away before uv build runs.
+      - name: build the docs snapshot
+        run: |
+          uv sync --extra parquet --group docs
+          uv run python site/gen.py
+          npm ci
+          npm run build
+          uv run python site/check_links.py dist
+          tar -czf "docs-site-${GITHUB_REF_NAME}.tar.gz" -C dist .
+          rm -rf dist
       - run: uv build
       - name: extract CHANGELOG section as release notes
         run: |
@@ -94,8 +111,9 @@ jobs:
           open("release-notes.md", "w").write(match.group(1).strip() + "\n")
           EOF
           cat release-notes.md
-      - name: create GitHub release with dist assets
+      - name: create GitHub release with dist + docs assets
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz \
+            "docs-site-${GITHUB_REF_NAME}.tar.gz" \
             --title "Featurizer ${GITHUB_REF_NAME#v}" \
             --notes-file release-notes.md

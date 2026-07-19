@@ -365,30 +365,31 @@ svg .fill-muted{fill:var(--muted)}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 5: Docs per release + stale cleanup</h3>
+      <h3><code class="status">[x]</code> Phase 5: Docs per release + stale cleanup</h3>
       <p>Once 1.0 promises stability across versions, the docs must exist per version. Primary path
       is a release-attached snapshot (zero new infra); the in-site version switcher is attempted and
       allowed to fail gracefully.</p>
 
       <h4>1. Docs archive per release (primary — cheap, robust)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>release.yml</code>: after the build steps, run the docs build (<code>site/gen.py</code> + <code>astro build</code> + link check) and attach <code>docs-site-vX.Y.Z.tar.gz</code> (the <code>dist/</code>) as a release asset — every release carries its own browsable docs snapshot from now on.</li>
+        <li><code class="status">[x]</code> <code>release.yml</code>: after the build steps, run the docs build (<code>site/gen.py</code> + <code>astro build</code> + link check) and attach <code>docs-site-vX.Y.Z.tar.gz</code> (the <code>dist/</code>) as a release asset — every release carries its own browsable docs snapshot from now on.</li>
       </ul>
 
       <h4>2. In-site version switcher (secondary — attempt, may <code>[f]</code>)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Evaluate the <code>starlight-versions</code> plugin against our Starlight version; adopt if it works cleanly (versioned copies under <code>src/content/docs/</code>, switcher in the nav). If it fights the base-path/sidebar gotchas already learned the hard way, mark <code>[f]</code> with a note — the Phase-5.1 archives already satisfy the requirement.</li>
+        <li><code class="status">[f]</code> Evaluate the <code>starlight-versions</code> plugin against our Starlight version; adopt if it works cleanly (versioned copies under <code>src/content/docs/</code>, switcher in the nav). If it fights the base-path/sidebar gotchas already learned the hard way, mark <code>[f]</code> with a note — the Phase-5.1 archives already satisfy the requirement.</li>
+        <!-- [f] 2026-07-19: starlight-versions (peer >=0.39, ours 0.41.3) would snapshot src/content/docs/, which here is largely gen.py-GENERATED and gitignored — committed version copies of generated content reverse that design, on top of the known base-path/sidebar fights. The Phase-5.1 release-asset archive is the versioned-docs mechanism. -->
       </ul>
 
       <h4>3. Retire the stale org overview</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Delete <code>docs/featurizer-overview.org</code> (stale 43/71 counts, DSaPP branding; superseded by the native concepts/walkthrough/internals pages — same rationale that retired the deep-dive deck). History keeps it; the commit message says where its content lives now.</li>
+        <li><code class="status">[x]</code> Delete <code>docs/featurizer-overview.org</code> (stale 43/71 counts, DSaPP branding; superseded by the native concepts/walkthrough/internals pages — same rationale that retired the deep-dive deck). History keeps it; the commit message says where its content lives now.</li>
       </ul>
 
       <h4>4. Testing Strategy</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — site clean after any switcher/cleanup changes.</li>
-        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — gen seams still green.</li>
+        <li><code class="status">[x]</code> <code>npm run build &amp;&amp; uv run python site/check_links.py dist</code> — site clean after any switcher/cleanup changes.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — gen seams still green.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
