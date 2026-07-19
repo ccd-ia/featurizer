@@ -395,22 +395,22 @@ svg .fill-muted{fill:var(--muted)}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 6: Release 1.0.0</h3>
+      <h3><code class="status">[x]</code> Phase 6: Release 1.0.0</h3>
       <p>The existing pipeline, with the stability story in the notes. Version <code>0.9.1 →
       1.0.0</code>; the CHANGELOG entry is the hardening summary + the ADR-0015 commitment, and it
       records the two standing decisions (no-PyPI reaffirmed; no upstream dssg PR — see Notes).</p>
 
       <h4>1. Cut the release</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>CHANGELOG.md</code> <code>## [1.0.0]</code> (guards, matrix, revalidation numbers, ADR-0015, docs-per-release, decisions); bump <code>pyproject.toml</code>; <code>uv lock</code>.</li>
-        <li><code class="status">[]</code> Push master, wait for the full matrix to go green, tag <code>v1.0.0</code> per CONTRIBUTING; <code>release.yml</code> publishes with wheel + sdist + the new docs archive; confirm pages redeploys.</li>
-        <li><code class="status">[]</code> Post-release: update CLAUDE.md/TODO.org state; assess the triage pin bump to v1.0.0 (additive-only — same procedure as the v0.9.1 assessment).</li>
+        <li><code class="status">[x]</code> <code>CHANGELOG.md</code> <code>## [1.0.0]</code> (guards, matrix, revalidation numbers, ADR-0015, docs-per-release, decisions); bump <code>pyproject.toml</code>; <code>uv lock</code>.</li>
+        <li><code class="status">[x]</code> Push master, wait for the full matrix to go green, tag <code>v1.0.0</code> per CONTRIBUTING; <code>release.yml</code> publishes with wheel + sdist + the new docs archive; confirm pages redeploys.</li>
+        <li><code class="status">[x]</code> Post-release: update CLAUDE.md/TODO.org state; assess the triage pin bump to v1.0.0 (additive-only — same procedure as the v0.9.1 assessment).</li>
       </ul>
 
       <h4>2. Testing Strategy</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer</code> — published, Latest, three assets (wheel, sdist, docs archive).</li>
-        <li><code class="status">[]</code> <code>curl -s https://ccd-ia.github.io/featurizer/ | grep -c 1.0</code> — the hub reflects the release.</li>
+        <li><code class="status">[x]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer</code> — published, Latest, three assets (wheel, sdist, docs archive).</li>
+        <li><code class="status">[x]</code> <code>curl -s https://ccd-ia.github.io/featurizer/ | grep -c 1.0</code> — the hub reflects the release.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
@@ -421,15 +421,15 @@ svg .fill-muted{fill:var(--muted)}
     <h2>Validation Commands</h2>
     <p>Execute these commands to validate the entire plan is complete:</p>
     <ul class="checklist">
-      <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — full DB-free tier green (incl. new guard tests).</li>
-      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier green (manifest guard, row-width guard, impute×materialization).</li>
-      <li><code class="status">[]</code> <code>just seed &amp;&amp; just test-realistic</code> — realistic tier green on 1.0.</li>
-      <li><code class="status">[]</code> <code>uv run basedpyright</code> — 0 errors.</li>
-      <li><code class="status">[]</code> CI matrix on master: every python × PG leg green (<code>gh run list</code>).</li>
-      <li><code class="status">[]</code> <code>ls specs/live-db-revalidation-v100/</code> — committed artifacts exist; summary page linked and deployed.</li>
+      <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — full DB-free tier green (incl. new guard tests).</li>
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier green (manifest guard, row-width guard, impute×materialization).</li>
+      <li><code class="status">[x]</code> <code>just seed &amp;&amp; just test-realistic</code> — realistic tier green on 1.0.</li>
+      <li><code class="status">[x]</code> <code>uv run basedpyright</code> — 0 errors.</li>
+      <li><code class="status">[x]</code> CI matrix on master: every python × PG leg green (<code>gh run list</code>).</li>
+      <li><code class="status">[x]</code> <code>ls specs/live-db-revalidation-v100/</code> — committed artifacts exist; summary page linked and deployed.</li>
       <li><code class="status">[x]</code> ADR-0014 + ADR-0015 carry the user's review sign-off (recorded in the Amendments here or the ADR Status line).</li>
-      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs clean, 15 themed ADRs.</li>
-      <li><code class="status">[]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer --json assets</code> — wheel + sdist + docs archive.</li>
+      <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs clean, 15 themed ADRs.</li>
+      <li><code class="status">[x]</code> <code>gh release view v1.0.0 --repo ccd-ia/featurizer --json assets</code> — wheel + sdist + docs archive.</li>
     </ul>
     <div class="loop">🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong></div>
   </section>
