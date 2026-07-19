@@ -15,7 +15,7 @@ proved it repeatedly, with measurements. This page tells the story of the
 current design: what the emitted SQL looks like, where each cost lives, and
 which decision record carries the evidence. Every number below was measured
 against live databases and is archived in the
-<a href="/featurizer/specs/live-db-revalidation-v080.html">v0.8.0 validation reports</a>.
+<a href="/featurizer/specs/live-db-revalidation-v100.html">v1.0.0 validation reports</a>.
 
 ## The query shape
 

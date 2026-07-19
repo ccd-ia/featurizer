@@ -15,7 +15,7 @@
 [Primitives](https://ccd-ia.github.io/featurizer/reference/primitives/) ·
 [Configuration](https://ccd-ia.github.io/featurizer/reference/configuration/) ·
 [ADRs](https://ccd-ia.github.io/featurizer/engineering/adr/) ·
-[Validation reports](https://ccd-ia.github.io/featurizer/specs/live-db-revalidation-v080.html)
+[Validation reports](https://ccd-ia.github.io/featurizer/specs/live-db-revalidation-v100.html)
 
 Featurizer implements [Deep Feature Synthesis](https://groups.csail.mit.edu/EVO-DesignOpt/groupWebSite/uploads/Site/DSAA_DSM_2015.pdf) (DFS; Kanter & Veeramachaneni, IEEE DSAA 2015) for relational
 databases with first-class support for temporal semantics. Given a

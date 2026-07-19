@@ -47,9 +47,10 @@ point-in-time-correct feature matrix:
 	</Card>
 	<Card title="Live-database validation" icon="approve-check">
 		Every release is validated by materializing full feature matrices against
-		three live PostgreSQL databases. The v0.8.0 matrix is fully green — every
-		variant materializes, including the ~36.8k-column wide config.
-		[Read the reports](/featurizer/specs/live-db-revalidation-v080.html).
+		three live PostgreSQL databases. The v1.0.0 matrix is fully green — every
+		variant materializes (including the ~39k-column wide config), and the
+		0.9.x graph/text families are measured at scale for the first time.
+		[Read the reports](/featurizer/specs/live-db-revalidation-v100.html).
 	</Card>
 	<Card title="Under the hood" icon="setting">
 		[How the SQL stays fast](/featurizer/engineering/internals/) — joins, CTE

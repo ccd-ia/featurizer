@@ -85,15 +85,29 @@ def _matrix_rows(artifacts: Dict[str, Any]) -> List[Dict[str, Any]]:
     return rows
 
 
-def _page(title: str, lede: str, body: str, version: str) -> str:
+#: What the pages display. The runs executed pre-tag at the v1.0.0-rc
+#: (commit c460bab, package metadata still 0.9.1 — preserved verbatim in the
+#: raw JSON); ``git diff c460bab v1.0.0 -- featurizer/`` is empty, so the
+#: measured engine is byte-identical to the tagged release.
+RELEASE_VERSION = "1.0.0"
+RC_NOTE = (
+    "runs executed at the v1.0.0-rc (commit <code>c460bab</code>; "
+    "<code>featurizer/</code> byte-identical to the <code>v1.0.0</code> tag — "
+    "<code>git diff c460bab v1.0.0 -- featurizer/</code> is empty; the raw "
+    "JSON preserves the pre-bump package version it recorded)"
+)
+
+
+def _page(title: str, lede: str, body: str) -> str:
     return (
         f"<!doctype html><html><head><meta charset='utf-8'>"
         f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{title}</title><style>{CSS}</style></head><body><main>"
         f"<h1>{title}</h1><p class=lede>{lede}</p>{body}"
-        f"<footer>featurizer v{version} · read-only runs against the live triage "
-        f"databases · raw per-cell artifacts in <code>specs/live-db-revalidation-v100/raw/</code> · "
-        f"harness: <code>benchmarks/final_matrix.py</code> + "
+        f"<footer>featurizer v{RELEASE_VERSION} · {RC_NOTE} · read-only runs "
+        f"against the live triage databases · raw per-cell artifacts in "
+        f"<code>specs/live-db-revalidation-v100/raw/</code> · harness: "
+        f"<code>benchmarks/final_matrix.py</code> + "
         f"<code>benchmarks/bridge_workloads.py</code> (committed — reproducible)."
         f"</footer></main></body></html>\n"
     )
@@ -101,7 +115,6 @@ def _page(title: str, lede: str, body: str, version: str) -> str:
 
 def render_summary(artifacts: Dict[str, Any]) -> str:
     rows = _matrix_rows(artifacts)
-    version = rows[0].get("featurizer_version", "1.0.0") if rows else "1.0.0"
     tr = []
     for r in rows:
         was = V080_SECONDS.get((r["dataset"], r["variant"]))
@@ -196,7 +209,6 @@ exactly on dirtyduck/chicago311 and emits ~6% more columns on donorschoose
         "The 3-DB × 3-variant release matrix plus the first at-scale "
         "measurement of the 0.9.x graph/text families.",
         body,
-        version,
     )
 
 
@@ -206,7 +218,6 @@ def render_db(artifacts: Dict[str, Any], db: str) -> str:
         for v in ("narrow", "all-agg", "wide")
         if f"{db}-{v}" in artifacts
     ]
-    version = rows[0].get("featurizer_version", "1.0.0") if rows else "1.0.0"
     tr = "".join(
         f"<tr><td class=mono>{r['variant']}</td><td class=mono>{r['features']:,}</td>"
         f"<td class=mono>{r['shards']}</td><td class=mono>{r.get('rows', ''):,}</td>"
@@ -240,7 +251,7 @@ permanent writes. Variant definitions and the recovered wide transformer set:
 <tbody>{tr}</tbody></table>
 {''.join(extras)}
 """
-    return _page(f"featurizer × {db}", LEDES[db], body, version)
+    return _page(f"featurizer × {db}", LEDES[db], body)
 
 
 def main() -> None:

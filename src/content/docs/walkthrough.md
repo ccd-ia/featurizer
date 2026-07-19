@@ -32,10 +32,10 @@ no PyPI. Pin a tag:
 
 ```bash
 # with uv (recommended)
-uv add "featurizer @ git+https://github.com/ccd-ia/featurizer.git@v0.8.0"
+uv add "featurizer @ git+https://github.com/ccd-ia/featurizer.git@v1.0.0"
 
 # or with pip
-pip install "featurizer @ git+https://github.com/ccd-ia/featurizer.git@v0.8.0"
+pip install "featurizer @ git+https://github.com/ccd-ia/featurizer.git@v1.0.0"
 ```
 
 Add the `[parquet]` extra (`featurizer[parquet] @ …`) if you want Arrow/Parquet
@@ -268,5 +268,5 @@ Real output from a live 177k-row × 272-feature matrix:
   [primitive registry](/featurizer/reference/primitives/) and the complete
   [`config.yaml` schema](/featurizer/reference/configuration/).
 - **Proof it holds up**: every release is validated against three live
-  databases — <a href="/featurizer/specs/live-db-revalidation-v080.html">the
-  v0.8.0 reports</a>.
+  databases — <a href="/featurizer/specs/live-db-revalidation-v100.html">the
+  v1.0.0 reports</a>.
