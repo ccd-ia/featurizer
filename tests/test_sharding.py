@@ -785,3 +785,88 @@ def test_window_fn_budget_bounds_each_group():
         assert n_windows <= 50, n_windows
     flat = [c.name for g in groups for c in g]
     assert len(flat) == len(set(flat))
+
+
+# ------------------------------------------------------------------ #
+# The as-of-LATERAL materialization residual stays a loud, actionable
+# boundary (v1.0 hardening): materializing a synth that contains a
+# correlated LATERAL join is feature work, not supported — the error must
+# fire (never subtly-wrong SQL) and must name both workarounds.
+# ------------------------------------------------------------------ #
+
+
+def _forward_temporal_config() -> dict:
+    """stores <- orders, plus orders pulling its most recent promotion as-of
+    (forward temporal relationship -> an as-of LATERAL join in orders_synth)."""
+    return {
+        "target": "stores",
+        "max_depth": 3,
+        "intervals": [],
+        "aggregations": ["count", "sum", "mean"],
+        "transformations": ["identity"],
+        "entities": [
+            {"alias": "stores", "table": "stores", "id": "store_id"},
+            {
+                "alias": "orders",
+                "table": "orders",
+                "id": "order_id",
+                "temporal_ix": "ordered_at",
+                "variables": {
+                    "store_id": {"type": "index"},
+                    "total": {"type": "numeric"},
+                },
+            },
+            {
+                "alias": "promotions",
+                "table": "promotions",
+                "id": "promo_id",
+                "temporal_ix": "started_at",
+                "variables": {
+                    "order_id": {"type": "index"},
+                    "discount": {"type": "numeric"},
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "stores", "key": "store_id"},
+                "child": {"entity": "orders", "key": "store_id"},
+            },
+            {
+                "parent": {"entity": "promotions", "key": "order_id"},
+                "child": {"entity": "orders", "key": "order_id"},
+                "temporal": {"mode": "as_of", "grace": "P30D"},
+            },
+        ],
+    }
+
+
+def test_asof_lateral_materialization_fails_loud_with_workarounds():
+    """Forcing the forward-temporal child chain through materialization raises
+    the actionable NotImplementedError — the documented v1.0 boundary."""
+    import tempfile as _tempfile
+
+    with _tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(_forward_temporal_config(), handle)
+        path = handle.name
+    f = Featurizer(path, validate=False, materialize_threshold=1)
+
+    with pytest.raises(NotImplementedError) as excinfo:
+        f._grouped()
+    message = str(excinfo.value)
+    assert "orders_synth" in message  # names the offending synth
+    assert "as-of LATERAL" in message  # names the cause
+    # ...and both workarounds the FAQ/config reference document:
+    assert "Narrow this entity's primitive/interval breadth" in message
+    assert "raise the relationship to the target" in message
+
+
+def test_asof_lateral_config_works_without_forced_materialization():
+    """The same config is fine on the ordinary path — the boundary is the
+    materializer, not forward temporal relationships themselves."""
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(_forward_temporal_config(), handle)
+        path = handle.name
+    f = Featurizer(path, validate=False)
+    sql = f.query
+    assert re.search(r"left join\s+lateral", sql, re.IGNORECASE)

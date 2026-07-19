@@ -106,7 +106,16 @@ OOM-kill the backend during a plain `EXPLAIN`). Wide configs are handled by
   planning cliff;
 - a **pre-flight guardrail** (`warn_plan_size`) predicts pathological plans
   at render time and names the offending groups, instead of letting a run
-  die minutes in with *server closed the connection unexpectedly*.
+  die minutes in with *server closed the connection unexpectedly*;
+- a **heap-row-width pre-flight** on the `to_tables` path (v1.0): a heap
+  tuple must fit one 8 KiB page (~8160 bytes), so a ~1,000+-column group of
+  fixed-width values that SELECTs fine still fails `create table … as` with
+  *row is too big*. `to_tables` estimates every group's row width (8 bytes
+  per column + header + null bitmap) and re-partitions with a lower
+  per-group cap when a group would exceed the ~8000-byte budget — more,
+  narrower tables instead of a crash. The estimate is deliberately simple:
+  text/`numeric` columns are variable-width (TOASTable), so the budget's
+  headroom absorbs moderate variance rather than modeling it.
 
 Net effect on the worst case we have: the donorschoose `wide` config
 (~36.8k columns, 32 groups) went from **backend crash** to **materializing

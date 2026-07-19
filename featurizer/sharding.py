@@ -74,6 +74,51 @@ DEFAULT_MAX_WINDOW_FNS_PER_GROUP = 500
 # ~886 in 42.7s. 300 sits between "planned in seconds" and "planning-bound".
 PLAN_SIZE_WARN_CLOSURE = 300
 
+# Heap-page pre-flight for the ``to_tables`` CTAS path. A heap tuple must fit
+# one 8 KiB page (~8160 usable bytes) — a bound the SELECT/fetch paths never
+# hit because result rows stream without page storage. Feature columns are
+# predominantly fixed-width 8-byte values (bigint/float8; small inline numerics
+# land in the same ballpark) that TOAST cannot move out of line, so a
+# ~1400-column group that SELECTs fine fails ``create table … as`` with
+# ``row is too big: size …, maximum size 8160``. The estimate below charges
+# every column 8 bytes plus the tuple header and null bitmap. It is a
+# documented heuristic, not a guarantee: text/categorical columns are varlena
+# (TOASTable, unbounded) and wide inline numerics can exceed 8 bytes — the
+# budget's headroom under 8160 absorbs alignment and moderately wider values.
+HEAP_ROW_BUDGET_BYTES = 8000
+_HEAP_BYTES_PER_COLUMN = 8
+_HEAP_TUPLE_HEADER_BYTES = 24
+
+
+def estimate_heap_row_width(n_columns: int) -> int:
+    """Estimated heap-tuple bytes of an ``n_columns``-wide fixed-width row.
+
+    ``header + null bitmap + 8 bytes per column`` — the pre-flight predictor
+    ``Featurizer.to_tables`` compares against :data:`HEAP_ROW_BUDGET_BYTES`
+    before running CTAS (see the constant's comment for the model and its
+    limits).
+    """
+    null_bitmap_bytes = (n_columns + 7) // 8
+    return (
+        _HEAP_TUPLE_HEADER_BYTES
+        + null_bitmap_bytes
+        + n_columns * _HEAP_BYTES_PER_COLUMN
+    )
+
+
+def max_heap_safe_columns(n_key_columns: int) -> int:
+    """Largest per-group feature-column count that keeps the estimated row
+    (features + the always-carried key columns) within the heap budget.
+
+    Used by ``Featurizer.to_tables`` as the downshifted
+    ``max_columns_per_group`` when the default partition would produce a
+    too-wide table row.
+    """
+    total = n_key_columns
+    while estimate_heap_row_width(total + 1) <= HEAP_ROW_BUDGET_BYTES:
+        total += 1
+    return total - n_key_columns
+
 
 @dataclass(frozen=True)
 class GroupedQueries:

@@ -140,6 +140,15 @@ Renders a `left join lateral … order by <timestamp> desc limit 1`: the most
 recent child row at or before each `as_of_date` (bounded by `grace` when
 given). This is the point-in-time join for slowly-changing state.
 
+**Known boundary (v1.0):** the correlated LATERAL cannot be flattened into
+temp-table shards. If the entity carrying an as-of join *also* grows past
+the oversized-CTE materialization threshold (issue-#7 sharding), featurizer
+raises `NotImplementedError` — loudly, instead of emitting subtly-wrong
+SQL. Workarounds: narrow that entity's primitive/interval breadth so its
+synth stays under the limit, or attach the as-of relationship to the target
+entity (the target is never shard-materialized). See the
+[FAQ entry](/featurizer/faq/#cannot-yet-materialize-the-oversized-synth--as-of-lateral-join).
+
 ## Spatial relationships (planner pass)
 
 With PostGIS and entities that declare a `spatial_ix`:

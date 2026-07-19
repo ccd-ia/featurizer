@@ -114,6 +114,44 @@ enum is a modeling error to fix upstream. See
 and the [categoricals notebook](/featurizer/notebooks/05-categoricals-output/).
 Imputation of the resulting matrix is **opt-in**, not automatic.
 
+### `row is too big: size …, maximum size 8160` — but only with `to_tables`
+
+A PostgreSQL heap *row* must fit one 8 KiB page (~8160 bytes). Fetching a
+1,000+-column result with `to_dataframe` / `to_arrow` / `to_parquet` never
+hits this — result rows stream without page storage — but `to_tables` runs
+`create table … as`, and ~1,000 fixed-width 8-byte feature columns
+(`bigint`/`float8`, which TOAST cannot move out of line) overflow the page.
+
+Since v1.0 `to_tables` pre-flights every column group with a row-width
+estimate (**8 bytes per column** + tuple header + null bitmap) and, when a
+group would exceed the ~8000-byte budget, automatically re-partitions into
+more, narrower tables — you get extra `<stem>_group_<NNN>` tables instead of
+the error, all still re-joinable on `(as_of_date, id)` and correctly tagged
+in the manifest. The estimate is a documented heuristic: text and wide
+`numeric` values are variable-width, so a pathological config could still
+trip PostgreSQL — if it does, lower the group width yourself by splitting
+your config, and please report it. See
+[performance internals](/featurizer/engineering/internals/).
+
+### `Cannot yet materialize the oversized synth … as-of LATERAL join`
+
+A **forward temporal relationship** (`temporal: {mode: as_of}` pulling the
+most recent parent record) renders as a correlated `LEFT JOIN LATERAL`.
+When the *same* entity's synth CTE also grows past the materialization
+threshold (issue #7 temp-table sharding), featurizer refuses rather than
+emit subtly-wrong SQL: flattening a correlated LATERAL into shards is
+feature work, deliberately out of scope for 1.0. The error is the boundary,
+and it names the two workarounds:
+
+1. **Narrow that entity's primitive/interval breadth** so its synth stays
+   under the limit (fewer aggregations, transformers, or intervals on the
+   entity carrying the as-of join), or
+2. **raise the as-of relationship to the target entity**, where no
+   materialization is needed.
+
+See the [temporal-joins section of the configuration
+reference](/featurizer/reference/configuration/#temporal-as-of-joins).
+
 ## Development & docs
 
 ### Why do the tutorial notebooks show outputs but never execute in CI?

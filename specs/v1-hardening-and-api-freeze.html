@@ -226,41 +226,41 @@ svg .fill-muted{fill:var(--muted)}
     <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 1: Close the engineering guards <span class="pill safe">small, unblocks everything</span></h3>
+      <h3><code class="status">[x]</code> Phase 1: Close the engineering guards <span class="pill safe">small, unblocks everything</span></h3>
       <p>The four known sharp edges from TODO.org. Each becomes either a hard guard with a test or a
       loud, documented boundary — nothing stays silent.</p>
 
       <h4>1. Manifest-under-sharding assertion</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Replace the <code>column_to_group.get(entry.column, "group_000")</code> fallback in <code>_write_manifest_table</code> (featurizer.py ~L675) with a fail-loud error naming the orphaned column and the available groups (a mis-tagged manifest silently corrupts lineage downstream — triage consumes this table).</li>
-        <li><code class="status">[]</code> Integration test: build a sharded config, read back <code>&lt;stem&gt;_manifest</code>, assert every row's <code>feature_group</code> is a real persisted table and every output column appears exactly once.</li>
+        <li><code class="status">[x]</code> Replace the <code>column_to_group.get(entry.column, "group_000")</code> fallback in <code>_write_manifest_table</code> (featurizer.py ~L675) with a fail-loud error naming the orphaned column and the available groups (a mis-tagged manifest silently corrupts lineage downstream — triage consumes this table).</li>
+        <li><code class="status">[x]</code> Integration test: build a sharded config, read back <code>&lt;stem&gt;_manifest</code>, assert every row's <code>feature_group</code> is a real persisted table and every output column appears exactly once.</li>
       </ul>
 
       <h4>2. <code>to_tables</code> heap-row-width guard</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Pre-flight in <code>to_tables</code>: estimate per-group row width (numeric = 8 bytes + header; text unbounded → skip estimate, document); when a group's fixed-width estimate exceeds ~8000 bytes, split that group further (reuse the column-group splitter with a lower cap) rather than let PostgreSQL fail with "row is too big".</li>
-        <li><code class="status">[]</code> DB-free test pinning the estimator + the downshift decision; integration test with a ~1200-numeric-column group proving CTAS succeeds where it previously crashed.</li>
-        <li><code class="status">[]</code> Document the limit + behaviour in the FAQ ("row is too big") and <code>engineering/internals.md</code>.</li>
+        <li><code class="status">[x]</code> Pre-flight in <code>to_tables</code>: estimate per-group row width (numeric = 8 bytes + header; text unbounded → skip estimate, document); when a group's fixed-width estimate exceeds ~8000 bytes, split that group further (reuse the column-group splitter with a lower cap) rather than let PostgreSQL fail with "row is too big".</li>
+        <li><code class="status">[x]</code> DB-free test pinning the estimator + the downshift decision; integration test with a ~1200-numeric-column group proving CTAS succeeds where it previously crashed.</li>
+        <li><code class="status">[x]</code> Document the limit + behaviour in the FAQ ("row is too big") and <code>engineering/internals.md</code>.</li>
       </ul>
 
       <h4>3. <code>impute=True</code> × materialized oversized-child path</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Integration test combining both: a config that triggers oversized-child temp-table materialization, executed via <code>to_arrow(impute=True)</code> and <code>to_dataframe(impute=True)</code>; assert count-features → 0, measures keep NULL + <code>__missing</code> indicators, and values equal the unimputed run everywhere else.</li>
+        <li><code class="status">[x]</code> Integration test combining both: a config that triggers oversized-child temp-table materialization, executed via <code>to_arrow(impute=True)</code> and <code>to_dataframe(impute=True)</code>; assert count-features → 0, measures keep NULL + <code>__missing</code> indicators, and values equal the unimputed run everywhere else.</li>
       </ul>
 
       <h4>4. As-of-LATERAL materialization residual — keep loud, teach it</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Keep the fail-loud <code>NotImplementedError</code> (sharding.py ~L1103) — implementing flat materialization of a correlated LATERAL is feature work, not hardening. Add/verify a test asserting the error fires with its actionable message.</li>
-        <li><code class="status">[]</code> Document the boundary in the FAQ and the configuration reference's temporal-join section (when it bites, the two workarounds the message names).</li>
+        <li><code class="status">[x]</code> Keep the fail-loud <code>NotImplementedError</code> (sharding.py ~L1103) — implementing flat materialization of a correlated LATERAL is feature work, not hardening. Add/verify a test asserting the error fires with its actionable message.</li>
+        <li><code class="status">[x]</code> Document the boundary in the FAQ and the configuration reference's temporal-join section (when it bites, the two workarounds the message names).</li>
       </ul>
 
       <h4>5. Testing Strategy</h4>
       <p>Standard tiers; the new integration tests ride the ephemeral DB. The existing 1,156-test
       suite is the regression net.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv run pytest -q -m "not integration"</code> — fast tier green including the new estimator tests.</li>
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — all guards proven against live PostgreSQL.</li>
-        <li><code class="status">[]</code> <code>uv run basedpyright</code> — clean.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -q -m "not integration"</code> — fast tier green including the new estimator tests.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — all guards proven against live PostgreSQL.</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright</code> — clean.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>

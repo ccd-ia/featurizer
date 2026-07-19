@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections import OrderedDict
@@ -272,16 +272,35 @@ class Featurizer:
             )
         return self._renderer.render(self._plan)
 
-    def _sharder(self) -> "ColumnGroupSharder":
-        """A ColumnGroupSharder for this plan honouring ``materialize_threshold``."""
-        from .sharding import PG_MAX_TARGET_LIST, ColumnGroupSharder
+    def _sharder(
+        self, *, max_columns_per_group: int | None = None
+    ) -> "ColumnGroupSharder":
+        """A ColumnGroupSharder for this plan honouring ``materialize_threshold``.
+
+        ``max_columns_per_group`` overrides the default per-group column cap —
+        used by :meth:`to_tables` to downshift the partition when the default
+        cap would produce a heap row over PostgreSQL's ~8160-byte page limit.
+        """
+        from .sharding import (
+            DEFAULT_MAX_COLUMNS_PER_GROUP,
+            PG_MAX_TARGET_LIST,
+            ColumnGroupSharder,
+        )
 
         threshold = (
             self._materialize_threshold
             if self._materialize_threshold is not None
             else PG_MAX_TARGET_LIST
         )
-        return ColumnGroupSharder(self._plan, materialize_threshold=threshold)
+        return ColumnGroupSharder(
+            self._plan,
+            max_columns_per_group=(
+                max_columns_per_group
+                if max_columns_per_group is not None
+                else DEFAULT_MAX_COLUMNS_PER_GROUP
+            ),
+            materialize_threshold=threshold,
+        )
 
     def _grouped(self) -> "GroupedQueries":
         """The grouped queries + any temp-table materialization preamble.
@@ -307,6 +326,82 @@ class Featurizer:
                 materialization=None,
             )
         return sharder.build()
+
+    def _grouped_for_tables(
+        self,
+    ) -> "Tuple[GroupedQueries, OrderedDict[str, List[str]]]":
+        """Grouped queries for :meth:`to_tables` + the matching column→group map.
+
+        The CTAS path differs from the SELECT/fetch paths in one way: each
+        group becomes a heap *table*, and a heap tuple must fit one 8 KiB page
+        (~8160 bytes). A group that is a perfectly valid query (≤1664 output
+        columns) can still fail ``create table … as`` with ``row is too big``
+        once ~1000+ mostly fixed-width feature columns land on a page.
+        Pre-flight: estimate every group's row width
+        (:func:`~featurizer.sharding.estimate_heap_row_width` — 8 bytes per
+        column + header + null bitmap); when any group exceeds
+        :data:`~featurizer.sharding.HEAP_ROW_BUDGET_BYTES`, re-partition with a
+        per-group cap sized to the budget instead of letting PostgreSQL fail.
+
+        The returned mapping is the exact partition the queries were rendered
+        from, so the manifest's ``feature_group`` tags always name a
+        really-persisted table (see :meth:`_write_manifest_table`).
+        """
+        from collections import OrderedDict
+
+        from .sharding import (
+            HEAP_ROW_BUDGET_BYTES,
+            GroupedQueries,
+            estimate_heap_row_width,
+            max_heap_safe_columns,
+        )
+
+        sharder = self._sharder()
+        sharder.warn_oversized()
+        sharder.warn_plan_size()
+        n_keys = len(sharder.key_columns)
+        groups = sharder.column_groups()
+        oversized = {
+            gid: estimate_heap_row_width(len(cols) + n_keys)
+            for gid, cols in groups.items()
+            if estimate_heap_row_width(len(cols) + n_keys) > HEAP_ROW_BUDGET_BYTES
+        }
+        if oversized:
+            cap = max_heap_safe_columns(n_keys)
+            worst_gid, worst_width = max(oversized.items(), key=lambda kv: kv[1])
+            logger.warning(
+                "to_tables heap-row pre-flight: {} of {} column group(s) "
+                "estimate over the {}-byte page budget (worst: {} ≈ {} bytes; "
+                "PostgreSQL rejects heap rows over ~8160 bytes with 'row is "
+                "too big'). Re-partitioning with max {} feature columns per "
+                "group — more, narrower tables; SELECT/fetch paths are "
+                "unaffected.",
+                len(oversized),
+                len(groups),
+                HEAP_ROW_BUDGET_BYTES,
+                worst_gid,
+                worst_width,
+                cap,
+            )
+            sharder = self._sharder(max_columns_per_group=cap)
+            groups = sharder.column_groups()
+
+        if sharder.fits_single_group and len(groups) == 1:
+            # Same short-circuit as _grouped(): one group, the plain query.
+            grouped = GroupedQueries(
+                queries=OrderedDict([("group_000", self._renderer.render(self._plan))]),
+                key_columns=sharder.key_columns,
+                fits_single=True,
+                materialization=None,
+            )
+        else:
+            # NOTE: also taken when the config fits a single *query* but
+            # partitions into >1 groups (e.g. >cap output columns under 1664,
+            # or the heap downshift above) — the persisted tables must follow
+            # the partition or the manifest's feature_group tags would name
+            # tables that were never written.
+            grouped = sharder.build()
+        return grouped, groups
 
     @property
     def query_groups(self) -> "OrderedDict[str, str]":
@@ -580,7 +675,7 @@ class Featurizer:
         from .arrow import default_connection
         from .sharding import FeatureGroupTable
 
-        grouped = self._grouped()
+        grouped, column_groups = self._grouped_for_tables()
         preamble = (
             grouped.materialization.ddl if grouped.materialization is not None else []
         )
@@ -607,7 +702,7 @@ class Featurizer:
                     tables.append(
                         FeatureGroupTable(name=name, group=gid, key_columns=list(keys))
                     )
-                self._write_manifest_table(cur, schema, stem)
+                self._write_manifest_table(cur, schema, stem, column_groups)
             if own_connection:
                 conn.commit()
         finally:
@@ -622,7 +717,13 @@ class Featurizer:
         )
         return tables
 
-    def _write_manifest_table(self, cur: Any, schema: str, stem: str) -> None:
+    def _write_manifest_table(
+        self,
+        cur: Any,
+        schema: str,
+        stem: str,
+        column_groups: "OrderedDict[str, List[str]]",
+    ) -> None:
         """Persist the feature manifest as ``"<schema>"."<stem>_manifest"``.
 
         One row per output feature column, including which feature-group table
@@ -631,11 +732,35 @@ class Featurizer:
         group tables: idempotent DROP+CREATE, and the caller owns the
         transaction. Values are inserted parameterized — labels and definitions
         contain quotes and arbitrary SQL text.
+
+        ``column_groups`` is the exact partition the group tables were written
+        from (:meth:`_grouped_for_tables`) — never a freshly computed one, so
+        the ``feature_group`` tags cannot drift from the persisted tables. A
+        manifest column absent from the partition raises rather than being
+        silently mis-tagged: triage consumes this table for lineage, and a
+        wrong ``feature_group`` corrupts it downstream.
         """
         column_to_group: Dict[str, str] = {}
-        for gid, names in self._sharder().column_groups().items():
+        for gid, names in column_groups.items():
             for column_name in names:
                 column_to_group[column_name.replace('"', "")] = gid
+
+        orphaned = [
+            entry.column
+            for entry in self.feature_manifest
+            if entry.column not in column_to_group
+        ]
+        if orphaned:
+            raise RuntimeError(
+                f"Feature manifest column(s) map to no column group: "
+                f"{orphaned[:5]!r}{' …' if len(orphaned) > 5 else ''} "
+                f"(available groups: {', '.join(column_groups) or '(none)'}). "
+                "Persisting would mis-tag feature_group in "
+                f'"{schema}"."{stem}_manifest" and corrupt lineage for '
+                "downstream consumers (triage joins on it). This is a "
+                "featurizer bug — the manifest and the column partition must "
+                "describe the same plan; please report it with your config."
+            )
 
         name = f'"{schema}"."{stem}_manifest"'
         cur.execute(f"drop table if exists {name}")
@@ -672,7 +797,7 @@ class Featurizer:
                 entry.value,
                 entry.description,
                 entry.definition,
-                column_to_group.get(entry.column, "group_000"),
+                column_to_group[entry.column],
             )
             for entry in self.feature_manifest
         ]
