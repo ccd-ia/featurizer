@@ -536,7 +536,7 @@ svg .fill-muted{fill:var(--muted)}
       <h4>2. Docs hub + example</h4>
       <ul class="checklist">
         <li><code class="status">[x]</code> <code>src/content/docs/engineering/bridge-cookbook.md</code> — wiring + one worked example per modality; add to the sidebar. Update the FAQ's "planner passes vs primitives" answer to mention bridge families.</li>
-        <li><code class="status">[]</code> Optional <code>examples/06-graph-text-bridge/</code> — end-to-end (create_data → bridges → config fragment → spine → matrix), tutorial notebook with committed outputs (docs site renders it).</li>
+        <li><code class="status">[x]</code> Optional <code>examples/06-graph-text-bridge/</code> — end-to-end (create_data → bridges → config fragment → spine → matrix), tutorial notebook with committed outputs (docs site renders it).</li>
       </ul>
 
       <h4>3. Release 0.9.0</h4>
@@ -714,11 +714,11 @@ svg .fill-muted{fill:var(--muted)}
         <code>fit_slice</code>, <code>create_table_sql</code>, <code>value_sql_type</code>,
         <code>word_tokens</code>) so the EdgeBridge base reuses it without protected-member violations;
         behaviour unchanged.</li>
-      <li><strong>Open (deliberately):</strong> <code>examples/06-graph-text-bridge/</code> — the one
-        optional box left unchecked; the integration test
-        <code>test_pipeline_text_to_edges_to_centrality_to_spine</code> covers the same wiring
-        end-to-end, and the cookbook documents it. ADR-0014 was self-reviewed only — flagged for a
-        human read.</li>
+      <li><strong>2026-07-18 (follow-up):</strong> the optional <code>examples/06-graph-text-bridge/</code>
+        box is now also done — built on request (commit ea3e5bb + count-fix aa2a36d): live-verified
+        coordination-detection example with executed tutorial notebook, rendered on the docs hub.
+        Every box in this plan is checked. Still open: ADR-0014 was self-reviewed only — flagged
+        for a human read.</li>
     </ul>
   </section>
 
