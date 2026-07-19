@@ -48,6 +48,13 @@ features, and `enum` catalog introspection for categoricals. Run the SQL on a
 real PostgreSQL instance (the test suite spins up an ephemeral `postgres:16`
 container via `just db-up`).
 
+### Which Python and PostgreSQL versions are supported?
+
+The CI-tested matrix (v1.0): **Python 3.10–3.13** on the DB-free tier, and
+**PostgreSQL 14, 16, and 17** on the integration tier, where the generated
+SQL actually executes. Versions outside the matrix may work but are not
+verified — we only claim what we test.
+
 ## Concepts
 
 ### What does "as-of" / point-in-time correctness mean, and why should I care?

@@ -10,24 +10,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The claimed compatibility matrix (v1.0): requires-python >=3.10 is tested
+  # on every CPython minor we support; the DB-free tier fans out across
+  # Pythons while the integration tier fans out across PostgreSQL versions on
+  # one Python — the cross-product buys little for the cost (~7 jobs total).
   fast:
-    name: fast tests + types
+    name: fast tests (py ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v8.3.0
         with:
           enable-cache: true
+          python-version: ${{ matrix.python }}
       - run: uv sync --extra parquet
+      # The coverage floor and the type check are enforced on ONE designated
+      # leg (3.12) so the thresholds aren't quadruplicated; the other legs
+      # prove runtime compatibility.
+      - name: pytest (fast tier, no database)
+        if: matrix.python != '3.12'
+        run: uv run pytest -q -m "not integration"
       - name: pytest (fast tier, no database) + coverage floor
+        if: matrix.python == '3.12'
         run: uv run pytest -q -m "not integration" --cov=featurizer --cov-report=term --cov-fail-under=70
       - name: basedpyright
+        if: matrix.python == '3.12'
         run: uv run basedpyright
       - name: validate shipped example configs
         # 04-custom-primitives is excluded by design: its config references
         # custom primitives (log1p, zscore, bin) that run_example.py registers
         # at runtime, so the standalone CLI validator cannot know them.
+        if: matrix.python == '3.12'
         run: |
           for cfg in examples/0*/config.yaml; do
             case "$cfg" in *04-custom-primitives*) continue ;; esac
@@ -48,12 +66,16 @@ jobs:
       - run: uvx twine check dist/*
 
   integration:
-    name: integration (ephemeral PostgreSQL)
+    name: integration (PostgreSQL ${{ matrix.postgres }})
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["14", "16", "17"]
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres }}
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: featurizer_test

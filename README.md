@@ -587,6 +587,16 @@ Run the test suite with:
     # With coverage report
     uv run pytest --cov=featurizer --cov-report=term-missing
 
+### Tested compatibility matrix
+
+Every release is CI-tested on this matrix — a support claim we test is a
+promise; anything outside it may work but is not verified:
+
+| axis | versions |
+|---|---|
+| Python (DB-free tier) | 3.10 · 3.11 · 3.12 · 3.13 |
+| PostgreSQL (integration tier, generated SQL executed) | 14 · 16 · 17 |
+
 
 <a id="org1a0f823"></a>
 
