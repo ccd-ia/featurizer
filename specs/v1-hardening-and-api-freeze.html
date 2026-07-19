@@ -292,7 +292,7 @@ svg .fill-muted{fill:var(--muted)}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Live-DB revalidation incl. 0.9.x workloads <span class="pill care">the heavy one</span></h3>
+      <h3><code class="status">[x]</code> Phase 3: Live-DB revalidation incl. 0.9.x workloads <span class="pill care">the heavy one</span></h3>
       <p>The release discipline v0.6.0 and v0.8.0 earned their tags with — now owed to 0.9.x. Re-run
       the 3-DB × 3-variant matrix to prove no regression, then add what no release has measured yet:
       the native graph pass and the bridge families on <em>real</em> data. Numbers land in committed
@@ -300,24 +300,24 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. Regression matrix (as before)</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>benchmarks/final_matrix.py</code> narrow / all-agg / wide × dirtyduck / chicago311 / donorschoose against v1.0-rc; compare to the v0.8.0 numbers (all-agg seconds everywhere; donorschoose wide ~8 min) — investigate any &gt;20% regression before proceeding.</li>
+        <li><code class="status">[x]</code> <code>benchmarks/final_matrix.py</code> narrow / all-agg / wide × dirtyduck / chicago311 / donorschoose against v1.0-rc; compare to the v0.8.0 numbers (all-agg seconds everywhere; donorschoose wide ~8 min) — investigate any &gt;20% regression before proceeding.</li>
       </ul>
 
       <h4>2. New: native graph pass at scale</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>benchmarks/bridge_workloads.py</code>: a <code>graph_relationships</code> config over dirtyduck's <code>chain_edges</code> (and donorschoose's <code>project_edges</code>) on the real cohort + as-of dates — verify values against hand SQL on a sample, record wall-clock and EXPLAIN shape.</li>
+        <li><code class="status">[x]</code> <code>benchmarks/bridge_workloads.py</code>: a <code>graph_relationships</code> config over dirtyduck's <code>chain_edges</code> (and donorschoose's <code>project_edges</code>) on the real cohort + as-of dates — verify values against hand SQL on a sample, record wall-clock and EXPLAIN shape.</li>
       </ul>
 
       <h4>3. New: bridge families at scale</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>CentralityBridge.materialize_snapshots</code> over the real edge tables across the cohort's as-of dates — measure the O(windows × build) wall-clock that the docs currently only assert; record the cheap-tier vs <code>include_heavy</code> gap.</li>
-        <li><code class="status">[]</code> One text bridge (sentiment or language-id — dependency-free) over a real text column, materialized and spine-aggregated end to end.</li>
+        <li><code class="status">[x]</code> <code>CentralityBridge.materialize_snapshots</code> over the real edge tables across the cohort's as-of dates — measure the O(windows × build) wall-clock that the docs currently only assert; record the cheap-tier vs <code>include_heavy</code> gap.</li>
+        <li><code class="status">[x]</code> One text bridge (sentiment or language-id — dependency-free) over a real text column, materialized and spine-aggregated end to end.</li>
       </ul>
 
       <h4>4. Artifacts + docs sync</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Commit <code>specs/live-db-revalidation-v100/</code> per-DB artifacts + summary page (house convention); the pages workflow serves them pass-through.</li>
-        <li><code class="status">[]</code> Replace asserted costs in <code>engineering/internals.md</code> and the bridge cookbook with the measured numbers.</li>
+        <li><code class="status">[x]</code> Commit <code>specs/live-db-revalidation-v100/</code> per-DB artifacts + summary page (house convention); the pages workflow serves them pass-through.</li>
+        <li><code class="status">[x]</code> Replace asserted costs in <code>engineering/internals.md</code> and the bridge cookbook with the measured numbers.</li>
       </ul>
 
       <h4>5. Testing Strategy</h4>
@@ -326,8 +326,8 @@ svg .fill-muted{fill:var(--muted)}
       datasets cover dirtyduck/donorschoose if a container is unavailable — mark chicago311
       <code>[f]</code> with a note rather than fake it.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just seed &amp;&amp; just test-realistic</code> — the realistic tier still green on v1.0-rc.</li>
-        <li><code class="status">[]</code> All matrix cells green (or explicitly <code>[f]</code>-annotated with cause) in the committed summary.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just seed &amp;&amp; just test-realistic</code> — the realistic tier still green on v1.0-rc.</li>
+        <li><code class="status">[x]</code> All matrix cells green (or explicitly <code>[f]</code>-annotated with cause) in the committed summary.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
