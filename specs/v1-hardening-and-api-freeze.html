@@ -339,9 +339,9 @@ svg .fill-muted{fill:var(--muted)}
 
       <h4>1. ADR-0015: the stability commitment</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Write <code>docs/adr/0015-v1-api-stability-commitment.md</code> declaring frozen: the YAML config schema (all top-level keys incl. the three planner-pass blocks), the <code>Featurizer</code> public methods (<code>query</code>, <code>to_dataframe/arrow/parquet/tables</code>, <code>feature_manifest</code>, <code>manifest_dataframe</code>), the output-naming contract (ADR-0007, incl. 63-byte capping), the bridge contract (ADR-0014: <code>compute</code>/<code>materialize*</code>/<code>emit_yaml</code> shapes), and the <code>emit_yaml</code> fragment schema. Declare NOT frozen: planner internals, CTE names, SQL text, module layout under <code>featurizer/primitives/</code>.</li>
-        <li><code class="status">[]</code> Semver rules + deprecation policy: breaking = major; additive = minor; deprecations warn (loguru, once per process) for ≥ one minor before removal. Add the policy to <code>CONTRIBUTING.md</code>.</li>
-        <li><code class="status">[]</code> Theme 0015 in <code>site/gen.py</code> <code>ADR_THEMES</code> (no Other-bucket reminder on build).</li>
+        <li><code class="status">[x]</code> Write <code>docs/adr/0015-v1-api-stability-commitment.md</code> declaring frozen: the YAML config schema (all top-level keys incl. the three planner-pass blocks), the <code>Featurizer</code> public methods (<code>query</code>, <code>to_dataframe/arrow/parquet/tables</code>, <code>feature_manifest</code>, <code>manifest_dataframe</code>), the output-naming contract (ADR-0007, incl. 63-byte capping), the bridge contract (ADR-0014: <code>compute</code>/<code>materialize*</code>/<code>emit_yaml</code> shapes), and the <code>emit_yaml</code> fragment schema. Declare NOT frozen: planner internals, CTE names, SQL text, module layout under <code>featurizer/primitives/</code>.</li>
+        <li><code class="status">[x]</code> Semver rules + deprecation policy: breaking = major; additive = minor; deprecations warn (loguru, once per process) for ≥ one minor before removal. Add the policy to <code>CONTRIBUTING.md</code>.</li>
+        <li><code class="status">[x]</code> Theme 0015 in <code>site/gen.py</code> <code>ADR_THEMES</code> (no Other-bucket reminder on build).</li>
       </ul>
 
       <h4>2. The human review gate <span class="pill human">human</span></h4>

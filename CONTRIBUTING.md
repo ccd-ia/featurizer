@@ -64,6 +64,44 @@ dependency in the `[bridge]` extra — no engine change needed.
 - Database access uses `DATABASE_URL` / `PG*` env only — never hardcode
   credentials.
 
+## Stability & deprecation policy (v1.0+)
+
+[ADR-0015](docs/adr/0015-v1-api-stability-commitment.md) defines what "stable"
+means. The short form:
+
+- **Frozen** (breaking = major version): the YAML config schema (incl. the
+  `peer_groups` / `spatial_relationships` / `graph_relationships` planner-pass
+  blocks), the `Featurizer` public surface (`query`, `query_groups`,
+  `to_dataframe/arrow/parquet/tables`, `feature_manifest`,
+  `manifest_dataframe` and their return shapes), the ADR-0007 output-naming
+  contract (incl. 63-byte capping), the imputation contract, and the
+  ADR-0001/0014 bridge contract (`compute` / `materialize*` / `emit_yaml`
+  shapes, `persist=`, `model_vintage`).
+- **Not frozen** (free to change in minors): planner/renderer internals, CTE
+  names, generated SQL text, shard boundaries, module layout under
+  `featurizer/primitives/`. The primitive set may *grow* in minors; removing
+  or changing an existing primitive's values is breaking.
+- **Semver**: breaking = major · additive = minor · fixes = patch.
+- **Deprecations** warn via loguru (once per process) for **at least one
+  minor release** before removal, and are listed in the CHANGELOG under the
+  release that introduces the warning.
+
+### Known, intentional carve-outs
+
+These are deliberate and documented rather than silently configured — do not
+"fix" them without an ADR:
+
+- `pyrightconfig.json` ignores `featurizer/primitives/aggregations.py` and
+  `featurizer/primitives/transformations.py`, and coverage excludes the same
+  two modules. They are dynamic-variant heavy (dozens of generated primitive
+  classes); their *real* coverage is the execution tiers — every registered
+  primitive executes against live PostgreSQL in the integration suite, which
+  asserts values, not just types.
+- The coverage floor is **70%**, enforced on one designated CI leg (Python
+  3.12). Raising it is welcome opportunistic work, not a release gate — the
+  integration/realistic tiers carry the correctness burden the number
+  doesn't show.
+
 ## Release process
 
 Releases ride the CI/CD pipeline (`.github/workflows/release.yml`); nothing is
