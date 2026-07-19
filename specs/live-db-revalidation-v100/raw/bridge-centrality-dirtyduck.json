@@ -1,0 +1,15 @@
+{
+  "workload": "centrality_snapshots",
+  "dataset": "dirtyduck",
+  "as_of_dates": [
+    "2016-01-01",
+    "2017-01-01",
+    "2017-12-30"
+  ],
+  "cheap_seconds": 0.5,
+  "cheap_snapshot_rows": 17011,
+  "edges": 13950,
+  "heavy_seconds": 17.2,
+  "heavy_snapshot_rows": 17011,
+  "heavy_over_cheap": 34.4
+}

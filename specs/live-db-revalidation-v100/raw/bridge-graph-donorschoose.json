@@ -1,0 +1,27 @@
+{
+  "workload": "graph_relationships",
+  "dataset": "donorschoose",
+  "edges": 608,
+  "as_of_dates": [
+    "2013-01-01",
+    "2013-07-01",
+    "2014-01-01"
+  ],
+  "rows": 9000,
+  "features": 179,
+  "degree_columns": [
+    "DEGREE(chains)",
+    "DEGREE(chains|interval=P12M)",
+    "DEGREE(chains|interval=P1M)",
+    "DEGREE(chains|interval=P6M)"
+  ],
+  "hand_sql_verified": 5,
+  "exec_seconds": 1.6,
+  "explain_top": [
+    "Sort",
+    "  Sort Key: aod.as_of_date",
+    "  ->  Nested Loop",
+    "        ->  Seq Scan on as_of_dates aod"
+  ],
+  "explain_nodes": 41
+}

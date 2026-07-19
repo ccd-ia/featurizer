@@ -1,0 +1,27 @@
+{
+  "workload": "graph_relationships",
+  "dataset": "dirtyduck",
+  "edges": 13950,
+  "as_of_dates": [
+    "2016-01-01",
+    "2017-01-01",
+    "2017-12-30"
+  ],
+  "rows": 66507,
+  "features": 159,
+  "degree_columns": [
+    "DEGREE(chains)",
+    "DEGREE(chains|interval=P1M)",
+    "DEGREE(chains|interval=P3M)",
+    "DEGREE(chains|interval=P6M)"
+  ],
+  "hand_sql_verified": 5,
+  "exec_seconds": 7.8,
+  "explain_top": [
+    "Sort",
+    "  Sort Key: aod.as_of_date",
+    "  ->  Nested Loop",
+    "        ->  Seq Scan on as_of_dates aod"
+  ],
+  "explain_nodes": 28
+}

@@ -125,20 +125,27 @@ extreme regime.
 ## The honest numbers
 
 Full-cohort materialization, live databases, one as-of date
-(the [v0.8.0 matrix](/featurizer/specs/live-db-revalidation-v080.html)
-has per-database detail):
+(per-database detail: the [v1.0.0 matrix](/featurizer/specs/live-db-revalidation-v100.html)
+and the earlier [v0.8.0 snapshot](/featurizer/specs/live-db-revalidation-v080.html)):
 
-| database | variant | v0.6.0 | v0.8.0 |
-|---|---|---|---|
-| dirtyduck (22k rows) | all-agg | 356.8s | **7.5s** |
-| dirtyduck | wide (1,252 feats) | crash (`ln` of negative) | **63.2s** |
-| chicago311 (31k rows) | all-agg | 10.1s | **6.0s** |
-| chicago311 | wide (907 feats) | crash (`ln` of zero) | **49.2s** |
-| donorschoose (3k rows) | all-agg | 281.1s | **7.6s** |
-| donorschoose | wide (36,802 feats, 32 shards) | backend crash | **470.1s** |
+| database | variant | v0.6.0 | v0.8.0 | v1.0.0 |
+|---|---|---|---|---|
+| dirtyduck (22k rows) | all-agg | 356.8s | 7.5s | **7.0s** |
+| dirtyduck | wide (1,252 feats) | crash (`ln` of negative) | 63.2s | **60.2s** |
+| chicago311 (31k rows) | all-agg | 10.1s | 6.0s | **5.7s** |
+| chicago311 | wide (907 feats) | crash (`ln` of zero) | 49.2s | **47.5s** |
+| donorschoose (3k rows) | all-agg | 281.1s | 7.6s | **8.3s** |
+| donorschoose | wide (39,022 feats, 33 shards) | backend crash | 470.1s (36,802 feats) | **501.1s** |
 
 Zero duplicate column names in every cell; values proven unchanged by the
-golden-value gate throughout the rewrites.
+golden-value gate throughout the rewrites. The v1.0.0 revalidation also
+measured the 0.9.x families at scale for the first time — the native
+`graph_relationships` pass (13,950 live chain edges × the full cohort ×
+3 as-of dates: 7.8s, hand-SQL-verified) and the bridge snapshot costs
+(cheap centrality tier 0.5s vs `include_heavy` 17.2s over 3 windows —
+the measured reason heavy metrics are opt-in); see the
+[bridge cookbook](/featurizer/engineering/bridge-cookbook/) for the
+worked numbers.
 
 ## The lesson that pays rent
 

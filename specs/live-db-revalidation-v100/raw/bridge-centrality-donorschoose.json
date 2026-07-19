@@ -1,0 +1,15 @@
+{
+  "workload": "centrality_snapshots",
+  "dataset": "donorschoose",
+  "as_of_dates": [
+    "2013-01-01",
+    "2013-07-01",
+    "2014-01-01"
+  ],
+  "cheap_seconds": 0.3,
+  "cheap_snapshot_rows": 1463,
+  "edges": 608,
+  "heavy_seconds": 0.1,
+  "heavy_snapshot_rows": 1463,
+  "heavy_over_cheap": 0.3
+}

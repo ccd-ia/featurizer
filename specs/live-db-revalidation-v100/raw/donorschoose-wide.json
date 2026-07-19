@@ -1,0 +1,14 @@
+{
+  "dataset": "donorschoose",
+  "variant": "wide",
+  "features": 39022,
+  "shards": 33,
+  "render_seconds": 32.4,
+  "featurizer_version": "0.9.1",
+  "as_of_date": "2014-01-01",
+  "rows": 3000,
+  "cols": 39024,
+  "dup_names": 0,
+  "exec_seconds": 501.1,
+  "status": "materialized"
+}

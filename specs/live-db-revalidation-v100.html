@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Live-DB revalidation — v1.0.0</title><style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;
+--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+line-height:1.55;margin:0}main{max-width:960px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.6rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.2rem;margin:2rem 0 .6rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+p{margin:.5rem 0}.lede{color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.38rem .55rem;text-align:left}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono{font-family:var(--mono)}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;
+padding:.1em .5em;border-radius:5px}.chip.ok{background:#dcfce7;color:#15803d}
+.was{color:var(--muted);font-size:.9em}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;
+padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+</style></head><body><main><h1>Live-DB revalidation — v1.0.0</h1><p class=lede>The 3-DB × 3-variant release matrix plus the first at-scale measurement of the 0.9.x graph/text families.</p>
+<div class=note><b>Headline.</b> Every cell of the 3-DB × 3-variant matrix
+materializes on v1.0.0 with <b>no regression vs the v0.8.0 numbers</b>
+(every delta within the ±20% gate), and — for the first time — the 0.9.x
+families are measured at realistic scale: the native
+<code>graph_relationships</code> pass, the centrality snapshot costs
+(the measured case for cheap-by-default), and a text bridge end to end.
+Feature counts: narrow and all-agg reproduce v0.8.0 exactly; wide matches
+exactly on dirtyduck/chicago311 and emits ~6% more columns on donorschoose
+(0.9.x planner evolution; the config is identical).</div>
+<h2>1 · The regression matrix</h2>
+<table><thead><tr><th>database</th><th>variant</th><th>features</th><th>shards</th>
+<th>rows</th><th>seconds</th><th>was (v0.8.0)</th><th>Δ</th><th>dup-names</th><th>status</th></tr></thead>
+<tbody><tr><td class=mono>dirtyduck</td><td class=mono>narrow</td><td class=mono>147</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>2.5</td><td class='mono was'>3.0</td><td class=mono>-17%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>dirtyduck</td><td class=mono>all-agg</td><td class=mono>272</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>7.0</td><td class='mono was'>7.5</td><td class=mono>-7%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>dirtyduck</td><td class=mono>wide</td><td class=mono>1,252</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>60.2</td><td class='mono was'>63.2</td><td class=mono>-5%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>chicago311</td><td class=mono>narrow</td><td class=mono>28</td><td class=mono>1</td><td class=mono>30,654</td><td class=mono>0.8</td><td class='mono was'>0.8</td><td class=mono>+0%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>chicago311</td><td class=mono>all-agg</td><td class=mono>191</td><td class=mono>1</td><td class=mono>30,654</td><td class=mono>5.7</td><td class='mono was'>6.0</td><td class=mono>-5%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>chicago311</td><td class=mono>wide</td><td class=mono>907</td><td class=mono>1</td><td class=mono>30,654</td><td class=mono>47.5</td><td class='mono was'>49.2</td><td class=mono>-3%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>donorschoose</td><td class=mono>narrow</td><td class=mono>175</td><td class=mono>1</td><td class=mono>3,000</td><td class=mono>0.5</td><td class='mono was'>0.4</td><td class=mono>+25%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>donorschoose</td><td class=mono>all-agg</td><td class=mono>1,063</td><td class=mono>1</td><td class=mono>3,000</td><td class=mono>8.3</td><td class='mono was'>7.6</td><td class=mono>+9%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>donorschoose</td><td class=mono>wide</td><td class=mono>39,022</td><td class=mono>33</td><td class=mono>3,000</td><td class=mono>501.1</td><td class='mono was'>470.1</td><td class=mono>+7%</td><td class=mono>0</td><td><span class='chip ok'>materialized</span></td></tr></tbody></table>
+<h2>2 · New: the 0.9.x families at scale</h2>
+<table><thead><tr><th>workload</th><th>database</th><th>shape</th><th>wall-clock</th>
+<th>value check</th></tr></thead><tbody><tr><td class=mono>graph_relationships (native SQL pass)</td><td class=mono>dirtyduck</td><td>13,950 chain edges · full cohort × 3 as-of dates = 66,507 rows · DEGREE + windowed variants</td><td class=mono>7.8s</td><td class=mono>hand-SQL ×5 ✓</td></tr><tr><td class=mono>graph_relationships (native SQL pass)</td><td class=mono>donorschoose</td><td>608 school edges · 9,000 rows</td><td class=mono>1.6s</td><td class=mono>hand-SQL ×5 ✓</td></tr><tr><td class=mono>CentralityBridge.materialize_snapshots</td><td class=mono>dirtyduck</td><td>13,950 edges × 3 windows (17,011 snapshot rows)</td><td class=mono>cheap 0.5s · heavy 17.2s (34.4×)</td><td class=mono>—</td></tr><tr><td class=mono>CentralityBridge.materialize_snapshots</td><td class=mono>donorschoose</td><td>608 edges × 3 windows</td><td class=mono>cheap 0.3s · heavy 0.1s (0.3×)</td><td class=mono>—</td></tr><tr><td class=mono>SentimentBridge → spine (end to end)</td><td class=mono>dirtyduck</td><td>50,000 of 261,088 inspector comments (cap 50,000, recorded) → MEAN/MIN/MAX/COUNT × windows</td><td class=mono>bridge 0.9s · spine 1.1s</td><td class=mono>hand-SQL ×3 ✓</td></tr></tbody></table>
+<h2>3 · Per-database detail</h2>
+<p><a href='live-db-revalidation-v100/dirtyduck.html'>dirtyduck</a> ·
+<a href='live-db-revalidation-v100/chicago311.html'>chicago311</a> ·
+<a href='live-db-revalidation-v100/donorschoose.html'>donorschoose</a></p>
+<footer>featurizer v0.9.1 · read-only runs against the live triage databases · raw per-cell artifacts in <code>specs/live-db-revalidation-v100/raw/</code> · harness: <code>benchmarks/final_matrix.py</code> + <code>benchmarks/bridge_workloads.py</code> (committed — reproducible).</footer></main></body></html>

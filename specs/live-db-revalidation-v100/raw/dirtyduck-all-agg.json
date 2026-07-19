@@ -1,0 +1,14 @@
+{
+  "dataset": "dirtyduck",
+  "variant": "all-agg",
+  "features": 272,
+  "shards": 1,
+  "render_seconds": 0.0,
+  "featurizer_version": "0.9.1",
+  "as_of_date": "2017-12-30",
+  "rows": 22169,
+  "cols": 272,
+  "dup_names": 0,
+  "exec_seconds": 7.0,
+  "status": "materialized"
+}

@@ -1,0 +1,106 @@
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>featurizer × dirtyduck</title><style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;
+--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+line-height:1.55;margin:0}main{max-width:960px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.6rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.2rem;margin:2rem 0 .6rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+p{margin:.5rem 0}.lede{color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.38rem .55rem;text-align:left}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono{font-family:var(--mono)}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;
+padding:.1em .5em;border-radius:5px}.chip.ok{background:#dcfce7;color:#15803d}
+.was{color:var(--muted);font-size:.9em}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;
+padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+</style></head><body><main><h1>featurizer × dirtyduck</h1><p class=lede>Which food facilities are likely to fail an inspection? (facilities ← inspections)</p>
+<h2>1 · Full-cohort materialization (v1.0.0)</h2>
+<p>Each variant materialized through <code>to_dataframe(connection=…)</code>
+at one as-of date (2017-12-30 — the day
+after the last knowledge date, so every event is under the window); no
+permanent writes. Variant definitions and the recovered wide transformer set:
+<code>benchmarks/final_matrix.py</code>.</p>
+<table><thead><tr><th>variant</th><th>features</th><th>shards</th><th>rows</th>
+<th>dup-names</th><th>seconds</th><th>was (v0.8.0)</th><th>status</th></tr></thead>
+<tbody><tr><td class=mono>narrow</td><td class=mono>147</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>0</td><td class=mono>2.5</td><td class='mono was'>3.0</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>all-agg</td><td class=mono>272</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>0</td><td class=mono>7.0</td><td class='mono was'>7.5</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>wide</td><td class=mono>1,252</td><td class=mono>1</td><td class=mono>22,169</td><td class=mono>0</td><td class=mono>60.2</td><td class='mono was'>63.2</td><td><span class='chip ok'>materialized</span></td></tr></tbody></table>
+<h2>graph_relationships</h2><pre><code>{
+  "workload": "graph_relationships",
+  "dataset": "dirtyduck",
+  "edges": 13950,
+  "as_of_dates": [
+    "2016-01-01",
+    "2017-01-01",
+    "2017-12-30"
+  ],
+  "rows": 66507,
+  "features": 159,
+  "degree_columns": [
+    "DEGREE(chains)",
+    "DEGREE(chains|interval=P1M)",
+    "DEGREE(chains|interval=P3M)",
+    "DEGREE(chains|interval=P6M)"
+  ],
+  "hand_sql_verified": 5,
+  "exec_seconds": 7.8,
+  "explain_top": [
+    "Sort",
+    "  Sort Key: aod.as_of_date",
+    "  ->  Nested Loop",
+    "        ->  Seq Scan on as_of_dates aod"
+  ],
+  "explain_nodes": 28
+}</code></pre><h2>centrality snapshots</h2><pre><code>{
+  "workload": "centrality_snapshots",
+  "dataset": "dirtyduck",
+  "as_of_dates": [
+    "2016-01-01",
+    "2017-01-01",
+    "2017-12-30"
+  ],
+  "cheap_seconds": 0.5,
+  "cheap_snapshot_rows": 17011,
+  "edges": 13950,
+  "heavy_seconds": 17.2,
+  "heavy_snapshot_rows": 17011,
+  "heavy_over_cheap": 34.4
+}</code></pre><h2>text bridge end-to-end</h2><pre><code>{
+  "workload": "text_bridge_end_to_end",
+  "dataset": "dirtyduck",
+  "bridge": "SentimentBridge(en)",
+  "comments_total": 261088,
+  "comments_processed": 50000,
+  "row_cap": 50000,
+  "bridge_seconds": 0.9,
+  "spine_seconds": 1.1,
+  "rows": 22169,
+  "sentiment_columns": [
+    "COUNT(sentiment.comment_id)",
+    "COUNT(sentiment.comment_id|interval=P1M)",
+    "COUNT(sentiment.comment_id|interval=P3M)",
+    "COUNT(sentiment.comment_id|interval=P6M)",
+    "COUNT(sentiment.date)",
+    "COUNT(sentiment.date|interval=P1M)",
+    "COUNT(sentiment.date|interval=P3M)",
+    "COUNT(sentiment.date|interval=P6M)",
+    "MAX(sentiment.sentiment)",
+    "MAX(sentiment.sentiment|interval=P1M)",
+    "MAX(sentiment.sentiment|interval=P3M)",
+    "MAX(sentiment.sentiment|interval=P6M)",
+    "MEAN(sentiment.sentiment)",
+    "MEAN(sentiment.sentiment|interval=P1M)",
+    "MEAN(sentiment.sentiment|interval=P3M)",
+    "MEAN(sentiment.sentiment|interval=P6M)",
+    "MIN(sentiment.sentiment)",
+    "MIN(sentiment.sentiment|interval=P1M)",
+    "MIN(sentiment.sentiment|interval=P3M)",
+    "MIN(sentiment.sentiment|interval=P6M)"
+  ],
+  "hand_sql_verified": 3
+}</code></pre>
+<footer>featurizer v0.9.1 · read-only runs against the live triage databases · raw per-cell artifacts in <code>specs/live-db-revalidation-v100/raw/</code> · harness: <code>benchmarks/final_matrix.py</code> + <code>benchmarks/bridge_workloads.py</code> (committed — reproducible).</footer></main></body></html>

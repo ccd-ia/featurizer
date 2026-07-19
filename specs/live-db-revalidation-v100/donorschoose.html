@@ -1,0 +1,73 @@
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>featurizer × donorschoose</title><style>
+:root{--bg:#fafaf8;--surface:#fff;--fg:#1a2332;--muted:#5b6472;--accent:#0f766e;
+--accent-soft:#ccfbf1;--accent-2:#b45309;--accent-2-soft:#fef3c7;--ok:#15803d;
+--border:#e2e4e0;--code-bg:#f1f3f0;--mono:"SF Mono",Menlo,Consolas,monospace;
+--sans:-apple-system,"Segoe UI",Inter,Roboto,sans-serif;}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+line-height:1.55;margin:0}main{max-width:960px;margin:0 auto;padding:2.2rem 1.3rem 4rem}
+h1{font-size:1.6rem;margin:0 0 .2rem;letter-spacing:-.02em}
+h2{font-size:1.2rem;margin:2rem 0 .6rem;padding-bottom:.3rem;border-bottom:2px solid var(--accent-soft)}
+p{margin:.5rem 0}.lede{color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em;background:var(--code-bg);padding:.06em .32em;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.82rem;margin:.8rem 0}
+th,td{border:1px solid var(--border);padding:.38rem .55rem;text-align:left}
+th{background:var(--accent-soft);color:var(--accent);font-weight:700}
+td.mono{font-family:var(--mono)}
+.chip{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;
+padding:.1em .5em;border-radius:5px}.chip.ok{background:#dcfce7;color:#15803d}
+.was{color:var(--muted);font-size:.9em}
+.note{background:var(--accent-2-soft);border-left:4px solid var(--accent-2);border-radius:6px;
+padding:.7rem .9rem;margin:1rem 0;font-size:.88rem}
+footer{margin-top:2.5rem;color:var(--muted);font-size:.78rem;border-top:1px solid var(--border);padding-top:1rem}
+</style></head><body><main><h1>featurizer × donorschoose</h1><p class=lede>Which projects will go unfunded? (projects ← resources / teacher / school histories)</p>
+<h2>1 · Full-cohort materialization (v1.0.0)</h2>
+<p>Each variant materialized through <code>to_dataframe(connection=…)</code>
+at one as-of date (2014-01-01 — the day
+after the last knowledge date, so every event is under the window); no
+permanent writes. Variant definitions and the recovered wide transformer set:
+<code>benchmarks/final_matrix.py</code>.</p>
+<table><thead><tr><th>variant</th><th>features</th><th>shards</th><th>rows</th>
+<th>dup-names</th><th>seconds</th><th>was (v0.8.0)</th><th>status</th></tr></thead>
+<tbody><tr><td class=mono>narrow</td><td class=mono>175</td><td class=mono>1</td><td class=mono>3,000</td><td class=mono>0</td><td class=mono>0.5</td><td class='mono was'>0.4</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>all-agg</td><td class=mono>1,063</td><td class=mono>1</td><td class=mono>3,000</td><td class=mono>0</td><td class=mono>8.3</td><td class='mono was'>7.6</td><td><span class='chip ok'>materialized</span></td></tr><tr><td class=mono>wide</td><td class=mono>39,022</td><td class=mono>33</td><td class=mono>3,000</td><td class=mono>0</td><td class=mono>501.1</td><td class='mono was'>470.1</td><td><span class='chip ok'>materialized</span></td></tr></tbody></table>
+<h2>graph_relationships</h2><pre><code>{
+  "workload": "graph_relationships",
+  "dataset": "donorschoose",
+  "edges": 608,
+  "as_of_dates": [
+    "2013-01-01",
+    "2013-07-01",
+    "2014-01-01"
+  ],
+  "rows": 9000,
+  "features": 179,
+  "degree_columns": [
+    "DEGREE(chains)",
+    "DEGREE(chains|interval=P12M)",
+    "DEGREE(chains|interval=P1M)",
+    "DEGREE(chains|interval=P6M)"
+  ],
+  "hand_sql_verified": 5,
+  "exec_seconds": 1.6,
+  "explain_top": [
+    "Sort",
+    "  Sort Key: aod.as_of_date",
+    "  ->  Nested Loop",
+    "        ->  Seq Scan on as_of_dates aod"
+  ],
+  "explain_nodes": 41
+}</code></pre><h2>centrality snapshots</h2><pre><code>{
+  "workload": "centrality_snapshots",
+  "dataset": "donorschoose",
+  "as_of_dates": [
+    "2013-01-01",
+    "2013-07-01",
+    "2014-01-01"
+  ],
+  "cheap_seconds": 0.3,
+  "cheap_snapshot_rows": 1463,
+  "edges": 608,
+  "heavy_seconds": 0.1,
+  "heavy_snapshot_rows": 1463,
+  "heavy_over_cheap": 0.3
+}</code></pre>
+<footer>featurizer v0.9.1 · read-only runs against the live triage databases · raw per-cell artifacts in <code>specs/live-db-revalidation-v100/raw/</code> · harness: <code>benchmarks/final_matrix.py</code> + <code>benchmarks/bridge_workloads.py</code> (committed — reproducible).</footer></main></body></html>

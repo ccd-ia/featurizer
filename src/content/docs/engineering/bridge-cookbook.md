@@ -84,6 +84,14 @@ edges — never compute one full-history graph and slice it. That is what
 and every heavier metric (betweenness, eigenvector, closeness) is opt-in via
 `include_heavy=True`.
 
+Measured (v1.0 revalidation, live dirtyduck: 13,950 chain edges × 3 as-of
+windows, ~17k snapshot rows): the cheap tier rebuilds and materializes in
+**0.5 s**; `include_heavy=True` takes **17.2 s** — a **34×** gap, on a graph
+of small disjoint cliques where the heavy metrics are as cheap as they ever
+get. On denser graphs the gap widens (betweenness is superlinear); keep heavy
+metrics opt-in and budget O(windows × build) before requesting them. Full
+artifacts: [live-DB revalidation v1.0.0](/featurizer/specs/live-db-revalidation-v100.html).
+
 ```python
 from featurizer.bridge import CentralityBridge
 
@@ -142,6 +150,13 @@ the edge timestamp and the neighbour state's `temporal_ix` — pre-t₀ edges *a
 pre-t₀ neighbour states. It is deliberately **1-hop only**: 2-hop aggregation
 pulls neighbours' future labels (the canonical temporal-GNN leakage) and is not
 offered.
+
+Measured (v1.0 revalidation, live dirtyduck: 13,950 chain edges, full 22,169-
+facility cohort × 3 as-of dates = 66,507 output rows): `DEGREE` + 3 windowed
+variants materialize in **7.8 s**, a 28-node plan, values verified against
+hand SQL on a sample. On live donorschoose (school-shared project edges) the
+same block is verified in the committed
+[v1.0.0 artifacts](/featurizer/specs/live-db-revalidation-v100.html).
 
 ## Worked example — text induces the graph (Path 2, two-stage)
 
