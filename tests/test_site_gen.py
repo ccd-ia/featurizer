@@ -42,7 +42,7 @@ def test_every_example_notebook_converts(converted: list[str]) -> None:
         if (d / "tutorial.ipynb").is_file()
     )
     assert converted == [f"{name}.md" for name in example_notebooks]
-    assert len(converted) == 5
+    assert len(converted) == 6
 
 
 def test_converted_pages_have_frontmatter_and_outputs(converted: list[str]) -> None:
