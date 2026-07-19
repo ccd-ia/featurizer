@@ -266,27 +266,27 @@ svg .fill-muted{fill:var(--muted)}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 2: CI compatibility matrix <span class="pill safe">infra only</span></h3>
+      <h3><code class="status">[x]</code> Phase 2: CI compatibility matrix <span class="pill safe">infra only</span></h3>
       <p>Test what <code>requires-python &gt;=3.10</code> and "PostgreSQL-native" claim. Kept cheap:
       the DB-free tier fans out across Pythons; the integration tier fans out across PostgreSQL
       versions on one Python. ~7 jobs total, all under the existing concurrency group and timeouts.</p>
 
       <h4>1. Fast tier × Python</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>test.yml</code>: matrix the DB-free job over Python <code>3.10 / 3.11 / 3.12 / 3.13</code> via <code>astral-sh/setup-uv</code> + <code>uv python pin</code>; coverage floor stays enforced on one designated leg (3.12) so the threshold isn't quadruplicated.</li>
+        <li><code class="status">[x]</code> <code>test.yml</code>: matrix the DB-free job over Python <code>3.10 / 3.11 / 3.12 / 3.13</code> via <code>astral-sh/setup-uv</code> + <code>uv python pin</code>; coverage floor stays enforced on one designated leg (3.12) so the threshold isn't quadruplicated.</li>
       </ul>
 
       <h4>2. Integration tier × PostgreSQL</h4>
       <ul class="checklist">
-        <li><code class="status">[]</code> Matrix the integration job's service container over <code>postgres:14 / 16 / 17</code> (single Python). Fix anything version-specific that surfaces — or record an explicit floor (e.g. "PG ≥ 14") in README + docs if 14 genuinely cannot hold.</li>
-        <li><code class="status">[]</code> README/docs: state the tested matrix explicitly (a support claim you test is a promise; one you don't is a bug report waiting).</li>
+        <li><code class="status">[x]</code> Matrix the integration job's service container over <code>postgres:14 / 16 / 17</code> (single Python). Fix anything version-specific that surfaces — or record an explicit floor (e.g. "PG ≥ 14") in README + docs if 14 genuinely cannot hold.</li>
+        <li><code class="status">[x]</code> README/docs: state the tested matrix explicitly (a support claim you test is a promise; one you don't is a bug report waiting).</li>
       </ul>
 
       <h4>3. Testing Strategy</h4>
       <p>The matrix proves itself in CI; locally only the oldest Python is spot-checked.</p>
       <ul class="checklist">
-        <li><code class="status">[]</code> <code>uv python install 3.10 &amp;&amp; uv run --python 3.10 pytest -q -m "not integration"</code> — oldest-floor smoke before pushing.</li>
-        <li><code class="status">[]</code> <code>gh run watch &lt;test.yml run&gt; --exit-status</code> — every matrix leg green on master.</li>
+        <li><code class="status">[x]</code> <code>uv python install 3.10 &amp;&amp; uv run --python 3.10 pytest -q -m "not integration"</code> — oldest-floor smoke before pushing.</li>
+        <li><code class="status">[x]</code> <code>gh run watch &lt;test.yml run&gt; --exit-status</code> — every matrix leg green on master.</li>
       </ul>
       <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
     </div>
