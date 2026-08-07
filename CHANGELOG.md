@@ -6,7 +6,7 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
-## [1.0.1] - unreleased
+## [1.0.1] - 2026-08-07
 
 Pure bug-fix release (semver PATCH under the ADR-0015 freeze). No feature
 names change for any config that does not use the empty-list spelling —
