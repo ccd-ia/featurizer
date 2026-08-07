@@ -6,6 +6,32 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [1.0.1] - unreleased
+
+Pure bug-fix release (semver PATCH under the ADR-0015 freeze). No feature
+names change for any config that does not use the empty-list spelling —
+the SQL/naming snapshot test is byte-identical.
+
+### Fixed
+
+- **`transformations: []` / `aggregations: []` were silently swallowed.**
+  The primitive-selection sites used `config.get(...) or DEFAULT`, which
+  treats an explicit empty list as "unset": a config writing
+  `transformations: []` to suppress the transform layer silently got all
+  17 defaults (reported live from triage-pg — ~2,500 unwanted
+  CUM_SUM/ABS-composition columns). An empty list now suppresses that
+  layer: `transformations: []` passes features through unchanged
+  (byte-identical output to the `[identity]` workaround spelling, which
+  keeps working), and `aggregations: []` builds zero aggregation features
+  (legal-but-weird by decision — the planner already emits no CTE/join for
+  a zero-feature relationship). Absent or `null` keys keep applying the
+  curated defaults. Covered DB-free and with executing integration tests;
+  documented in the configuration reference.
+  Downstream note: triage-pg pins the engine version into artifact
+  identity (its ADR-0016), so its pin bump after this release
+  intentionally invalidates feature caches — no coordination needed; no
+  columns are renamed.
+
 ## [1.0.0] - 2026-07-19
 
 The stability release: no new feature families — 1.0.0 is the *right to

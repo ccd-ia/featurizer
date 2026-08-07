@@ -560,8 +560,12 @@ class ConfigValidator:
     def _validate_primitives(self, config: Dict[str, Any]) -> None:
         """Validate the optional `aggregations` / `transformations` selection.
 
-        Either key may be omitted (the module defaults apply). When present it
-        must be a list of registered primitive names; unknown names get a
+        Either key may be omitted or null (the module defaults apply). An
+        explicit empty list is valid and suppresses that layer:
+        `aggregations: []` builds zero aggregation features, and
+        `transformations: []` passes features through unchanged (identical
+        output to `transformations: [identity]`). When present the value must
+        be a list of registered primitive names; unknown names get a
         "Did you mean?" suggestion from the registry.
         """
         from .primitives.utils import list_aggregations, list_transformations

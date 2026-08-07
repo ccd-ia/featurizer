@@ -570,3 +570,33 @@ def test_asof_boundary_interval_window_tracks_mode(pg_conn):
     excl_row = run_featurizer(pg_conn, exclusive)[0]
     # Window [2023-12-01, 2024-01-01) drops the on-cutoff order.
     assert float(excl_row["SUM(orders.amount|interval=P1M)"]) == 10.0
+
+
+def test_empty_transformations_executes_identically_to_identity(pg_conn):
+    """`transformations: []` suppresses the transform layer end-to-end.
+
+    The generated SQL must execute (the transform CTE still passes features
+    through — it also feeds child aggregations) and return exactly the rows
+    and columns of the `[identity]` workaround spelling.
+    """
+    _seed_customer_orders(pg_conn)
+    config = _customer_orders_config()
+    config["transformations"] = []
+    empty_rows = run_featurizer(pg_conn, config)
+
+    config["transformations"] = ["identity"]
+    identity_rows = run_featurizer(pg_conn, config)
+
+    assert empty_rows == identity_rows
+    assert float(empty_rows[0]["MEAN(orders.amount)"]) == sum(_AMOUNTS) / len(_AMOUNTS)
+
+
+def test_empty_aggregations_executes_without_agg_columns(pg_conn):
+    """`aggregations: []` builds zero aggregation features but still executes."""
+    _seed_customer_orders(pg_conn)
+    config = _customer_orders_config()
+    config["aggregations"] = []
+    rows = run_featurizer(pg_conn, config)
+
+    assert len(rows) == 1
+    assert not any("(orders." in column for column in rows[0])

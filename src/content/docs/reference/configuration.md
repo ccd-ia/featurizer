@@ -16,8 +16,8 @@ target: customers            # required — entity alias features are FOR
 max_depth: 2                 # required — relationship traversal depth
 intervals: [P7D, P30D]       # required — ISO-8601 rolling windows
 
-aggregations: [count, mean]  # optional — default: all 67
-transformations: [identity]  # optional — default: all 83
+aggregations: [count, mean]  # optional — omit for the curated default set
+transformations: [identity]  # optional — omit for the curated default set
 as_of_boundary: exclusive    # optional — inclusive (default) | exclusive
 
 entities:                    # required
@@ -47,8 +47,8 @@ primitive names get a "did you mean?" from the registry. Disable with
 | `target` | yes | the entity alias the output matrix is indexed on: one row per `(as_of_date, target id)` |
 | `max_depth` | yes | how many relationship hops the planner traverses from the target |
 | `intervals` | yes | ISO-8601 durations (`P7D`, `P1M`, `P1Y`…); every interval multiplies the windowed aggregations |
-| `aggregations` | no | subset of registered aggregations to apply — see the [primitives reference](/featurizer/reference/primitives/); omit for the full default set |
-| `transformations` | no | subset of registered transformers; omit for the full default set |
+| `aggregations` | no | subset of registered aggregations to apply — see the [primitives reference](/featurizer/reference/primitives/); omit (or `null`) for the curated default set. An explicit `[]` suppresses the aggregation layer: zero aggregation features (since v1.0.1) |
+| `transformations` | no | subset of registered transformers; omit (or `null`) for the curated default set. An explicit `[]` suppresses the transform layer — features pass through unchanged, identical to `[identity]` (since v1.0.1) |
 | `as_of_boundary` | no | `inclusive` (events at the as-of date count) or `exclusive` (strictly before) |
 | `entities` | yes | the tables — see below |
 | `relationships` | no | foreign-key links — see below |

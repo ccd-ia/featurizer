@@ -133,11 +133,23 @@ class Featurizer:
         # the planner stays DB-free. Fails loud if a categorical can be neither.
         self._resolve_categorical_vocabularies(connection)
 
-        # Primitive selection: config may override the active set; otherwise the
-        # curated module defaults apply. Unknown names raise in get_* (and are
-        # caught earlier with suggestions by the validator when validate=True).
-        agg_names = config.get("aggregations") or DEFAULT_AGGREGATIONS
-        tx_names = config.get("transformations") or DEFAULT_TRANSFORMATIONS
+        # Primitive selection: config may override the active set; an absent or
+        # null key applies the curated module defaults. An explicit empty list
+        # suppresses that layer instead: `aggregations: []` builds zero
+        # aggregation features, and `transformations: []` passes features
+        # through unchanged — spelled as identity because the transform CTE
+        # also feeds child aggregations, so a truly empty transformer set
+        # would drop every feature column. Unknown names raise in get_* (and
+        # are caught earlier with suggestions by the validator when
+        # validate=True).
+        agg_names = config.get("aggregations")
+        if agg_names is None:
+            agg_names = DEFAULT_AGGREGATIONS
+        tx_names = config.get("transformations")
+        if tx_names is None:
+            tx_names = DEFAULT_TRANSFORMATIONS
+        elif not tx_names:
+            tx_names = ("identity",)
         self.aggregations: AggregationRegistry = get_aggregations(agg_names)
         self.transformations: TransformationRegistry = get_transformers(tx_names)
 
