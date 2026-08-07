@@ -111,12 +111,42 @@ tune with `Featurizer(..., materialize_threshold=N)`. See
 ### My column names look truncated or contain a `~`
 
 Generated feature names can exceed PostgreSQL's **63-byte identifier limit**.
-Featurizer hash-truncates anything longer to a stable, collision-safe name
-(quoted, so it's always a valid identifier). Internal CTE names use `_` as the
-cap separator — a bare `~` there was a real bug (fixed in v0.8.0's companion-CTE
-path). Your *output* column names follow the
-[fixed one-hot naming contract](/featurizer/engineering/adr/0007-direct-categorical-fixed-vocabulary/)
-and stay readable.
+Featurizer hash-truncates anything longer to a stable, collision-safe name:
+the first 54 characters of the full name, a `~`, then the first 8 hex chars
+of the MD5 of the *full* name — so the mapping is deterministic across runs,
+and two names differing only in the erased tail still get distinct columns.
+Internal CTE names use `_` as the cap separator — a bare `~` there was a real
+bug (fixed in v0.8.0's companion-CTE path).
+
+**The cut can land mid-variable-name.** Truncation keeps the *head* (the
+outer wrapper prefixes), so a deep composition erases the innermost — most
+informative — fragment:
+
+```
+CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rod~978dcf98
+       └ full name: CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rodent_complaint_flag)))
+```
+
+Anything that matches on **physical** column names (glob patterns like
+`*(inspections.kw_*`, feature-group regexes, humans reading a table) will
+miss these columns. **Don't parse physical names — use the feature
+manifest**, which records for every output column the rendered `column`
+name, the full untruncated `label`, a `truncated` flag, and lineage
+(`parents`, `source_alias`, `interval`, `definition`). It's available
+in-process (`Featurizer.feature_manifest` / `manifest_dataframe()`) and
+`to_tables` persists it as a `"<schema>"."<stem>_manifest"` table beside the
+feature tables: glob against `label`, then map to `column`.
+
+**Why not truncate tail-preservingly?** Keeping the innermost
+`(alias.variable` fragment instead of the outer prefix would make truncated
+names glob-friendlier — but any change to the truncation shape renames every
+currently-truncated column, and the output-naming contract *including
+63-byte capping* is frozen under
+[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/).
+That trade-off is deliberate: a rename is a silent breaking change for every
+downstream cache and column-matching config, while the manifest already
+carries the full name losslessly. Revisiting the truncation shape is a 2.x
+decision, not a 1.x patch.
 
 ### A categorical one-hot column is missing, or has a value my data never contains
 
