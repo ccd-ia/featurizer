@@ -138,15 +138,45 @@ in-process (`Featurizer.feature_manifest` / `manifest_dataframe()`) and
 feature tables: glob against `label`, then map to `column`.
 
 **Why not truncate tail-preservingly?** Keeping the innermost
-`(alias.variable` fragment instead of the outer prefix would make truncated
-names glob-friendlier — but any change to the truncation shape renames every
-currently-truncated column, and the output-naming contract *including
+`(alias.variable` fragment instead of the outer prefix *sounds* glob-friendlier.
+Measured, it is a regression — so this is settled as **won't do**, not deferred
+to 2.x. Run `python -m benchmarks.truncation_shapes` (no database needed) over
+the sample config — 2,104 columns, 1,217 of them truncating:
+
+| scheme | variable lost | operator lost | ambiguous | worst group |
+|---|---|---|---|---|
+| head-keeping (today) | 197 | 0 | 887 | 8 |
+| tail-keeping (proposed) | 0 | 1171 | 1027 | 78 |
+| both-ends (26 + hash + 26) | 0 | 0 | 311 | 6 |
+
+`ambiguous` counts columns whose visible, hash-elided text duplicates another
+column's. No scheme has a *correctness* bug — the hash keeps every column
+unique under all three; this is purely legibility.
+
+Tail-keeping recovers every variable name by erasing the **operator stack**,
+which is what actually distinguishes sibling columns in a wide config: its
+worst case is 78 columns all rendering as
+`…s.ABS(measurements.frecuencia_cardiaca)|interval=P2W))`, every
+`ABS`/`PCT_CHANGE_1`/`ROLLING_*` × `MAX`/`MEAN`/`MEDIAN`/`MIN`/`STDDEV`/`SUM`
+collapsed into one string. It fixes the variable glob and breaks the operator
+glob.
+
+A **both-ends** shape does dominate the status quo — and still isn't worth it.
+It leaves 311 ambiguous columns, so you would keep needing the manifest anyway,
+while renaming 57.8% of columns and silently invalidating every downstream
+feature cache and column-matching config. The naming contract *including
 63-byte capping* is frozen under
-[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/).
-That trade-off is deliberate: a rename is a silent breaking change for every
-downstream cache and column-matching config, while the manifest already
-carries the full name losslessly. Revisiting the truncation shape is a 2.x
-decision, not a 1.x patch.
+[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/), so
+that rename also costs a major version and a deprecation cycle. Paying all that
+to go from "physical names are unparseable" to "physical names are slightly
+less unparseable" is a bad trade.
+
+The real conclusion: 63 bytes cannot hold a compositional name, and every
+fixed-window shape just picks which half to blind you to. The manifest is not a
+workaround for a naming scheme we got wrong — it is the design. Treat physical
+column names as **opaque handles**. Full reasoning and reopen criteria live in
+`.out-of-scope/tail-preserving-truncation.md`; `tests/test_truncation_shapes.py`
+pins the ordering so the conclusion cannot silently invert.
 
 ### A categorical one-hot column is missing, or has a value my data never contains
 

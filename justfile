@@ -102,6 +102,11 @@ bench-inventory:
 bench-fanout:
     uv run python -m benchmarks.fanout_report
 
+# Compare 63-byte truncation shapes (no database). Backs the won't-do in
+# .out-of-scope/tail-preserving-truncation.md.
+bench-truncation:
+    uv run python -m benchmarks.truncation_shapes
+
 # Scaling benchmark for the subquery-aggregator tier (requires `just db-up`).
 # SCALE is one of 100 / 1k / 10k; artifacts land under
 # specs/correlated-subquery-aggregator-scaling/.
