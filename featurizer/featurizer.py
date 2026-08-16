@@ -257,6 +257,69 @@ class Featurizer:
 
         return manifest_dataframe(self.feature_manifest)
 
+    def manifest_matching(
+        self, pattern: str, *, allow_empty: bool = False
+    ) -> "List[ManifestEntry]":
+        """Manifest entries whose full ``label`` matches a shell-style glob.
+
+        Match against the **label**, never the physical column name: names
+        longer than PostgreSQL's 63-byte identifier limit are hash-truncated
+        from the tail, so a pattern targeting an inner fragment
+        (``*(inspections.kw_*``) misses every truncated column. The label is
+        the only lossless surface — ``definition`` inherits the parent's
+        truncation and drops the interval, so windowed variants share one.
+
+        Args:
+            pattern: Glob matched against ``label``. Case-sensitive. ``_`` is a
+                literal here (unlike SQL ``LIKE`` — see
+                :func:`~featurizer.manifest.glob_to_like` if you are querying
+                the persisted manifest table by hand).
+            allow_empty: Return ``[]`` instead of raising when nothing matches.
+
+        Returns:
+            Matching entries in output order.
+
+        Raises:
+            LookupError: When nothing matches and ``allow_empty`` is False —
+                a silently empty selection is the failure this helper exists to
+                prevent. The message suggests near-miss labels.
+
+        Example:
+            >>> f.manifest_matching("*kw_rodent*")[0].column
+            'CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rod~978dcf98'
+        """
+        from .manifest import filter_manifest
+
+        return filter_manifest(self.feature_manifest, pattern, allow_empty=allow_empty)
+
+    def columns_matching(self, pattern: str, *, allow_empty: bool = False) -> List[str]:
+        """Physical column names whose full ``label`` matches a glob, in output order.
+
+        The projection of :meth:`manifest_matching` onto the rendered column
+        name — what you put in a ``select`` list, a feature-group definition, or
+        a DataFrame projection.
+
+        Building a triage ``feature_groups.definitions`` entry from physical
+        names directly will abort the run on every truncated column ("matches no
+        feature_groups.definitions glob"); resolve it here first::
+
+            definitions = {"cardiac": f.columns_matching("*frecuencia_cardiaca*")}
+
+        Args:
+            pattern: Glob matched against ``label``. Case-sensitive.
+            allow_empty: Return ``[]`` instead of raising when nothing matches.
+
+        Returns:
+            The rendered (possibly truncated) column names, in output order.
+
+        Raises:
+            LookupError: When nothing matches and ``allow_empty`` is False.
+        """
+        return [
+            entry.column
+            for entry in self.manifest_matching(pattern, allow_empty=allow_empty)
+        ]
+
     @property
     def query(self) -> str:
         """Generate the single SQL query for this featurizer configuration.

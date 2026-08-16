@@ -135,7 +135,48 @@ name, the full untruncated `label`, a `truncated` flag, and lineage
 (`parents`, `source_alias`, `interval`, `definition`). It's available
 in-process (`Featurizer.feature_manifest` / `manifest_dataframe()`) and
 `to_tables` persists it as a `"<schema>"."<stem>_manifest"` table beside the
-feature tables: glob against `label`, then map to `column`.
+feature tables.
+
+**Since 1.1.0, glob the label directly** instead of doing that by hand:
+
+```python
+f = Featurizer("config.yaml")
+
+f.columns_matching("*(inspections.kw_*")   # -> ["…kw_rod~978dcf98", …] physical names
+f.manifest_matching("*(inspections.kw_*")  # -> full ManifestEntry rows (label, lineage, interval)
+```
+
+Matching is case-sensitive `fnmatch`, against `label`, in output order. A
+pattern that matches **nothing raises `LookupError`** with near-miss
+suggestions rather than returning an empty list — a silently empty selection is
+the exact failure this is meant to prevent. Pass `allow_empty=True` when
+probing for optional features.
+
+If you're building a **triage `feature_groups.definitions`** entry, resolve it
+through the helper rather than writing globs against physical names — an
+explicit glob targeting an inner fragment aborts the run on every truncated
+column with "matches no feature_groups.definitions glob", which you cannot fix
+by widening the glob (you'd have to match an unpredictable hash):
+
+```python
+definitions = {"cardiac": f.columns_matching("*frecuencia_cardiaca*")}
+```
+
+Querying the persisted manifest table instead? Use `glob_to_like` — it exists
+because `_` is a literal in a glob but a single-character **wildcard** in SQL
+`LIKE`, and ~95% of real labels contain one, so a hand-written translation
+silently over-matches:
+
+```python
+from featurizer.manifest import glob_to_like
+
+like, escape = glob_to_like("*(inspections.kw_*")
+cur.execute(
+    'select column_name, feature_group from "sch"."feat_manifest" '
+    "where label like %s escape %s",
+    (like, escape),
+)
+```
 
 **Why not truncate tail-preservingly?** Keeping the innermost
 `(alias.variable` fragment instead of the outer prefix *sounds* glob-friendlier.

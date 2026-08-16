@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from fnmatch import fnmatchcase
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from .categoricals import OneHotFeature
 from .primitives import Variable
@@ -221,6 +222,153 @@ def build_feature_manifest(
             )
         )
     return entries
+
+
+#: LIKE escape character used by :func:`glob_to_like`. Backslash is conventional
+#: and is itself escaped, so it is safe even though no label emitted today
+#: contains one.
+LIKE_ESCAPE = "\\"
+
+
+def glob_to_like(pattern: str) -> Tuple[str, str]:
+    """Translate a shell-style glob into a SQL ``LIKE`` pattern.
+
+    For querying the persisted ``"<schema>"."<stem>_manifest"`` table with the
+    same pattern syntax :func:`filter_manifest` accepts, so a glob written once
+    works in Python and in SQL.
+
+    **The escaping order below is load-bearing.** ``_`` appears in ~95% of real
+    feature labels (snake_case columns and entity aliases are everywhere). In a
+    glob it is a literal; in ``LIKE`` it is a single-character wildcard. If the
+    literals are not escaped *before* the wildcards are introduced, either the
+    escapes get double-escaped or the freshly written ``%``/``_`` are themselves
+    escaped — both fail silently and over-broadly, returning too many columns
+    rather than raising.
+
+    Args:
+        pattern: A glob, e.g. ``"*(inspections.kw_*"``.
+
+    Returns:
+        ``(like_pattern, escape_char)`` — pass both to the query::
+
+            from featurizer.manifest import glob_to_like
+
+            like, escape = glob_to_like("*(inspections.kw_*")
+            cur.execute(
+                'select column_name, feature_group '
+                'from "sch"."feat_manifest" where label like %s escape %s',
+                (like, escape),
+            )
+
+    Note:
+        ``[...]`` character classes are *not* translated — they keep their
+        fnmatch meaning in Python and are treated literally by ``LIKE``. Labels
+        emitted today contain no brackets, but ADR-0007 one-hot labels embed
+        user data (``<entity>.<col>=<value>``), so a bracketed category value
+        would diverge between the two surfaces.
+    """
+    out = pattern
+    # 1. literals first — order matters, see the docstring.
+    out = out.replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE)
+    out = out.replace("%", LIKE_ESCAPE + "%")
+    out = out.replace("_", LIKE_ESCAPE + "_")
+    # 2. only now introduce the wildcards.
+    out = out.replace("*", "%").replace("?", "_")
+    return out, LIKE_ESCAPE
+
+
+def _literal_fragments(pattern: str) -> List[str]:
+    """The non-wildcard runs of a glob, longest first.
+
+    Used to explain a zero-match rather than to match anything.
+    """
+    fragments = re.split(r"[*?\[\]]+", pattern)
+    return sorted((f for f in fragments if f), key=len, reverse=True)
+
+
+def _suggest_for_pattern(
+    pattern: str, entries: Sequence[ManifestEntry], limit: int = 3
+) -> List[str]:
+    """Labels worth showing after a pattern matched nothing.
+
+    Literal-fragment backoff, not edit distance: take the pattern's longest
+    literal run and trim it from the right until some label contains it. A glob
+    miss is a fragment problem (``kw_rodnet`` → back off to ``kw_rod``), not a
+    spelling-distance problem, and this stays cheap on an error path where
+    Levenshtein over thousands of long labels would not.
+    """
+    for fragment in _literal_fragments(pattern):
+        probe = fragment
+        while len(probe) >= 4:
+            hits = [e.label for e in entries if probe in e.label]
+            if hits:
+                return hits[:limit]
+            probe = probe[:-1]
+    return []
+
+
+def filter_manifest(
+    entries: Sequence[ManifestEntry],
+    pattern: str,
+    *,
+    allow_empty: bool = False,
+) -> List[ManifestEntry]:
+    """Manifest entries whose full ``label`` matches ``pattern``, in output order.
+
+    Matching is case-sensitive :func:`fnmatch.fnmatchcase` — never
+    :func:`fnmatch.fnmatch`, which applies ``os.path.normcase`` and would make
+    matching case-insensitive on Windows. Feature labels are case-bearing by
+    construction (operators uppercase, aliases and columns lowercase), so a
+    platform-dependent result would be a real bug on the supported matrix.
+
+    Args:
+        entries: The manifest to search (typically ``Featurizer.feature_manifest``).
+        pattern: A glob matched against :attr:`ManifestEntry.label`.
+        allow_empty: Return ``[]`` instead of raising when nothing matches.
+
+    Returns:
+        The matching entries, preserving manifest (output) order.
+
+    Raises:
+        LookupError: When nothing matches and ``allow_empty`` is False. The
+            message reports how many entries have a *label* matching the
+            pattern despite a truncated physical name — the usual cause — and
+            suggests near-miss labels.
+    """
+    matched = [e for e in entries if fnmatchcase(e.label, pattern)]
+    if matched or allow_empty:
+        return matched
+
+    lines = [f"pattern {pattern!r} matched 0 of {len(entries)} manifest labels."]
+
+    # The inverse mix-up: a pattern aimed at *physical* names (typically one
+    # carrying a `~` hash) can match columns while matching no label. Say so —
+    # otherwise the failure looks impossible to a caller holding a column name
+    # they can see in the output.
+    column_hits = [e for e in entries if fnmatchcase(e.column, pattern)]
+    if column_hits:
+        lines.append(
+            f"  It does match {len(column_hits)} physical COLUMN name(s), e.g. "
+            f"{column_hits[0].column!r} — but this helper matches the full "
+            "untruncated label, which is the point: physical names are capped "
+            "at 63 bytes. Glob the label instead, e.g. "
+            f"{column_hits[0].label!r}."
+        )
+
+    suggestions = _suggest_for_pattern(pattern, entries)
+    for suggestion in suggestions:
+        lines.append(f"  Did you mean: {suggestion}")
+
+    # Only when the caller has nothing else to go on. With suggestions or a
+    # column hit above, the full labels are already on screen and this is noise.
+    n_truncated = sum(1 for e in entries if e.truncated)
+    if n_truncated and not suggestions and not column_hits:
+        lines.append(
+            f"  ({n_truncated} of {len(entries)} columns are hash-truncated at "
+            "PostgreSQL's 63-byte cap; labels are always the full name.)"
+        )
+    lines.append("  Pass allow_empty=True to return [] instead.")
+    raise LookupError("\n".join(lines))
 
 
 def manifest_dataframe(entries: List[ManifestEntry]) -> "pd.DataFrame":

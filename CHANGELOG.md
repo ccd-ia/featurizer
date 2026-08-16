@@ -6,6 +6,58 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-15
+
+Additive only (semver MINOR under the ADR-0015 freeze). No existing surface
+changed, **no columns renamed**, nothing new persisted — downstream feature
+caches are unaffected, so consumers need no coordination beyond an optional
+pin bump.
+
+### Added
+
+- **`Featurizer.columns_matching(pattern)` / `Featurizer.manifest_matching(pattern)`**
+  — select feature columns by globbing the manifest's full, untruncated
+  `label`. `columns_matching` returns physical column names in output order
+  (what goes in a `select` list or a feature-group definition);
+  `manifest_matching` returns the full `ManifestEntry` rows for labels,
+  lineage and intervals.
+
+  This is the additive answer to a request that kept arriving as "reshape the
+  63-byte truncation so globs match the readable tail". That reshape was
+  measured and rejected — it is a regression, see
+  `.out-of-scope/tail-preserving-truncation.md`. The problem it was aimed at is
+  real, though: a glob written against *physical* names misses every truncated
+  column. On the sample config `*frecuencia_cardiaca*` resolves 672 columns
+  against `label` but only 198 against `column`. Downstream that is not silent
+  data loss — triage's explicit `feature_groups.definitions` path raises on the
+  unmatched columns — but the advice it gives ("add a glob or widen one") is
+  unactionable against an unpredictable hash. Resolving the group through
+  `columns_matching` is the way out.
+
+- **`featurizer.manifest.glob_to_like(pattern)`** — translates a glob into a
+  SQL `LIKE` pattern plus its escape character, for querying the persisted
+  `"<schema>"."<stem>_manifest"` table with the same syntax. It exists because
+  `_` is a literal in a glob but a single-character wildcard in `LIKE`, and
+  ~95% of real feature labels contain one; a hand-rolled translation
+  over-matches silently.
+
+- **`featurizer.manifest.filter_manifest(entries, pattern)`** — the underlying
+  free function, for manifests obtained from anywhere.
+
+### Behaviour to know about
+
+- A pattern matching **nothing raises `LookupError`**, it does not return `[]`.
+  A silently empty selection is the failure mode the helper exists to prevent,
+  so the default is loud; the error carries near-miss suggestions (found by
+  literal-fragment backoff) and, when the pattern looks aimed at a truncated
+  *physical* name, says so explicitly. Pass `allow_empty=True` to opt out when
+  probing for optional features.
+- Matching is **case-sensitive** (`fnmatch.fnmatchcase`, never `fnmatch`, which
+  is case-insensitive on Windows) and always against `label`, never `column`
+  or `definition` — `definition` inherits the parent's truncation in 234 of the
+  sample config's 1,217 truncated columns and drops the interval, so windowed
+  siblings share one.
+
 ## [1.0.1] - 2026-08-07
 
 Pure bug-fix release (semver PATCH under the ADR-0015 freeze). No feature

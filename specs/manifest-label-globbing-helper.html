@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: Manifest Label-Globbing Helper</title>
+<style>
+  :root {
+    --ink:        #10151c;
+    --ink-soft:   #3d4653;
+    --ink-faint:  #6b7683;
+    --paper:      #fbfaf7;
+    --panel:      #ffffff;
+    --rule:       #dfdcd4;
+    --accent:     #1d4e6f;   /* deep ink blue — structure */
+    --signal:     #b5741a;   /* amber — truncation / warning motif */
+    --signal-bg:  #fdf4e6;
+    --ok:         #2f6b4f;
+    --ok-bg:      #eef5f1;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    --measure: 74ch;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 3.5rem 1.5rem 6rem; }
+  h1 { font-size: 2.1rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 .5rem; }
+  h2 {
+    font-size: 1.32rem; letter-spacing: -0.01em; margin: 3.2rem 0 1rem;
+    padding-bottom: .45rem; border-bottom: 2px solid var(--accent);
+  }
+  h3 { font-size: 1.08rem; margin: 2.2rem 0 .6rem; }
+  h4 { font-size: .95rem; margin: 1.5rem 0 .45rem; color: var(--accent); }
+  p, li { max-width: var(--measure); }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: #f1efe9; padding: .1em .34em; border-radius: 3px;
+  }
+  pre {
+    background: var(--ink); color: #e8eef4; padding: 1rem 1.15rem;
+    border-radius: 6px; overflow-x: auto; font-size: .82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; color: inherit; font-size: 1em; }
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.5rem; margin-bottom: 1rem; }
+  .lede { font-size: 1.05rem; color: var(--ink-soft); max-width: var(--measure); }
+  details.meta { margin-top: 1rem; font-size: .84rem; }
+  details.meta summary {
+    cursor: pointer; color: var(--accent); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; font-size: .74rem;
+  }
+  details.meta dl {
+    display: grid; grid-template-columns: 9rem 1fr; gap: .3rem 1rem;
+    margin: .9rem 0 0; padding: .9rem 1rem; background: var(--panel);
+    border: 1px solid var(--rule); border-radius: 6px;
+  }
+  details.meta dt { color: var(--ink-faint); font-family: var(--mono); font-size: .78rem; }
+  details.meta dd { margin: 0; font-family: var(--mono); font-size: .78rem; word-break: break-word; }
+  figure { margin: 1.8rem 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; }
+  figcaption { font-size: .82rem; color: var(--ink-faint); margin-top: .7rem; max-width: var(--measure); margin-inline: auto; }
+  .tag {
+    display: inline-block; font-size: .66rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; padding: .12em .5em; border-radius: 3px; vertical-align: .1em;
+  }
+  .tag.existing { background: #e7eaee; color: var(--ink-soft); }
+  .tag.new      { background: var(--ok-bg); color: var(--ok); }
+  .files ul { list-style: none; padding-left: 0; }
+  .files li { margin: .45rem 0; padding-left: .2rem; }
+  .phase {
+    background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--accent);
+    border-radius: 6px; padding: 1.3rem 1.5rem; margin: 1.6rem 0;
+  }
+  .phase h3 { margin-top: 0; }
+  .status {
+    font-family: var(--mono); font-weight: 700; color: var(--signal);
+    background: var(--signal-bg); padding: .05em .3em; border-radius: 3px;
+  }
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { margin: .38rem 0; padding-left: .2rem; }
+  .loop {
+    background: var(--signal-bg); border: 1px solid #ecd9b4; border-radius: 5px;
+    padding: .7rem .95rem; margin: 1rem 0 0; font-size: .87rem; max-width: var(--measure);
+  }
+  .callout {
+    background: var(--ok-bg); border-left: 3px solid var(--ok);
+    padding: .8rem 1.1rem; margin: 1.2rem 0; border-radius: 0 5px 5px 0;
+    font-size: .92rem; max-width: var(--measure);
+  }
+  .callout.warn { background: var(--signal-bg); border-left-color: var(--signal); }
+  table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: .88rem; }
+  th, td { text-align: left; padding: .48rem .7rem; border-bottom: 1px solid var(--rule); }
+  th { font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-faint); }
+  td code { font-size: .82em; }
+  #questionables details, #amendments details {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 5px;
+    padding: .7rem 1rem; margin: .6rem 0;
+  }
+  #questionables summary, #amendments summary { cursor: pointer; font-weight: 600; font-size: .93rem; }
+  .qa-answer { margin: .7rem 0 0; font-size: .92rem; color: var(--ink-soft); }
+  .kbd { font-family: var(--mono); font-size: .8em; color: var(--signal); }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: Manifest Label-Globbing Helper</h1>
+    <p class="lede">Make the feature manifest ergonomic enough that nobody parses a physical
+    column name. Glob against the full <code>label</code>, get back real columns — a small,
+    purely additive Python helper that turns an unactionable crash into a working selection.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-08-15T19:09</dd>
+        <dt>modified</dt>     <dd>2026-08-15T19:09, 2026-08-15T21:33</dd>
+        <dt>commits</dt>      <dd>—</dd>
+        <dt>agent name</dt>   <dd>claude-opus-5[1m], claude-opus-5[1m]</dd>
+        <dt>session id</dt>   <dd>4b86892a-cf64-4791-8923-855f6b5fc568, 4b86892a-cf64-4791-8923-855f6b5fc568</dd>
+        <dt>back refs</dt>    <dd>.out-of-scope/tail-preserving-truncation.md, docs/adr/0015-v1-api-stability-commitment.md, docs/adr/0007-direct-categorical-fixed-vocabulary.md, src/content/docs/faq.md, benchmarks/truncation_shapes.py, ~/projects/triage/src/triage/adapters/feature_groups.py</dd>
+        <dt>forward refs</dt> <dd>—</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 860 200" role="img" aria-label="A glob pattern resolving through the manifest into physical columns via two surfaces">
+      <rect width="860" height="200" fill="#fbfaf7"/>
+      <rect x="18" y="66" width="176" height="64" rx="6" fill="#fff" stroke="#1d4e6f" stroke-width="2"/>
+      <text x="106" y="90" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#10151c">*(inspections.kw_*</text>
+      <text x="106" y="112" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="11" fill="#6b7683">one glob pattern</text>
+      <path d="M198 98 H250" stroke="#1d4e6f" stroke-width="2" marker-end="url(#a)"/>
+      <rect x="254" y="40" width="196" height="116" rx="6" fill="#fff" stroke="#1d4e6f" stroke-width="2"/>
+      <text x="352" y="64" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#1d4e6f">feature manifest</text>
+      <text x="352" y="88" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#3d4653">label (full, untruncated)</text>
+      <text x="352" y="107" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#3d4653">column · truncated</text>
+      <text x="352" y="126" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#3d4653">feature_group</text>
+      <text x="352" y="145" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#b5741a">the only parse surface</text>
+      <path d="M454 98 H510" stroke="#1d4e6f" stroke-width="2" marker-end="url(#a)"/>
+      <rect x="514" y="52" width="326" height="46" rx="6" fill="#fff" stroke="#2f6b4f" stroke-width="2"/>
+      <text x="677" y="72" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#10151c">f.columns_matching(pat)</text>
+      <text x="677" y="88" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#2f6b4f">→ physical column names</text>
+      <rect x="514" y="106" width="326" height="46" rx="6" fill="#fff" stroke="#2f6b4f" stroke-width="2"/>
+      <text x="677" y="126" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#10151c">f.manifest_matching(pat)</text>
+      <text x="677" y="142" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#2f6b4f">→ full entries, lineage</text>
+      <text x="430" y="182" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="11" fill="#6b7683">one glob syntax · stdlib only · no database, no new surface in SQL</text>
+      <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d4e6f"/></marker></defs>
+    </svg>
+    <figcaption>One pattern, one surface, matched against the only lossless name the manifest carries.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Add <code>Featurizer.columns_matching()</code> and <code>Featurizer.manifest_matching()</code>
+    so callers can select feature columns by globbing the manifest's full, untruncated
+    <code>label</code>, plus <code>glob_to_like()</code> for anyone writing the equivalent query
+    against the persisted manifest table by hand.</p>
+    <p>This is the <em>additive</em> resolution of a request that was twice declined as a
+    truncation change. It is legal under the ADR-0015 freeze because it adds surface rather
+    than altering any frozen shape, and it ships as <strong>1.1.0</strong> (a new public method
+    is a minor, not a patch).</p>
+    <div class="callout">
+      <strong>Scope was cut after research (2026-08-15, see Amendments).</strong> An earlier draft
+      also emitted a PostgreSQL function from <code>to_tables</code>. Investigating the only real
+      consumer showed it has no SQL surface to serve, so that phase was removed along with its ADR,
+      its parity test, and its <code>CREATE FUNCTION</code> privilege hazard. What remains is
+      stdlib-only, database-free, and adds nothing to any persisted shape.
+    </div>
+  </section>
+
+  <!-- ===== PROBLEM ===== -->
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>PostgreSQL caps identifiers at 63 bytes. Featurizer hash-truncates longer feature names
+    keeping the <em>head</em> — so a deep composition erases the innermost, most informative
+    fragment. A glob written against physical column names then misses those columns.</p>
+
+    <p>An earlier draft of this plan called that a <em>silent</em> miss. Investigating the real
+    consumer showed that is <strong>not accurate</strong>, and the correction narrows the scope
+    usefully. Two paths exist in
+    <code>~/projects/triage/src/triage/adapters/feature_groups.py</code>, and they behave
+    differently:</p>
+
+    <table>
+      <thead><tr><th>path</th><th>how it matches</th><th>effect of truncation</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>group_by='source_entity'</code> (default)</td>
+          <td><code>column.find(f"{alias}.")</code> — substring, on the physical name</td>
+          <td><strong>Immune.</strong> 0 of 1,217 truncated columns lose their alias; 0 change alias.</td>
+        </tr>
+        <tr>
+          <td><code>definitions={group: [globs]}</code> (explicit)</td>
+          <td><code>fnmatch.fnmatchcase(column, glob)</code></td>
+          <td><strong>Loud crash</strong> — <code>ValueError</code>, never a silent drop.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>The default path is immune <em>structurally</em>, not by luck: head-keeping preserves the
+    leading <code>alias.</code> token, which is exactly what the substring search reads. (Corollary
+    worth recording: tail-preserving truncation would have <strong>broken this path for nearly
+    every truncated column</strong> — independent confirmation of the rejection in
+    <code>.out-of-scope/</code>.)</p>
+
+    <p><strong>So the real failure is a dead end, not data loss.</strong> Write the obvious glob
+    for an explicit feature group and it targets a tail fragment:</p>
+    <pre><code>glob '*frecuencia_cardiaca*'
+  matches on label : 672
+  matches on column: 198   MISSED: 474</code></pre>
+    <p>Those 474 columns do not vanish from the run — they abort it:</p>
+    <pre><code>ValueError: feature column 'ABS(patients.MAX(measurements.ABS(measurements.frecuen~1c0ca6e8'
+  matches no feature_groups.definitions glob; every column must belong to exactly one
+  group (add a glob or widen one).</code></pre>
+    <p>The advice in that message is <strong>unactionable</strong>: you cannot write a glob for a
+    hash you cannot predict. Today the only way out is to already know about the manifest and
+    pre-compute the column list by hand — which is this helper, done manually. That is the problem
+    worth solving.</p>
+
+    <p>Two secondary cases round it out. Ad-hoc analysis
+    (<code>[c for c in df.columns if 'frecuencia' in c]</code>) <em>is</em> genuinely silent — 198
+    instead of 672, no signal. And <strong>887 columns already share their visible text</strong>
+    with another column before truncation erases anything, so physical names were never a reliable
+    parse surface.</p>
+
+    <div class="callout warn">
+      <strong><code>definition</code> is not a usable fallback</strong> — the obvious objection,
+      tested and rejected. Of the 1,217 truncated columns, <strong>234 have a
+      <code>definition</code> that itself embeds a <code>~</code>-truncated parent name</strong>:
+      truncation is inherited one level up, not escaped. Worse, the definition drops the window —
+      <code>ABS(patients.MAX(…|interval=P1W))</code> and its <code>P2W</code> and <code>P1M</code>
+      siblings share a byte-identical definition, so windowed variants are indistinguishable by it.
+      <code>label</code> is the only lossless surface, which is why the manifest carries it.
+    </div>
+    <figure>
+      <svg viewBox="0 0 860 224" role="img" aria-label="A glob against physical names silently misses truncated columns">
+        <rect width="860" height="224" fill="#fbfaf7"/>
+        <text x="30" y="34" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#6b7683">GLOB AGAINST PHYSICAL NAMES</text>
+        <rect x="30" y="46" width="800" height="34" rx="5" fill="#fff" stroke="#dfdcd4"/>
+        <text x="44" y="68" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#10151c">CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rod</text>
+        <text x="466" y="68" font-family="ui-monospace,Menlo,monospace" font-size="12" font-weight="700" fill="#b5741a">~978dcf98</text>
+        <text x="580" y="68" font-family="ui-sans-serif,system-ui" font-size="11.5" fill="#b5741a">← tail erased at 63 bytes</text>
+        <text x="30" y="112" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#3d4653">pattern  *(inspections.kw_*</text>
+        <text x="330" y="112" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#b5741a">→ 0 matches. No error.</text>
+        <line x1="30" y1="130" x2="830" y2="130" stroke="#dfdcd4"/>
+        <text x="30" y="158" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#6b7683">GLOB AGAINST THE MANIFEST LABEL</text>
+        <rect x="30" y="170" width="800" height="34" rx="5" fill="#fff" stroke="#2f6b4f"/>
+        <text x="44" y="192" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#10151c">CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rodent_complaint_flag)))</text>
+        <text x="700" y="158" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#2f6b4f">→ matches</text>
+      </svg>
+      <figcaption>The same pattern, the same column. Only the surface it is matched against differs.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== SOLUTION ===== -->
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>One glob syntax (<code>fnmatchcase</code>), matched against <code>label</code>, on one
+    surface:</p>
+    <ul>
+      <li><code>columns_matching(pattern)</code> — physical column names in output order. The
+      answer to "what do I put in my <code>definitions</code> glob list / my <code>select</code>".</li>
+      <li><code>manifest_matching(pattern)</code> — the full <code>ManifestEntry</code> rows, for
+      labels, lineage, intervals and further filtering.</li>
+      <li><code>glob_to_like(pattern)</code> — exported from <code>featurizer.manifest</code> for
+      anyone hand-writing the equivalent query against the persisted
+      <code>&lt;stem&gt;_manifest</code> table. A function, not an emitted database object: it
+      solves the <code>_</code>-escaping trap without creating anything to install, privilege, or
+      freeze.</li>
+      <li><strong>Zero matches raise</strong> a <code>LookupError</code> that names truncation as
+      the likely cause and points at the manifest — turning triage's unactionable "add a glob or
+      widen one" into a message with a way forward. <code>allow_empty=True</code> opts out.</li>
+    </ul>
+    <p>The intended end state, in the terms of the failure above:</p>
+    <pre><code># before — obvious glob, unactionable crash 474 columns in
+definitions = {"cardiac": ["*frecuencia_cardiaca*"]}
+
+# after — resolve against the manifest first, glob the real column names
+definitions = {"cardiac": f.columns_matching("*frecuencia_cardiaca*")}   # 672 columns</code></pre>
+    <div class="callout warn">
+      <strong>The sharpest correctness risk in <code>glob_to_like</code>:</strong> <code>_</code>
+      appears in <strong>2,007 of 2,104 labels</strong> (95%) because snake_case is everywhere. In
+      glob, <code>_</code> is a literal; in SQL <code>LIKE</code> it is a single-character wildcard.
+      A translation that does not escape <code>_</code> silently over-matches on nearly every
+      realistic pattern. That trap is precisely <em>why</em> the translator is worth exporting
+      rather than leaving each SQL user to rediscover — and why its escaping order is pinned by
+      exact-string tests in Phase 1.
+    </div>
+    <figure>
+      <svg viewBox="0 0 860 210" role="img" aria-label="The glob resolves against label, then projects to physical columns or full entries">
+        <rect width="860" height="210" fill="#fbfaf7"/>
+        <rect x="30" y="30" width="240" height="60" rx="6" fill="#fff" stroke="#b5741a" stroke-width="2"/>
+        <text x="150" y="54" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#b5741a">physical column</text>
+        <text x="150" y="74" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#6b7683">lossy · 887 already ambiguous</text>
+        <rect x="30" y="112" width="240" height="60" rx="6" fill="#fff" stroke="#2f6b4f" stroke-width="2"/>
+        <text x="150" y="136" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="12" font-weight="700" fill="#2f6b4f">label</text>
+        <text x="150" y="156" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#6b7683">lossless · the match surface</text>
+        <text x="150" y="196" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="11" fill="#b5741a">definition is lossy too — 234 inherit a ~, all drop the interval</text>
+        <path d="M274 142 H330" stroke="#2f6b4f" stroke-width="2" marker-end="url(#b)"/>
+        <rect x="334" y="112" width="200" height="60" rx="6" fill="#fff" stroke="#1d4e6f" stroke-width="2"/>
+        <text x="434" y="138" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#10151c">fnmatchcase</text>
+        <text x="434" y="157" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10.5" fill="#6b7683">stdlib, DB-free</text>
+        <path d="M538 130 L596 96" stroke="#1d4e6f" stroke-width="2" marker-end="url(#b)"/>
+        <path d="M538 154 L596 154" stroke="#1d4e6f" stroke-width="2" marker-end="url(#b)"/>
+        <rect x="600" y="66" width="230" height="48" rx="6" fill="#fff" stroke="#1d4e6f" stroke-width="2"/>
+        <text x="715" y="88" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#10151c">columns_matching</text>
+        <text x="715" y="105" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10" fill="#6b7683">List[str]</text>
+        <rect x="600" y="130" width="230" height="48" rx="6" fill="#fff" stroke="#1d4e6f" stroke-width="2"/>
+        <text x="715" y="152" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#10151c">manifest_matching</text>
+        <text x="715" y="169" text-anchor="middle" font-family="ui-sans-serif,system-ui" font-size="10" fill="#6b7683">List[ManifestEntry]</text>
+        <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d4e6f"/></marker></defs>
+      </svg>
+      <figcaption>Only one of the three name surfaces survives truncation intact. Match against that one.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/manifest.py</code> — home of <code>ManifestEntry</code> and <code>build_feature_manifest</code>; the glob engine and translator belong here as free functions so they work on entries read back from anywhere.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/featurizer.py:239-258</code> — <code>feature_manifest</code> / <code>manifest_dataframe</code>; the two new methods sit directly beneath them.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/featurizer.py:732-821</code> — <code>_write_manifest_table</code>; <strong>unchanged</strong>, but it defines the persisted <code>label</code> / <code>feature_group</code> columns that <code>glob_to_like</code> users will query by hand.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/validation.py:1178-1203</code> — <code>_suggest_similar</code> (Levenshtein). Prior art for "did you mean"; deliberately <em>not</em> reused verbatim (see Phase 2).</li>
+      <li><span class="tag existing">existing</span> <code>~/projects/triage/src/triage/adapters/feature_groups.py:123-151</code> — <code>_partition_explicit</code>, the consumer whose <code>ValueError</code> this plan makes escapable. Read it before Phase 2; its message is the one being improved on. Pure Python, no DB — the reason there is no SQL phase.</li>
+      <li><span class="tag existing">existing</span> <code>src/content/docs/faq.md:111-176</code> — the truncation FAQ; its manual "glob against <code>label</code>, then map to <code>column</code>" instruction is what this helper replaces.</li>
+      <li><span class="tag existing">existing</span> <code>.out-of-scope/tail-preserving-truncation.md</code> — the rejection this plan is the constructive half of; its closing paragraph forward-references this work.</li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/0015-v1-api-stability-commitment.md</code> — defines what "additive" is allowed to mean here.</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_manifest.py</code>, <code>tests/test_manifest_lineage.py</code> — the DB-free manifest test conventions to mirror.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/test_manifest_glob.py</code> — DB-free, and the <em>only</em> new test file: glob semantics, translator escaping, zero-match raising and suggestions.</li>
+    </ul>
+    <p style="color:var(--ink-faint);font-size:.9rem;">No integration test and no ADR. Both belonged
+    to the emitted-SQL-function phase that research removed — there is no database object to test
+    and no hard-to-reverse decision left to record.</p>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <!-- PHASE 1 -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Glob engine and Python surface</h3>
+      <p>The whole feature, minus SQL and diagnostics. Everything here is DB-free and is where the
+      escaping contract gets fixed once, for both surfaces.</p>
+
+      <h4>1. Translator and matcher in <code>featurizer/manifest.py</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Add <code>glob_to_like(pattern: str) -> tuple[str, str]</code> returning <code>(like_pattern, escape_char)</code> with <code>escape_char = "\\"</code>. This is the whole SQL story now — a pure function callers pass to their own query, not a database object.</li>
+        <li><code class="status">[x]</code> Escaping order is <strong>load-bearing</strong>: escape <code>\</code>, then <code>%</code>, then <code>_</code>; only then map <code>*</code>→<code>%</code> and <code>?</code>→<code>_</code>. Reversing this double-escapes or leaks wildcards. Encode the order in a comment naming the failure.</li>
+        <li><code class="status">[x]</code> Docstring it with a copy-pasteable query against <code>&lt;stem&gt;_manifest</code> (<code>where label like %s escape '\'</code>), so the persisted-table path is documented at the function that enables it.</li>
+        <li><code class="status">[x]</code> Add <code>filter_manifest(entries, pattern, *, allow_empty=False) -> List[ManifestEntry]</code> using <code>fnmatch.fnmatchcase</code>.</li>
+        <li><code class="status">[x]</code> Use <code>fnmatchcase</code>, never <code>fnmatch</code> — the latter applies <code>os.path.normcase</code> and is case-insensitive on Windows, which would make matching platform-dependent.</li>
+        <li><code class="status">[x]</code> Preserve manifest order in the result (output order is what callers build <code>select</code> lists from).</li>
+      </ul>
+
+      <h4>2. Public methods on <code>Featurizer</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>manifest_matching(pattern, *, allow_empty=False) -> List[ManifestEntry]</code>, placed after <code>manifest_dataframe</code>.</li>
+        <li><code class="status">[x]</code> <code>columns_matching(pattern, *, allow_empty=False) -> List[str]</code> — a thin projection of <code>manifest_matching</code> onto <code>.column</code>; no second matching path.</li>
+        <li><code class="status">[x]</code> Google-style docstrings including the <code>_</code>-is-literal note and a worked example resolving a truncated column.</li>
+        <li><code class="status">[x]</code> Do <strong>not</strong> add either name to <code>featurizer/__init__.py</code>'s <code>__all__</code> — they are methods, not module exports; <code>glob_to_like</code> and <code>filter_manifest</code> stay <code>featurizer.manifest</code> imports.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>pytest, DB-free, in <code>tests/test_manifest_glob.py</code>. Build entries from the real
+      sample config so the tests exercise genuine labels (95% containing <code>_</code>) rather than
+      hand-written toys. Table-driven <code>parametrize</code> over the translator, since escaping
+      order is the defect-prone part.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q</code> — glob matches a truncated column the physical name would miss (the <code>kw_rodent</code> case).</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k translator</code> — <code>glob_to_like</code> escapes <code>_</code>, <code>%</code> and <code>\</code>, and maps <code>*</code>/<code>?</code>; assert exact output strings, not just "contains".</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k order</code> — results follow manifest order.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k literal_underscore</code> — <code>MEAN(care_plans.*)</code> does <em>not</em> match <code>MEAN(careXplans.…)</code>; the regression guard for the 95% trap.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k the_motivating_case</code> — assert the concrete numbers from the Problem section: <code>*frecuencia_cardiaca*</code> resolves <strong>672</strong> columns against <code>label</code> where matching <code>column</code> finds only <strong>198</strong>. This is the test that would fail if the helper ever stopped solving the thing it was built for.</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — 0 errors.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Zero-match diagnostics</h3>
+      <p>A glob that matches nothing must say so loudly <em>and usefully</em>. This phase is small,
+      and after the research it is the part that carries the most value: the failure people
+      actually hit is triage's <code>ValueError</code> telling them to "add a glob or widen one"
+      when no glob can possibly match a hash. Being loud is already solved upstream — being
+      <strong>actionable</strong> is what is missing.</p>
+      <div class="callout">
+        <strong>Message design target.</strong> A caller who lands here should learn three things
+        they cannot learn today: that the pattern matched nothing, that <em>truncation</em> is the
+        likely reason a pattern targeting an inner fragment failed, and what to write instead.
+        Name the manifest explicitly — most people hitting this do not know it exists.
+      </div>
+
+      <h4>1. Suggestion strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Implement <code>_suggest_for_pattern(pattern, entries, limit=3)</code> by <strong>literal-fragment backoff</strong>, not string distance: split the pattern on <code>*?[</code>, take the longest literal fragment, and progressively trim it from the right until some label contains it; return those labels.</li>
+        <li><code class="status">[x]</code> Rationale to capture in a comment: Levenshtein over ~2,000 labels of ~80 chars is ~10<sup>7</sup> character operations on an error path, and it answers the wrong question — a glob miss is a <em>prefix/fragment</em> problem, not a spelling-distance problem. <code>validation.py:1178</code> stays as-is for its own short-token use.</li>
+        <li><code class="status">[x]</code> Raise <code>LookupError</code> naming the pattern, the match count out of the manifest total, up to 3 suggestions, and the <code>allow_empty=True</code> escape hatch.</li>
+        <li><code class="status">[x]</code> When the manifest contains truncated columns whose <em>label</em> would have matched the pattern, say so explicitly — that is the difference between a dead end and a fix. Target shape:
+        <pre><code>LookupError: pattern '*frecuencia_cardiaca*' matched 0 of 2104 manifest labels.
+  672 columns have a LABEL matching this pattern but a truncated physical
+  name (63-byte cap), e.g. 'ABS(patients.MAX(measurements.ABS(measu~1c0ca6e8'.
+  Match against the manifest label, not the column name:
+      f.columns_matching('*frecuencia_cardiaca*')
+  Pass allow_empty=True to return [] instead.</code></pre></li>
+        <li><code class="status">[x]</code> <code>allow_empty=True</code> returns <code>[]</code> with no logging — an explicit opt-out should be silent.</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>pytest, DB-free, same file. Cover the useful-suggestion path, the no-suggestion path, and
+      the opt-out — the third matters because pipelines legitimately probe for optional features.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k zero_match</code> — a near-miss typo raises and the message names the real label.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k no_suggestion</code> — a pattern with no shared fragment still raises, with no bogus suggestion.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_manifest_glob.py -q -k allow_empty</code> — returns <code>[]</code>, raises nothing.</li>
+        <li><code class="status">[x]</code> Assert the error message contains <code>allow_empty</code> — discoverability of the escape hatch is part of the contract.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Documentation and the 1.1.0 release</h3>
+      <p>The helper is worthless if the FAQ still tells people to do it by hand. This phase closes
+      the loop back to the documents that motivated it.</p>
+
+      <h4>1. Documentation</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>src/content/docs/faq.md</code> — replace the manual "glob against <code>label</code>, then map to <code>column</code>" instruction with <code>columns_matching</code>, and show the <code>glob_to_like</code> query for the persisted-manifest case.</li>
+        <li><code class="status">[x]</code> Keep the FAQ's measured truncation table intact — this helper does not supersede that decision, it is its constructive half.</li>
+        <li><code class="status">[x]</code> Add the triage-facing note: an explicit <code>feature_groups.definitions</code> glob should be built from <code>columns_matching</code>, not written against physical names. This is the concrete guidance the crash never gave.</li>
+        <li><code class="status">[x]</code> <code>src/content/docs/reference/configuration.md</code> — no change expected (no config keys added); confirm and note it.</li>
+        <li><code class="status">[x]</code> <code>.out-of-scope/tail-preserving-truncation.md</code> — update the closing "Tracked in <code>TODO.org</code>" line to point at the shipped helper.</li>
+      </ul>
+      <div class="callout">
+        <strong>No ADR.</strong> The earlier draft planned ADR-0016 for the emitted-function
+        decision. With that phase cut, nothing here clears the three-part bar: two additive methods
+        and a pure helper function are easy to reverse, unsurprising, and involve no real trade-off.
+        Writing one anyway would be ADR noise. The <em>rejected</em> alternatives are already
+        recorded — the truncation reshape in <code>.out-of-scope/</code>, the SQL surface in this
+        plan's Questionables and Amendments.
+      </div>
+
+      <h4>2. Release</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Bump <code>pyproject.toml</code> version <code>1.0.1</code> → <code>1.1.0</code> — a new public method is a minor under ADR-0015, never a patch.</li>
+        <li><code class="status">[x]</code> <code>CHANGELOG.md</code> <code>## [1.1.0]</code> entry: the two methods, <code>glob_to_like</code>, and the zero-match raise (call that out explicitly — it is the one behaviour a caller could be surprised by), plus a pointer to the rejected truncation alternative.</li>
+        <li><code class="status">[x]</code> Note in the CHANGELOG that no existing surface changed, no columns were renamed, and nothing new is persisted — downstream caches are unaffected, so triage needs no coordination beyond an optional pin bump.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Documentation is validated by the link checker; the release by the full suite and the
+      packaging check that <code>test.yml</code> already runs. The integration tier is listed
+      because the release must not regress it — not because this change touches it.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run python site/check_links.py</code> — 0 broken links.</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — full DB-free tier green.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — unchanged and still green.</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — 0 errors.</li>
+        <li><code class="status">[x]</code> <code>just fmt-check</code> — clean.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[x]</code> <code>just test-fast</code> — every DB-free test green, including the new glob suite.</li>
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration &amp;&amp; just db-down</code> — integration green (unchanged by this plan; a no-regression check).</li>
+      <li><code class="status">[x]</code> <code>just typecheck</code> — 0 errors, 0 warnings.</li>
+      <li><code class="status">[x]</code> <code>just fmt-check</code> — formatting clean under the pinned ruff.</li>
+      <li><code class="status">[x]</code> <code>uv run python site/check_links.py</code> — 0 broken links; the rewritten FAQ resolves.</li>
+      <li><code class="status">[x]</code> <code>uv run python -c "from featurizer import Featurizer; f=Featurizer('featurizer/featurizer.yaml', validate=False); print(len(f.columns_matching('*frecuencia_cardiaca*')))"</code> — resolves columns the physical name cannot match.</li>
+      <li><code class="status">[x]</code> <code>uv run python -c "from featurizer import Featurizer; f=Featurizer('featurizer/featurizer.yaml', validate=False); f.columns_matching('*definitely_absent*')"</code> — raises <code>LookupError</code>, not a silent <code>[]</code>.</li>
+      <li><code class="status">[x]</code> <code>just bench-truncation</code> — still reproduces; this plan changes no naming.</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+
+    <details open>
+      <summary>[asked] Pattern syntax — glob, glob + regex, or regex only?</summary>
+      <p class="qa-answer"><strong>Chose: glob only.</strong> Matches the FAQ's own
+      <code>*(inspections.kw_*</code> example and the request's phrasing ("label-globbing"), and
+      translates to SQL <code>LIKE</code> so a single pattern string works on both surfaces. Regex
+      would have split the SQL story (<code>LIKE</code> versus <code>~</code>) and doubled the test
+      matrix for power that no known consumer has asked for. Regex remains addable later without
+      breaking this.</p>
+    </details>
+
+    <details open>
+      <summary>[asked] Return shape — one method, two methods, or a group-aware mapping?</summary>
+      <p class="qa-answer"><strong>Chose: two methods.</strong>
+      <code>columns_matching → List[str]</code> for the common "which columns do I select" case and
+      <code>manifest_matching → List[ManifestEntry]</code> for labels and lineage. The group-aware
+      mapping was declined as a return shape but is <em>not</em> lost: the emitted SQL function
+      returns <code>feature_group</code>, and <code>to_tables</code> already hands back per-table
+      column lists to intersect. Coupling the Python helper to the sharding partition would have
+      tied a simple filter to <code>_grouped_for_tables</code> internals.</p>
+    </details>
+
+    <details open>
+      <summary>[asked → reversed] SQL side — emitted function, translator plus docs, or Python-only?</summary>
+      <p class="qa-answer"><strong>Originally chose: emit a PostgreSQL function</strong> (over my
+      recommendation of a translator plus a documented recipe). <strong>Reversed 2026-08-15 on
+      evidence</strong>, at the user's direction, after they asked why two surfaces were needed —
+      the right question. The only real consumer,
+      <code>triage/adapters/feature_groups.py</code>, is explicitly <em>pure Python, no DB</em> by
+      its own docstring, so the emitted function had <strong>no known consumer</strong>. It would
+      have cost a database object per run, a <code>CREATE FUNCTION</code> privilege requirement, a
+      second implementation of the translation contract, a parity test to hold the two together,
+      and new surface for 2.0 to freeze — all speculative. <strong>Settled: translator plus docs.</strong>
+      <code>glob_to_like</code> still solves the <code>_</code>-escaping trap for anyone writing SQL
+      by hand. Revisit if a SQL consumer actually appears.</p>
+    </details>
+
+    <details open>
+      <summary>[asked] Zero matches — raise, warn, or return empty?</summary>
+      <p class="qa-answer"><strong>Chose: raise by default, <code>allow_empty=True</code> to opt
+      out.</strong> A silently-empty glob is indistinguishable from a feature that does not exist,
+      which is the exact failure this helper is built to end; returning <code>[]</code> would have
+      rebuilt the trap inside the fix. Warning was rejected because notebook and pipeline logs go
+      unread.</p>
+    </details>
+
+    <details>
+      <summary>[obsolete] <code>emit_helpers</code> defaults to <code>False</code>, not <code>True</code></summary>
+      <p class="qa-answer">Moot as of the 2026-08-15 revision — there is no <code>emit_helpers</code>
+      flag, because there is no emitted function. Retained as a record of the reasoning in case the
+      SQL surface is ever revived: <code>to_tables</code> requires only <code>CREATE TABLE</code>
+      today, so defaulting a function emitter on would break every caller whose role lacks
+      <code>CREATE FUNCTION</code> — a breaking change inside a minor, which ADR-0015 forbids. Any
+      future revival must ship opt-in.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Ships as 1.1.0, not 1.0.2</summary>
+      <p class="qa-answer">ADR-0015 freezes the <code>Featurizer</code> public surface and permits
+      additive change in minors. Two new public methods and a new <code>to_tables</code> keyword are
+      additive, so semver makes this a minor. Shipping it as a patch would misrepresent the surface
+      change to a consumer pinning by tag.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Literal-fragment backoff for suggestions, not Levenshtein</summary>
+      <p class="qa-answer"><code>validation.py</code> already has <code>_suggest_similar</code>, so
+      reuse looks obvious — but it is the wrong tool twice over. It is O(n·m²) over ~2,000 labels of
+      ~80 characters on an error path, and a glob miss is a fragment problem rather than a spelling
+      problem: <code>*(inspections.kw_rodnet*</code> should suggest by backing off to
+      <code>(inspections.kw_</code>, which distance ranking would not surface cleanly.
+      <code>validation.py</code> is left untouched for its own short-token use.</p>
+    </details>
+
+    <details>
+      <summary>[decided] <code>fnmatchcase</code>, not <code>fnmatch</code></summary>
+      <p class="qa-answer"><code>fnmatch.fnmatch</code> applies <code>os.path.normcase</code>, making
+      it case-insensitive on Windows. Feature labels are case-bearing by construction — operators
+      uppercase, aliases and columns lowercase — so platform-dependent matching would be a real
+      correctness bug on the 3.10–3.13 matrix. Case-insensitive matching can be added later as an
+      explicit flag.</p>
+    </details>
+
+    <details>
+      <summary>[unresolved, downgraded] fnmatch character classes versus one-hot values containing <code>[</code></summary>
+      <p class="qa-answer"><strong>Assumption in force:</strong> literal <code>[</code> in patterns is
+      rare enough to document rather than engineer around. Measured on the sample config, no label
+      contains <code>[</code>, <code>]</code>, <code>*</code>, <code>?</code>, <code>%</code> or
+      <code>\</code> — but that config has no one-hot columns, and ADR-0007 one-hot labels embed
+      <em>user data</em> as <code>&lt;entity&gt;.&lt;col&gt;=&lt;value&gt;</code>. A value like
+      <code>Type[A]</code> makes a literal-<code>[</code> pattern behave as a character class.
+      <strong>Downgraded by the 2026-08-15 revision:</strong> with no SQL side there is no
+      <em>parity divergence</em> — the nastiest version of this — only ordinary fnmatch semantics
+      that a user can hit and diagnose in one place. Phase 1 is now the phase at risk, and the
+      failure is visible rather than silent. Mitigation if it bites: a <code>literal=True</code>
+      mode or <code>glob.escape</code> handling. Still worth one test against a config that actually
+      has one-hot columns.</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Why this plan exists at all</h3>
+    <p>Twice, a consumer met a column named <code>…kw_rod~978dcf98</code> and proposed reshaping the
+    truncation to keep the readable tail. Twice it was declined on reasoning. On 2026-08-15 it was
+    finally measured, and the intuition turned out to be backwards:</p>
+    <table>
+      <thead><tr><th>scheme</th><th>variable lost</th><th>operator lost</th><th>ambiguous</th><th>worst group</th></tr></thead>
+      <tbody>
+        <tr><td>head-keeping (today)</td><td>197</td><td>0</td><td>887</td><td>8</td></tr>
+        <tr><td>tail-keeping (proposed)</td><td>0</td><td>1171</td><td>1027</td><td>78</td></tr>
+        <tr><td>both-ends (steelman)</td><td>0</td><td>0</td><td>311</td><td>6</td></tr>
+      </tbody>
+    </table>
+    <p>Tail-keeping is a regression. Both-ends dominates but still leaves 311 ambiguous columns, so
+    it cannot retire the manifest — while renaming 57.8% of columns and invalidating every
+    downstream cache. The conclusion recorded in
+    <code>.out-of-scope/tail-preserving-truncation.md</code> is that 63 bytes cannot hold a
+    compositional name and every fixed-window shape merely picks which half to blind you to.
+    <strong>This plan is what to build instead.</strong></p>
+
+    <h3>How the case for this changed under scrutiny</h3>
+    <p>The first draft justified the helper as preventing <em>silent</em> feature loss. Challenged
+    on whether that was real, the honest answer turned out to be <strong>no — not for the
+    production consumer</strong>. triage's default grouping path is structurally immune, and its
+    explicit path crashes loudly rather than dropping anything. The argument had to be rebuilt on
+    what is actually true, and it is narrower but sturdier:</p>
+    <ol>
+      <li><strong>The dead end (primary).</strong> An explicit <code>feature_groups.definitions</code>
+      glob targeting an inner fragment aborts the run on 474 columns with advice — "add a glob or
+      widen one" — that cannot be followed, because no glob matches an unpredictable hash. There is
+      no documented way out today.</li>
+      <li><strong>Ad-hoc undercount (genuinely silent).</strong>
+      <code>[c for c in df.columns if 'frecuencia' in c]</code> returns 198 of 672 with no signal.
+      Not production, but where most exploratory work happens.</li>
+      <li><strong>887 already-ambiguous columns.</strong> Columns sharing visible text with another
+      column, today, before truncation erases anything. No truncation reshape touches them; only
+      globbing the label does.</li>
+    </ol>
+    <p>What did <em>not</em> survive: the claim that features silently vanish from triage runs. If
+    that had been the justification, this plan would have been solving a problem that does not
+    exist.</p>
+
+    <h3>Dependencies</h3>
+    <p>None. <code>fnmatch</code> is stdlib and nothing else is needed. No <code>uv add</code>, no
+    new extra, no change to the dependency groups, no database. This is deliberate — the helper must
+    work in the base install, since the whole point is that every consumer reaching for a physical
+    name should reach for this instead.</p>
+
+    <h3>Risks, in the order they are likely to bite</h3>
+    <ol>
+      <li><strong>Escaping-order bug in <code>glob_to_like</code>.</strong> Highest probability,
+      highest blast radius: it fails <em>silently and over-broadly</em>, returning too many columns
+      rather than erroring. Mitigated by exact-string assertions in Phase 1, not by review. Note the
+      blast radius shrank when the SQL phase was cut: the translator is now advisory, so a bug
+      affects only hand-written queries, not anything the library itself executes.</li>
+      <li><strong>An unhelpful zero-match message.</strong> Now the plan's main deliverable rather
+      than a nicety. If the <code>LookupError</code> does not name truncation and the manifest, the
+      user is back in the same dead end with a different error class — strictly worse, because they
+      now have two confusing messages instead of one.</li>
+      <li><strong>Bracketed one-hot values.</strong> See the unresolved questionable. Low
+      probability and, without a SQL side, a visible failure rather than a silent divergence.</li>
+    </ol>
+
+    <h3>Deliberately out of scope</h3>
+    <ul>
+      <li><strong>Changing the truncation shape</strong> — rejected with measurement; see
+      <code>.out-of-scope/</code>. Any temptation to "also fix the names while we're here" should be
+      refused, and <code>tests/test_truncation_shapes.py</code> will fail if it is not.</li>
+      <li><strong>Case-insensitive matching</strong> — addable as an explicit flag; not defaulted,
+      because labels are case-bearing.</li>
+      <li><strong>A CLI subcommand</strong> — <code>featurizer list-primitives</code> has a discovery
+      role, but globbing needs a live config and a plan; the Python surface is the right home.</li>
+      <li><strong>An emitted SQL function</strong> — evaluated, chosen, then cut on evidence. See
+      the Questionables entry and the 2026-08-15 amendment.</li>
+    </ul>
+
+    <h3>Matching <code>description</code> / <code>definition</code> — out of scope, but concretely</h3>
+    <p>Deferred, not dismissed. Both fields already exist on every entry, so this is a one-line
+    filter away once <code>manifest_matching</code> lands — the question is only whether the
+    <em>helper</em> should take a <code>field=</code> argument. Real values from the sample config,
+    so the shape of the idea is on the record:</p>
+    <pre><code>description: "7-period Holt-Winters level (smoothed average), applied to care_plans.ABS(care_plans.plan_score)"
+description: "Cumulative sum over time, applied to care_plans.ABS(care_plans.plan_score)"
+definition:  ' abs("COUNT(consultations.medical_consultation|interval=P2W)") '</code></pre>
+    <ul>
+      <li><strong>Globbing <code>description</code> buys semantic selection without knowing operator
+      spellings.</strong> <code>*7-period*</code> catches <code>EMA_7</code>,
+      <code>HOLT_WINTERS_LEVEL_7</code>, <code>ROLLING_MEAN_7</code> and <code>ROLLING_STD_7</code>
+      in one pattern; <code>*moving average*</code> catches the smoothers but not the trend
+      components. That is a genuinely useful feature-group definition — "all short-window
+      smoothers" — that no label glob expresses cleanly.</li>
+      <li><strong>Globbing <code>definition</code> buys SQL-level selection</strong> — every column
+      whose expression calls <code>abs(</code>, or every column whose SQL touches one suspect source
+      column. Mostly an auditing and debugging tool: "what does this bad column feed?"</li>
+      <li><strong>Caveat that keeps it out of v1:</strong> both fields are lossy in ways
+      <code>label</code> is not. 234 definitions embed a <code>~</code>-truncated parent name, and
+      definitions drop the interval entirely, so windowed siblings are indistinguishable. A
+      <code>field=</code> argument would therefore need to document per-field reliability — real
+      design work, not a parameter.</li>
+    </ul>
+
+    <h3>Sequencing note for the build</h3>
+    <p>Phases 1 and 2 are the feature; Phase 3 is documentation and the version bump. Nothing here
+    carries compatibility risk, so there is no fallback seam to plan for — the change is additive
+    end to end. If time runs short, Phase 1 alone is coherent and shippable, but it should not ship
+    without Phase 2: the helper's value over a one-line list comprehension <em>is</em> the error
+    message.</p>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-08-15T21:33 — SQL phase cut; problem statement corrected against the real consumer</summary>
+      <p><strong>What changed.</strong> Phase 3 (emitted PostgreSQL function, <code>emit_helpers</code>
+      flag, Python↔SQL parity test) and Phase 4's ADR-0016 were removed; the plan went from four
+      phases to three, and from two new files plus an ADR to one new test file. The Problem section
+      was rewritten around measurements rather than assumption.</p>
+      <p><strong>Why.</strong> The user asked two questions the first draft could not answer:
+      <em>is this a real problem — do we actually miss columns?</em> and <em>why do we need two
+      surfaces?</em> Investigating the real consumer
+      (<code>triage/src/triage/adapters/feature_groups.py</code>) produced three findings that
+      changed the plan:</p>
+      <ul>
+        <li>triage's default <code>group_by='source_entity'</code> path is <strong>immune</strong> to
+        truncation — 0 of 1,217 truncated columns lose or change their alias, because head-keeping
+        preserves the leading <code>alias.</code> token the substring search reads.</li>
+        <li>triage's explicit-glob path <strong>raises loudly</strong>; it never silently drops
+        features. The first draft's "silent miss" framing was wrong for the production consumer.
+        The real failure is an <em>unactionable</em> crash ("add a glob or widen one" — impossible
+        against a hash), plus genuinely silent undercounting in ad-hoc notebook filtering.</li>
+        <li>That module is <strong>pure Python, no DB</strong> by its own docstring, so the emitted
+        SQL function had no known consumer — speculative surface carrying a
+        <code>CREATE FUNCTION</code> privilege hazard, a duplicated translation contract, and a
+        parity test to hold the two implementations together.</li>
+      </ul>
+      <p><strong>Also tested and recorded:</strong> <code>definition</code> is not a usable fallback
+      for <code>label</code> — 234 truncated columns have definitions that themselves embed a
+      <code>~</code>-truncated parent name, and definitions drop the interval, making windowed
+      siblings indistinguishable.</p>
+      <p><strong>Net effect.</strong> Roughly half the plan removed; the remainder is stdlib-only,
+      database-free, and additive end to end. Phase 2's justification was strengthened rather than
+      cut — with the SQL surface gone, the actionable error message is the plan's main deliverable.
+      A concrete <code>description</code>/<code>definition</code> globbing sketch was added to Notes
+      at the user's request, still scoped out of v1.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

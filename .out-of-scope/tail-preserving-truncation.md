@@ -80,12 +80,13 @@ it is the load-bearing design. Physical column names are **opaque handles**:
 glob against `label`, then map to `column`.
 
 The productive version of this request is therefore additive, not a rename:
-make the manifest ergonomic enough that nobody reaches for physical names —
-e.g. a `columns_matching("*(inspections.kw_*")` helper that globs labels and
-returns physical columns. That is legal under the ADR-0015 freeze, ships in
-1.x, costs nobody a cache invalidation, and also addresses the 887 columns that
-are *already* ambiguous today and that no truncation change touches. Tracked in
-`TODO.org`.
+make the manifest ergonomic enough that nobody reaches for physical names.
+**Shipped in 1.1.0** as `Featurizer.columns_matching()` /
+`manifest_matching()`, plus `featurizer.manifest.glob_to_like()` for querying
+the persisted manifest table — see
+`specs/manifest-label-globbing-helper.html`. It cost nobody a cache
+invalidation, and it also addresses the 887 columns that are *already*
+ambiguous today and that no truncation change touches.
 
 ## If you want to reopen this
 
