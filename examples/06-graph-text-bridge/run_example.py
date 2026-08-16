@@ -119,12 +119,12 @@ def assert_config_matches(config_path: Path, fragments: dict) -> None:
     declared = yaml.safe_load(config_path.read_text())
     entities = {e["alias"]: e for e in declared["entities"]}
     for name, fragment in fragments.items():
-        assert (
-            entities[name] == fragment["entity"]
-        ), f"config.yaml entity '{name}' drifted from emit_yaml()"
-        assert (
-            fragment["relationship"] in declared["relationships"]
-        ), f"config.yaml relationship for '{name}' drifted from emit_yaml()"
+        assert entities[name] == fragment["entity"], (
+            f"config.yaml entity '{name}' drifted from emit_yaml()"
+        )
+        assert fragment["relationship"] in declared["relationships"], (
+            f"config.yaml relationship for '{name}' drifted from emit_yaml()"
+        )
     print("  ✓ config.yaml matches the bridges' emit_yaml fragments")
 
 

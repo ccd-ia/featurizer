@@ -215,6 +215,6 @@ def test_arrow_and_dataframe_agree_on_materialized_impute(pg_conn):
         arow = arrow_rows[sid]
         for col in frame_cols:
             fv, av = frow[col], arow[col]
-            assert (_null(fv) and _null(av)) or float(fv) == float(
-                av
-            ), f"{col} differs between Arrow and DataFrame for store {sid}"
+            assert (_null(fv) and _null(av)) or float(fv) == float(av), (
+                f"{col} differs between Arrow and DataFrame for store {sid}"
+            )

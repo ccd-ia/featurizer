@@ -108,6 +108,6 @@ def test_sharded_manifest_invariants(pg_conn):
     #    covering the full output — no orphans in either direction.
     assert {c for c, _ in manifest_rows} == set(all_columns)
     for column_name, feature_group in manifest_rows:
-        assert (
-            column_name in persisted[feature_group]
-        ), f"{column_name} tagged {feature_group} but persisted elsewhere"
+        assert column_name in persisted[feature_group], (
+            f"{column_name} tagged {feature_group} but persisted elsewhere"
+        )

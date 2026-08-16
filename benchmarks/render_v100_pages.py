@@ -19,7 +19,6 @@ Usage::
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Dict, List
 
 from .final_matrix import ARTIFACT_DIR
@@ -195,10 +194,10 @@ exactly on dirtyduck/chicago311 and emits ~6% more columns on donorschoose
 <h2>1 · The regression matrix</h2>
 <table><thead><tr><th>database</th><th>variant</th><th>features</th><th>shards</th>
 <th>rows</th><th>seconds</th><th>was (v0.8.0)</th><th>Δ</th><th>dup-names</th><th>status</th></tr></thead>
-<tbody>{''.join(tr)}</tbody></table>
+<tbody>{"".join(tr)}</tbody></table>
 <h2>2 · New: the 0.9.x families at scale</h2>
 <table><thead><tr><th>workload</th><th>database</th><th>shape</th><th>wall-clock</th>
-<th>value check</th></tr></thead><tbody>{''.join(bridge)}</tbody></table>
+<th>value check</th></tr></thead><tbody>{"".join(bridge)}</tbody></table>
 <h2>3 · Per-database detail</h2>
 <p><a href='live-db-revalidation-v100/dirtyduck.html'>dirtyduck</a> ·
 <a href='live-db-revalidation-v100/chicago311.html'>chicago311</a> ·
@@ -242,14 +241,14 @@ def render_db(artifacts: Dict[str, Any], db: str) -> str:
     body = f"""
 <h2>1 · Full-cohort materialization (v1.0.0)</h2>
 <p>Each variant materialized through <code>to_dataframe(connection=…)</code>
-at one as-of date ({rows[0].get('as_of_date', '?') if rows else '?'} — the day
+at one as-of date ({rows[0].get("as_of_date", "?") if rows else "?"} — the day
 after the last knowledge date, so every event is under the window); no
 permanent writes. Variant definitions and the recovered wide transformer set:
 <code>benchmarks/final_matrix.py</code>.</p>
 <table><thead><tr><th>variant</th><th>features</th><th>shards</th><th>rows</th>
 <th>dup-names</th><th>seconds</th><th>was (v0.8.0)</th><th>status</th></tr></thead>
 <tbody>{tr}</tbody></table>
-{''.join(extras)}
+{"".join(extras)}
 """
     return _page(f"featurizer × {db}", LEDES[db], body)
 

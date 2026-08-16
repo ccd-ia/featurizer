@@ -711,6 +711,4 @@ class GraphRelationshipSpec:
         )
 
     def __repr__(self) -> str:
-        return (
-            f"GraphRelationshipSpec({self.name}: {self.left} " f"via {self.edge_table})"
-        )
+        return f"GraphRelationshipSpec({self.name}: {self.left} via {self.edge_table})"

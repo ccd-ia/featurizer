@@ -127,9 +127,9 @@ def test_to_tables_downshifts_and_succeeds(pg_conn):
             cur.execute(f"select * from {t.name}")
             cols = [d.name for d in cur.description]
             n_features = len(cols) - len(t.key_columns)
-            assert (
-                estimate_heap_row_width(len(cols)) <= HEAP_ROW_BUDGET_BYTES
-            ), f"{t.name} was persisted over the heap budget"
+            assert estimate_heap_row_width(len(cols)) <= HEAP_ROW_BUDGET_BYTES, (
+                f"{t.name} was persisted over the heap budget"
+            )
             features = set(cols) - set(t.key_columns)
             assert not (features & seen_features), "columns duplicated across tables"
             seen_features |= features

@@ -1134,8 +1134,7 @@ class FeaturePlanner:
         right = self.graph.entities.get(spec.right)
         if right is None:
             logger.warning(
-                "Graph relationship {} references unknown right entity {}; "
-                "skipping.",
+                "Graph relationship {} references unknown right entity {}; skipping.",
                 spec.name,
                 spec.right,
             )
@@ -1617,12 +1616,12 @@ class FeaturePlanner:
         reduction_where = spec0.reduction_where
         for feature in agg_features:
             assert feature.preagg is not None
-            assert (
-                feature.preagg.prepass_sql == prepass
-            ), f"pre-agg family {family_key!r} has inconsistent pre-passes"
-            assert (
-                feature.preagg.reduction_where == reduction_where
-            ), f"pre-agg family {family_key!r} has inconsistent reduction filters"
+            assert feature.preagg.prepass_sql == prepass, (
+                f"pre-agg family {family_key!r} has inconsistent pre-passes"
+            )
+            assert feature.preagg.reduction_where == reduction_where, (
+                f"pre-agg family {family_key!r} has inconsistent reduction filters"
+            )
 
         child_key = relationship.child_key
         # 63-byte-capped, parallel-relationship-safe (naming_alias), interval- and

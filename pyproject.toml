@@ -103,7 +103,32 @@ dev = [
     "datasketch>=1.6",
     "pytest>=8.2",
     "pytest-cov>=7.0.0",
+    # Pinned exactly, not floored. The formatter's output is not stable across
+    # minor releases (0.9 rewrapped assert messages, 0.12 normalized quotes
+    # inside f-strings), and an unpinned ruff means every contributor on a
+    # different version re-churns the tree. Bump deliberately, in its own
+    # commit, with the reformat it causes.
+    "ruff==0.15.17",
 ]
+
+[tool.ruff]
+# Formatting-only adoption. `line-length` and the inferred `target-version`
+# (from requires-python) are ruff's own defaults — spelled out here so the
+# style is reproducible from the repo rather than from whatever ruff the
+# contributor's editor happens to run. Notebooks are included deliberately:
+# ruff formats .ipynb source cells and leaves executed outputs untouched,
+# which the docs site renders from.
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# Deliberately ruff's default rule set (pycodestyle errors + pyflakes), pinned
+# so a ruff upgrade cannot silently widen it. NOTE: the tree does not pass
+# `just lint` today — 8 pre-existing findings (4 F401, 4 F541 in example
+# notebooks). Only `just fmt-check` is CI-gateable right now; clearing the
+# lint backlog is its own change, and must not be done with a blanket
+# `--fix` (one F401 is an intentional re-export).
+select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

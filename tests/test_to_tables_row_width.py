@@ -130,9 +130,9 @@ def test_over_budget_group_is_repartitioned_for_tables():
     assert len(groups) > 1
     n_keys = len(grouped.key_columns)
     for gid, cols in groups.items():
-        assert (
-            estimate_heap_row_width(len(cols) + n_keys) <= HEAP_ROW_BUDGET_BYTES
-        ), f"{gid} still estimates over the heap budget after the downshift"
+        assert estimate_heap_row_width(len(cols) + n_keys) <= HEAP_ROW_BUDGET_BYTES, (
+            f"{gid} still estimates over the heap budget after the downshift"
+        )
 
     # The rendered queries and the mapping describe the same partition.
     assert list(grouped.queries) == list(groups)

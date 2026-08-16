@@ -81,8 +81,7 @@ class EdgeBridge(ABC):
             cur.execute(
                 create_table_sql(
                     output_table,
-                    f"{src_col} {src_type}, {dst_col} {dst_type}, "
-                    f"{ts_col} {ts_type}",
+                    f"{src_col} {src_type}, {dst_col} {dst_type}, {ts_col} {ts_type}",
                     persist,
                 )
             )
