@@ -117,10 +117,10 @@
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-08-15T19:09</dd>
-        <dt>modified</dt>     <dd>2026-08-15T19:09, 2026-08-15T21:33</dd>
-        <dt>commits</dt>      <dd>—</dd>
-        <dt>agent name</dt>   <dd>claude-opus-5[1m], claude-opus-5[1m]</dd>
-        <dt>session id</dt>   <dd>4b86892a-cf64-4791-8923-855f6b5fc568, 4b86892a-cf64-4791-8923-855f6b5fc568</dd>
+        <dt>modified</dt>     <dd>2026-08-15T19:09, 2026-08-15T21:33, 2026-08-15T22:04</dd>
+        <dt>commits</dt>      <dd>7220a8b</dd>
+        <dt>agent name</dt>   <dd>claude-opus-5[1m], claude-opus-5[1m], claude-opus-5[1m]</dd>
+        <dt>session id</dt>   <dd>4b86892a-cf64-4791-8923-855f6b5fc568, 4b86892a-cf64-4791-8923-855f6b5fc568, 4b86892a-cf64-4791-8923-855f6b5fc568</dd>
         <dt>back refs</dt>    <dd>.out-of-scope/tail-preserving-truncation.md, docs/adr/0015-v1-api-stability-commitment.md, docs/adr/0007-direct-categorical-fixed-vocabulary.md, src/content/docs/faq.md, benchmarks/truncation_shapes.py, ~/projects/triage/src/triage/adapters/feature_groups.py</dd>
         <dt>forward refs</dt> <dd>—</dd>
       </dl>
@@ -757,6 +757,23 @@ definition:  ' abs("COUNT(consultations.medical_consultation|interval=P2W)") '</
       cut — with the SQL surface gone, the actionable error message is the plan's main deliverable.
       A concrete <code>description</code>/<code>definition</code> globbing sketch was added to Notes
       at the user's request, still scoped out of v1.</p>
+    </details>
+    <details open>
+      <summary>2026-08-15T22:04 — built and shipped as 1.1.0 (commit <code>7220a8b</code>)</summary>
+      <p>All three phases executed; every task and validation box <code>[x]</code>, no
+      <code>[f]</code>. Shipped: <code>columns_matching</code>, <code>manifest_matching</code>,
+      <code>glob_to_like</code>, <code>filter_manifest</code>, 23 DB-free tests, the FAQ rewrite,
+      the CHANGELOG <code>[1.1.0]</code> entry, and the version bump.</p>
+      <p><strong>One correction made during the build.</strong> The zero-match message this plan
+      sketched in Phase 2 was self-contradictory — it reported "<em>N</em> columns have a LABEL
+      matching this pattern" inside a branch only reachable when <em>no</em> label matched. The
+      implemented message reports the reachable inverse instead: when a pattern matches physical
+      <em>column</em> names but no label (the caller globbed a name they saw in the output), it
+      says so and shows the label to use. The truncation hint is suppressed when suggestions are
+      already on screen, so the error stays short.</p>
+      <p><strong>Not done, deliberately:</strong> the release is prepared but <strong>not tagged</strong>
+      — <code>pyproject.toml</code> and <code>CHANGELOG.md</code> say 1.1.0, and tagging awaits
+      sign-off, matching how 1.0.1 was handled.</p>
     </details>
   </section>
 
