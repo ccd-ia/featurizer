@@ -109,6 +109,12 @@ published by hand:
 
 1. Add the `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` and bump
    `version` in `pyproject.toml` (then `uv lock`).
+   In the same commit, update the `featurizer-dfs` Claude skill
+   (`.claude/skills/featurizer-dfs/SKILL.md`): its heading version and pin
+   line, and any surface the CHANGELOG section adds or changes.
+   `tests/test_skill_parity.py` fails the fast tier when the skill disagrees
+   with the code, so a forgotten update cannot reach the tag. Afterwards
+   re-vendor the body (from the H1 down) into the other copies of the skill.
 2. Commit, push `master`, and wait for the `test` workflow to go green
    (fast + typecheck + packaging + example validation + integration).
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.

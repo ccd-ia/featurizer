@@ -6,6 +6,18 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **The `featurizer-dfs` Claude Code skill ships with the repo** at
+  `.claude/skills/featurizer-dfs/SKILL.md` (it was an untracked local file
+  that both of its vendored copies already claimed to be sourced from here).
+  Its body is brought up to 1.1.0 — the label-globbing helpers, the 1.0.1
+  empty-list semantics, the ADR-0015 freeze and tested matrix, the full
+  variable-type set — and `tests/test_skill_parity.py` pins its version,
+  primitive counts, curated defaults and every `Featurizer` attribute it
+  names to the code, so the skill can no longer drift three releases behind
+  unnoticed. CONTRIBUTING's release process gains the corresponding step.
+
 ## [1.1.0] - 2026-08-15
 
 Additive only (semver MINOR under the ADR-0015 freeze). No existing surface

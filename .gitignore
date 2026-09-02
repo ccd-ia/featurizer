@@ -146,3 +146,10 @@ src/content/docs/engineering/adr/
 src/content/docs/engineering/changelog.md
 COMPACT.md
 COMPACT-archive-*.md
+
+# The featurizer-dfs Claude skill ships with the engine. The global git ignore
+# hides .claude/ wholesale; re-include the directory, then hide everything in it
+# except skills/ (settings.local.json, data/, worktrees/ stay private).
+!.claude/
+.claude/*
+!.claude/skills/
