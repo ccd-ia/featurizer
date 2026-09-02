@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Featurizer: automated feature engineering for temporal data using PostgreSQL"
+type: software
+authors:
+  - family-names: "De Unánue"
+    given-names: "Adolfo"
+    orcid: "https://orcid.org/0000-0003-3499-0965"
+version: 1.1.0
+date-released: 2026-08-15
+license: Apache-2.0
+repository-code: "https://github.com/ccd-ia/featurizer"
+url: "https://ccd-ia.github.io/featurizer/"
+keywords:
+  - feature-engineering
+  - deep-feature-synthesis
+  - postgresql
+  - sql
+  - temporal-data
