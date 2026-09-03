@@ -614,7 +614,7 @@ promise; anything outside it may work but is not verified:
 
 -   `featurizer/` &#x2013; Core modules (planner, sql, executor, validation)
 -   `featurizer/primitives/` &#x2013; Aggregation and transformation primitives
--   `tests/` &#x2013; Test suite (385 tests)
+-   `tests/` &#x2013; Test suite (1,216 tests: 738 DB-free + 478 integration)
 -   `examples/` &#x2013; Six self-contained examples executing against PostgreSQL
--   `docs/` &#x2013; Session history and primitives reference
+-   `docs/` &#x2013; ADRs (15), primitives reference, and design notes
 

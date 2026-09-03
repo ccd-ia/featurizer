@@ -40,6 +40,14 @@ bump) does not apply, since that repo pins v1.0.1 and needs no update.
   names to the code, so the skill can no longer drift three releases behind
   unnoticed. CONTRIBUTING's release process gains the corresponding step.
 
+### Fixed
+
+- **Two stale `README.md` Project Map entries.** The test count read 385; it
+  is 1,216 (738 DB-free + 478 integration). `docs/` was described as holding
+  session history, which no cloner receives — those files are untracked
+  leftovers of the pre-`ai-docs/` layout; the tracked content is `docs/adr/`,
+  the primitives reference and the design notes.
+
 ## [1.1.0] - 2026-08-15
 
 Additive only (semver MINOR under the ADR-0015 freeze). No existing surface
