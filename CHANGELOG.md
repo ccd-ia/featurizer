@@ -8,9 +8,11 @@ semantic versioning once a release is cut.
 
 ## [1.1.1] - 2026-09-03
 
-Packaging and metadata only. **No code changed** — the wheel is byte-identical
-in content to 1.1.0; the sdist gains the skill. Downstream feature caches are
-unaffected and no consumer needs to move its pin.
+Packaging and metadata only. **No code changed** — not one file under
+`featurizer/` differs from 1.1.0 (`git diff v1.1.0..v1.1.1 -- featurizer/` is
+empty), so the wheel differs only in the version string in its `dist-info`.
+The sdist gains the `featurizer-dfs` skill and `CITATION.cff`. Downstream
+feature caches are unaffected and no consumer needs to move its pin.
 
 The tag exists so that Zenodo can archive a release and mint a DOI: its GitHub
 integration only picks up releases created *after* the repository is enabled,
