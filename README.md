@@ -5,6 +5,7 @@
 [![CI](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml/badge.svg)](https://github.com/ccd-ia/featurizer/actions/workflows/test.yml)
 [![Release](https://img.shields.io/github/v/release/ccd-ia/featurizer?label=release)](https://github.com/ccd-ia/featurizer/releases/latest)
 [![Docs](https://img.shields.io/badge/docs-ccd--ia.github.io%2Ffeaturizer-0f766e.svg)](https://ccd-ia.github.io/featurizer/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22287185.svg)](https://doi.org/10.5281/zenodo.22287185)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue.svg)](https://www.python.org/downloads/)
 [![Type checked: basedpyright strict](https://img.shields.io/badge/types-basedpyright%20strict-2a6db0.svg)](pyrightconfig.json)
@@ -606,6 +607,35 @@ promise; anything outside it may work but is not verified:
 |---|---|
 | Python (DB-free tier) | 3.10 · 3.11 · 3.12 · 3.13 |
 | PostgreSQL (integration tier, generated SQL executed) | 14 · 16 · 17 |
+
+
+## Citing Featurizer
+
+Every release is archived on Zenodo. Cite the **concept DOI** below — it always
+resolves to the most recent version, so it does not go stale:
+
+> De Unánue, A. *Featurizer: automated feature engineering for temporal data
+> using PostgreSQL*. Zenodo. https://doi.org/10.5281/zenodo.22287185
+
+```bibtex
+@software{deunanue_featurizer,
+  author    = {De Un{\'a}nue, Adolfo},
+  title     = {Featurizer: automated feature engineering for temporal
+               data using PostgreSQL},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.22287185},
+  url       = {https://doi.org/10.5281/zenodo.22287185}
+}
+```
+
+If your results depend on a specific version, cite that version's own DOI
+instead — v1.1.1 is [10.5281/zenodo.22287186](https://doi.org/10.5281/zenodo.22287186),
+and each release page links its own. `CITATION.cff` carries the same metadata
+in machine-readable form; GitHub's **Cite this repository** button reads it.
+
+Featurizer implements Deep Feature Synthesis, so please also cite the method:
+Kanter, J. M. & Veeramachaneni, K. *Deep Feature Synthesis: Towards
+Automating Data Science Endeavors*. IEEE DSAA, 2015.
 
 
 <a id="org1a0f823"></a>

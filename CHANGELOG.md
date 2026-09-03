@@ -6,6 +6,17 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- **Featurizer is archived on Zenodo and has a DOI.** The concept DOI
+  [10.5281/zenodo.22287185](https://doi.org/10.5281/zenodo.22287185) always
+  resolves to the latest archived version; v1.1.1 is
+  [10.5281/zenodo.22287186](https://doi.org/10.5281/zenodo.22287186), and every
+  future release mints its own. `README.md` gains a DOI badge and a
+  "Citing Featurizer" section (which also credits Kanter & Veeramachaneni's
+  DFS paper), and `CITATION.cff` carries both DOIs — cite the concept DOI
+  unless a result depends on a specific version.
+
 ## [1.1.1] - 2026-09-03
 
 Packaging and metadata only. **No code changed** — not one file under
