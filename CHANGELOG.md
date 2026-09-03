@@ -17,6 +17,15 @@ semantic versioning once a release is cut.
   DFS paper), and `CITATION.cff` carries both DOIs — cite the concept DOI
   unless a result depends on a specific version.
 
+- **`tests/test_citation_parity.py`** pins `CITATION.cff` to the release it
+  ships with: `version` against `pyproject.toml`, `date-released` against the
+  CHANGELOG section's date, the presence of every field Zenodo consumes, an
+  ORCID on each author, and the absence of a `.zenodo.json` that would shadow
+  the file. Archiving made this file release-critical with a silent failure
+  mode — a stale `version:` fails nothing at tag time and mints a permanent
+  DOI naming the wrong release — so it needed the same treatment
+  `test_skill_parity.py` gave the skill.
+
 ## [1.1.1] - 2026-09-03
 
 Packaging and metadata only. **No code changed** — not one file under

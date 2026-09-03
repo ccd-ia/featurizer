@@ -115,6 +115,11 @@ published by hand:
    `tests/test_skill_parity.py` fails the fast tier when the skill disagrees
    with the code, so a forgotten update cannot reach the tag. Afterwards
    re-vendor the body (from the H1 down) into the other copies of the skill.
+   Bump `version` and `date-released` in `CITATION.cff` in the same commit too
+   — `tests/test_citation_parity.py` holds them to `pyproject.toml` and to the
+   CHANGELOG section's date. That one matters more than it looks: a stale
+   `version:` does not fail anything at tag time, it just mints a permanent DOI
+   whose metadata names the wrong release.
 2. Commit, push `master`, and wait for the `test` workflow to go green
    (fast + typecheck + packaging + example validation + integration).
 3. Push an annotated tag: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`.

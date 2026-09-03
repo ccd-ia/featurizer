@@ -644,7 +644,7 @@ Automating Data Science Endeavors*. IEEE DSAA, 2015.
 
 -   `featurizer/` &#x2013; Core modules (planner, sql, executor, validation)
 -   `featurizer/primitives/` &#x2013; Aggregation and transformation primitives
--   `tests/` &#x2013; Test suite (1,216 tests: 738 DB-free + 478 integration)
+-   `tests/` &#x2013; Test suite (1,221 tests: 743 DB-free + 478 integration)
 -   `examples/` &#x2013; Six self-contained examples executing against PostgreSQL
 -   `docs/` &#x2013; ADRs (15), primitives reference, and design notes
 
