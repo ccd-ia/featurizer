@@ -1,13 +1,21 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "Featurizer: automated feature engineering for temporal data using PostgreSQL"
+abstract: >-
+  Featurizer implements Deep Feature Synthesis (Kanter & Veeramachaneni, IEEE
+  DSAA 2015) for relational PostgreSQL data with first-class temporal
+  semantics. An entity graph is declared once in YAML; Featurizer traverses
+  the relationships, applies aggregations and transformations across them, and
+  emits pure SQL that computes a point-in-time-correct feature matrix indexed
+  by (as_of_date, entity_id). Features are computed where the data lives, so
+  no data leaves the database.
 type: software
 authors:
   - family-names: "De Unánue"
     given-names: "Adolfo"
     orcid: "https://orcid.org/0000-0003-3499-0965"
-version: 1.1.0
-date-released: 2026-08-15
+version: 1.1.1
+date-released: 2026-09-03
 license: Apache-2.0
 repository-code: "https://github.com/ccd-ia/featurizer"
 url: "https://ccd-ia.github.io/featurizer/"

@@ -122,6 +122,24 @@ published by hand:
    `pyproject.toml` or the CHANGELOG section is missing, re-verifies the tagged
    commit, builds sdist+wheel, and creates the GitHub release with the
    CHANGELOG section as notes and the dist files as assets.
+5. Zenodo archives the new release and mints a version DOI for it, on top of
+   the permanent concept DOI that resolves to the latest version. Nothing to
+   do per release — but bump `version` and `date-released` in `CITATION.cff`
+   in step 1, because that is where Zenodo reads the record's metadata from.
 
 No PyPI — deliberate (derived from dssg/featurizer; the name is generic).
 GitHub releases on `ccd-ia/featurizer` are the distribution channel.
+
+### Zenodo archiving
+
+`CITATION.cff` is the **single** source of citation metadata. Do not add a
+`.zenodo.json`: when a repository carries both, Zenodo uses the JSON and
+ignores `CITATION.cff` entirely, which leaves two files to keep in sync and
+demotes the CFF to the GitHub citation widget. Zenodo implements a subset of
+the CFF schema — `cff-version`, `title`, `abstract`, `version`, `type`,
+`license`, `message`, `authors` (with `orcid`) and `keywords` — so keep those
+fields populated; anything else in the file is for human readers.
+
+Zenodo only archives releases created **after** the repository is enabled in
+its GitHub settings, so the toggle is a prerequisite for a tag, never a
+follow-up to one.

@@ -6,7 +6,27 @@ semantic versioning once a release is cut.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-03
+
+Packaging and metadata only. **No code changed** — the wheel is byte-identical
+in content to 1.1.0; the sdist gains the skill. Downstream feature caches are
+unaffected and no consumer needs to move its pin.
+
+The tag exists so that Zenodo can archive a release and mint a DOI: its GitHub
+integration only picks up releases created *after* the repository is enabled,
+so an already-tagged version cannot be archived retroactively. This reverses
+the 2026-09-02 decision not to tag the skill change, which was made before the
+DOI requirement existed; the cost recorded there (forcing a `triage-pg` pin
+bump) does not apply, since that repo pins v1.0.1 and needs no update.
+
 ### Added
+
+- **Citation metadata for Zenodo archiving.** `CITATION.cff` gains an
+  `abstract` — Zenodo maps it to the archived record's description, and
+  without one the record falls back to the GitHub repository blurb. No
+  `.zenodo.json` is added on purpose: when both files are present Zenodo uses
+  the JSON and ignores `CITATION.cff` entirely, which would demote the CFF to
+  a GitHub-widget-only file and leave two metadata sources to keep in sync.
 
 - **The `featurizer-dfs` Claude Code skill ships with the repo** at
   `.claude/skills/featurizer-dfs/SKILL.md` (it was an untracked local file
