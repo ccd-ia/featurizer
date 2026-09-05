@@ -14,7 +14,11 @@ uv run pytest -q             # fast tier (no database)
 
 Use `uv run <tool>` so you get the locked versions. The optional `[viz]` and
 `[bridge]` extras pull in heavy dependencies only when needed:
-`uv sync --extra bridge`.
+`uv sync --extra bridge`. The `[tui]` extra (the terminal cockpit,
+`featurizer/tui/`, on lynkeus) installs on Python 3.12+ only — its
+requirement carries a version marker, so on 3.10 and 3.11 `uv sync --extra
+tui` installs nothing and `tests/test_tui*.py` skip themselves. `uv sync`
+alone brings it on 3.12+ through the dev group.
 
 ## Task runner
 

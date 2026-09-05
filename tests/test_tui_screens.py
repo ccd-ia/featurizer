@@ -208,9 +208,9 @@ def test_the_group_table_opens_on_query_only_when_materialized() -> None:
             screen = app.screen_for("manifest")
             assert isinstance(screen, ManifestScreen)
             assert screen.sql_for_selection() is None
-            assert (
-                screen.groups
-            ), "a single-query config assigns group_000 to every column"
+            assert screen.groups, (
+                "a single-query config assigns group_000 to every column"
+            )
             assert set(screen.groups.values()) == {"group_000"}
 
     run(drive())
@@ -245,9 +245,9 @@ def test_x_explains_through_the_data_source_and_never_runs_the_group() -> None:
             screen = app.screen_for("sql")
             assert isinstance(screen, SqlScreen)
             assert screen.selected == "group_000"
-            assert (
-                screen.sql_for_selection() is None
-            ), "4 must not hand the group to Query"
+            assert screen.sql_for_selection() is None, (
+                "4 must not hand the group to Query"
+            )
 
     run(drive())
     assert len(source.explained) == 1

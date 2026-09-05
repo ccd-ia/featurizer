@@ -4,10 +4,60 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
-## [Unreleased]
+## [1.2.0] - 2026-09-04
+
+A terminal cockpit, as an optional extra. Nothing on ADR-0015's freeze list
+moves: the config schema, the `Featurizer` surface, output naming, imputation
+and the bridge contract are byte-for-byte what 1.1.1 shipped. What is new is
+additive — a `featurizer/tui/` package behind an extra, two argparse verbs,
+and the headless twins of the screens.
 
 ### Added
 
+- **`featurizer[tui]` — the terminal cockpit** (`featurizer/tui/`), built on
+  [lynkeus](https://github.com/nanounanue/lynkeus) v0.3.2, the Textual shell
+  shared by this workspace's data projects. `python -m featurizer tui
+  --config path/to/config.yaml` shows one config against one database: the
+  shell's Status / Runs / Data / Query / Actions, plus three screens of
+  featurizer's own — **Config** (the entity graph as a tree, `v` runs the
+  validator's own function, `enter` opens an entity's table on Data),
+  **Manifest** (`feature_manifest()` as a table; `/` filters through
+  `manifest_matching`, so the glob semantics are the library's and not a
+  second implementation; `y` copies the matching column list; `4` opens the
+  group table on Query), and **SQL** (`query_groups()` one group at a time,
+  read-only, highlighted from the shell's theme; `x` is `explain (analyze,
+  buffers)` rolled back; `y` copies). Status derives everything from
+  queries: source tables the config names that do not exist, columns a table
+  lacks, groups the manifest names that are not on disk, manifest columns on
+  no group table, carried columns the config does not account for, and
+  config drift against the persisted labels. Runs treats each
+  `<stem>_manifest` table as a run — there is no run ledger and this release
+  adds none; a new persisted table would be a freeze-list change, and a
+  timestamp nobody wrote cannot be invented. The extra carries a
+  `python_version >= '3.12'` marker (lynkeus's floor), so 3.10 and 3.11 never
+  see Textual; `import featurizer` never imports it either, and the verbs that
+  need it say what to install and exit 2.
+- **Headless twins**: `status --config X [--json]`, `runs list|show
+  [--json]`, `query SQL [--json]`, `actions list|run`, wired through
+  `lynkeus.commands` into the existing argparse parser, so an agent reads what
+  a person watches.
+- **Two verbs over frozen methods**: `render --config X [--group NAME]`
+  prints `Featurizer.query` or one entry of `query_groups`; `materialize
+  --config X --schema S [--table-prefix P]` calls `to_tables()` and prints the
+  tables it wrote. Neither changes a frozen signature. The CLI's parser is now
+  built by `build_parser()` (factored out of `main()`) so the cockpit's
+  palette enumerates the verbs instead of keeping a second list.
+- **Tests** in both tiers: `tests/test_tui_screens.py` photographs each
+  screen over fake adapters (DB-free, `pytest-textual-snapshot`);
+  `tests/test_tui_cli.py` covers the verbs, the actions and the models;
+  `tests/integration/test_tui_adapters.py` runs the adapters against the
+  ephemeral database with the `01-basic-aggregations` config materialized and
+  then broken one piece at a time. All skip themselves where the extra cannot
+  install. CI installs the extra on every leg; the marker keeps it empty on
+  3.10 and 3.11, which is the compatibility claim being tested.
+- **Docs**: a *Terminal cockpit* page under Reference, and a README section.
+
+- **Featurizer is archived on Zenodo and has a DOI.** The concept DOI
 - **Featurizer is archived on Zenodo and has a DOI.** The concept DOI
   [10.5281/zenodo.22287185](https://doi.org/10.5281/zenodo.22287185) always
   resolves to the latest archived version; v1.1.1 is

@@ -26,7 +26,7 @@ user-invocable: true
      snapshots of the BODY (from the H1 down) live in ~/.claude/skills/ and in
      the claude-tips skills catalog; they keep their own frontmatter. -->
 
-# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.1.1
+# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.2.0
 
 Featurizer implements Deep Feature Synthesis for relational PostgreSQL data with
 first-class temporal semantics. You declare an entity graph once; it traverses
@@ -373,6 +373,22 @@ Docs hub: https://ccd-ia.github.io/featurizer/ (configuration reference,
 primitives explorer, bridge cookbook, FAQ, ADRs). Distribution is GitHub
 releases on `ccd-ia/featurizer` (no PyPI, deliberate); each release also
 attaches a `docs-site-vX.Y.Z.tar.gz` snapshot. Pin
-`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.1.1`
+`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.2.0`
 (extras: `parquet` for Arrow/Parquet output, `bridge` for φ-bridges, `viz` for
-`FeaturizerViz`).
+`FeaturizerViz`, `tui` for the terminal cockpit — Python 3.12+ only, empty on
+3.10/3.11).
+
+**Terminal cockpit (1.2.0, `featurizer[tui]`, built on lynkeus):**
+`python -m featurizer tui --config path/to/config.yaml` shows one config
+against one database — source tables that exist (and the columns they lack),
+the entity graph as a tree with `v` running the validator, the manifest with
+`/` filtering through `f.manifest_matching`, the generated SQL per column
+group with `x` for a rolled-back `explain analyze`, and every
+`<stem>_manifest` table as a "run" with its group tables. Headless twins for
+agents: `status --config X --json`, `runs list|show --json`, `query SQL
+--json`, `actions list|run`. Two thin verbs over frozen methods: `render
+--config X [--group G]` (prints `f.query` / one `f.query_groups` entry) and
+`materialize --config X --schema S` (calls `f.to_tables`). Credentials come
+from `PG*`/`DATABASE_URL`; bare table names resolve via `search_path`
+(`PGOPTIONS="-csearch_path=…"`). No run ledger is added — a materialization is
+a table, not an event.

@@ -69,6 +69,33 @@ A simple configuration with customers and orders generates features like:
 -   `HOLT_WINTERS_TREND_14(orders.amount)` &#x2013; Trend direction over 14 periods
 
 
+## Terminal cockpit
+
+One config against one database, in the terminal: does every source table
+exist, what will be generated, what has been materialized, and does the
+manifest still describe the tables on disk. Built on
+[lynkeus](https://github.com/nanounanue/lynkeus), the Textual shell this
+workspace's data projects share, and installed as an extra because lynkeus
+needs Python 3.12 (the extra is empty on 3.10 and 3.11, and the verbs say so):
+
+    uv sync --extra tui                                  # in a checkout
+    python -m featurizer tui --config path/to/config.yaml
+
+Tabs 1–5 are the shell's (Status, Runs, Data, Query, Actions); 6–8 are
+featurizer's: the entity graph as a tree with `v` running the validator,
+the feature manifest with `/` filtering through `manifest_matching`, and the
+generated SQL one column group at a time with `x` for `explain analyze`
+(rolled back). Nothing on it writes; `featurizer materialize` runs from the
+Actions palette as a subprocess, confirmed first.
+
+The same data prints headlessly for agents and scripts — `status`, `runs
+list|show`, `query`, `actions list|run`, each with `--json` — and two thin
+verbs over frozen methods came with it: `render --config X [--group G]`
+prints `query` or one entry of `query_groups`, and `materialize --config X
+--schema S` calls `to_tables()`. Full page:
+[Terminal cockpit](https://ccd-ia.github.io/featurizer/reference/cockpit/).
+
+
 ## Output: DataFrame, Arrow, Parquet
 
 `to_dataframe()` is the notebook/EDA path: it runs the query, returns a pandas
@@ -644,7 +671,8 @@ Automating Data Science Endeavors*. IEEE DSAA, 2015.
 
 -   `featurizer/` &#x2013; Core modules (planner, sql, executor, validation)
 -   `featurizer/primitives/` &#x2013; Aggregation and transformation primitives
--   `tests/` &#x2013; Test suite (1,221 tests: 743 DB-free + 478 integration)
+-   `featurizer/tui/` &#x2013; The terminal cockpit on lynkeus (optional `tui` extra, Python 3.12+)
+-   `tests/` &#x2013; Test suite (1,242 tests: 762 DB-free + 480 integration)
 -   `examples/` &#x2013; Six self-contained examples executing against PostgreSQL
 -   `docs/` &#x2013; ADRs (15), primitives reference, and design notes
 
