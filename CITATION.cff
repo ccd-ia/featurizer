@@ -25,6 +25,9 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.22287186
     description: Version 1.1.1
+  - type: doi
+    value: 10.5281/zenodo.22315685
+    description: Version 1.2.0
 license: Apache-2.0
 repository-code: "https://github.com/ccd-ia/featurizer"
 url: "https://ccd-ia.github.io/featurizer/"
