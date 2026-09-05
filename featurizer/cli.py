@@ -7,6 +7,13 @@ Provides commands for discovering primitives, validating configs, and more.
 Usage:
     python -m featurizer list-primitives [--type agg|transform|all] [--show-sql]
     python -m featurizer validate <config.yaml>
+    python -m featurizer render --config <config.yaml> [--group group_000]
+    python -m featurizer materialize --config <config.yaml> --schema <schema>
+    python -m featurizer tui --config <config.yaml>          # featurizer[tui]
+    python -m featurizer status --config <config.yaml> [--json]
+    python -m featurizer runs list|show [--json]
+    python -m featurizer query "<sql>" [--json]
+    python -m featurizer actions list|run [--json]
 """
 
 from __future__ import annotations
@@ -1382,8 +1389,154 @@ def validate_command(args: argparse.Namespace) -> int:
         return 1
 
 
-def main(argv: Optional[List[str]] = None) -> int:
-    """Main entry point for CLI."""
+def render_command(args: argparse.Namespace) -> int:
+    """Print the generated SQL: the single query, or one column group."""
+    from .featurizer import Featurizer
+
+    featurizer = Featurizer(args.config)
+    if args.group is None:
+        try:
+            print(featurizer.query)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            print(
+                "  The matrix is too wide for one query; pick a group with "
+                "--group (see `featurizer status` for the group count).",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    groups = featurizer.query_groups
+    if args.group not in groups:
+        print(
+            f"Error: no column group {args.group!r}; this config has: "
+            + ", ".join(groups),
+            file=sys.stderr,
+        )
+        return 1
+    print(groups[args.group])
+    return 0
+
+
+def materialize_command(args: argparse.Namespace) -> int:
+    """Write the feature-group tables and the manifest into a schema."""
+    from .featurizer import Featurizer
+
+    featurizer = Featurizer(args.config)
+    stem = args.table_prefix or featurizer.target.alias
+    try:
+        tables = featurizer.to_tables(args.schema, table_prefix=args.table_prefix)
+    except RuntimeError as exc:  # no database configured (see arrow.default_connection)
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    for table in tables:
+        print(table.name)
+    print(f'"{args.schema}"."{stem}_manifest"')
+    return 0
+
+
+# ---------------------------------------------------------------- cockpit
+#
+# The five verbs below and ``tui`` are two renderings of one thing. The shell
+# reads the adapters in :mod:`featurizer.tui.adapters`; these print what those
+# same adapters return, as a table for a terminal or as JSON for an agent.
+# ``lynkeus.commands`` are plain functions rather than a CLI framework's
+# decorators precisely so an argparse project can wire them like this.
+#
+# ``featurizer.tui`` imports Textual and lynkeus, which the ``tui`` extra only
+# installs on Python 3.12 or newer; ``import featurizer`` never touches it.
+
+
+def _cockpit() -> Any:
+    """The ``featurizer.tui`` package, or ``None`` after saying what to install."""
+    try:
+        from . import tui
+    except ImportError as exc:
+        print(
+            "The cockpit is not installed: install featurizer[tui] on Python 3.12 "
+            f"or newer ({exc})",
+            file=sys.stderr,
+        )
+        return None
+    return tui
+
+
+def tui_command(args: argparse.Namespace) -> int:
+    """Open the terminal cockpit on one config."""
+    tui = _cockpit()
+    if tui is None:
+        return 2
+    tui.build_app(
+        args.config, schema=args.schema, poll_seconds=args.poll, parser=build_parser()
+    ).run()
+    return 0
+
+
+def status_command(args: argparse.Namespace) -> int:
+    """Print the config's facts and the database's answers."""
+    tui = _cockpit()
+    if tui is None:
+        return 2
+    from lynkeus import commands
+
+    project = tui.Project(args.config, tui.source_for(), schema=args.schema)
+    commands.status(tui.FeaturizerStatus(project), json_out=args.json)
+    return 0
+
+
+def runs_command(args: argparse.Namespace) -> int:
+    """List or show the materializations found in the database."""
+    tui = _cockpit()
+    if tui is None:
+        return 2
+    from lynkeus import commands
+
+    runs = tui.FeaturizerRuns(tui.source_for(), args.schema)
+    if args.runs_command == "list":
+        commands.runs_list(runs, args.limit, json_out=args.json)
+        return 0
+    try:
+        commands.runs_show(runs, args.run, json_out=args.json)
+    except KeyError as exc:
+        print(f"Error: {exc.args[0]}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def query_command(args: argparse.Namespace) -> int:
+    """Run one read-only statement and print its rows."""
+    tui = _cockpit()
+    if tui is None:
+        return 2
+    from lynkeus import commands
+
+    result = commands.query(tui.source_for(), args.sql, json_out=args.json)
+    # A failed statement is reported by the command function and must not look
+    # like an empty result set to whatever called this.
+    return 1 if result.error else 0
+
+
+def actions_command(args: argparse.Namespace) -> int:
+    """List the just recipes and featurizer verbs, or run one."""
+    tui = _cockpit()
+    if tui is None:
+        return 2
+    from lynkeus import commands
+
+    actions = tui.FeaturizerActions(parser=build_parser())
+    if args.actions_command == "list":
+        commands.actions_list(actions, json_out=args.json)
+        return 0
+    return commands.actions_run(actions, args.name, args.args)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI's parser, built without parsing anything.
+
+    Factored out of :func:`main` so the cockpit's Actions palette can enumerate
+    the verbs (``lynkeus.actions.argparse_actions``) instead of keeping a
+    second, hand-maintained list that drifts from this one.
+    """
     parser = argparse.ArgumentParser(
         prog="featurizer",
         description="Featurizer - Deep Feature Synthesis for PostgreSQL",
@@ -1428,6 +1581,113 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     validate_parser.set_defaults(func=validate_command)
 
+    # render command
+    render_parser = subparsers.add_parser(
+        "render",
+        help="Print the generated SQL (the single query, or one column group)",
+    )
+    render_parser.add_argument(
+        "--config", required=True, help="Path to YAML configuration file"
+    )
+    render_parser.add_argument(
+        "--group",
+        help="Print one column group (group_000, …) instead of the single query",
+    )
+    render_parser.set_defaults(func=render_command)
+
+    # materialize command
+    materialize_parser = subparsers.add_parser(
+        "materialize",
+        help="Write the feature-group tables and manifest into SCHEMA "
+        "(replaces existing ones)",
+    )
+    materialize_parser.add_argument(
+        "--config", required=True, help="Path to YAML configuration file"
+    )
+    materialize_parser.add_argument(
+        "--schema", required=True, help="Destination schema (created if absent)"
+    )
+    materialize_parser.add_argument(
+        "--table-prefix",
+        help="Table-name stem (default: the target alias)",
+    )
+    materialize_parser.set_defaults(func=materialize_command)
+
+    # --- tui and its headless twins ---
+    tui_parser = subparsers.add_parser(
+        "tui",
+        help="Open the terminal cockpit on a config (needs the tui extra)",
+    )
+    tui_parser.add_argument(
+        "--config", required=True, help="Path to YAML configuration file"
+    )
+    tui_parser.add_argument(
+        "--schema",
+        help="Only look for materializations in this schema (default: every schema)",
+    )
+    tui_parser.add_argument(
+        "--poll",
+        type=float,
+        default=5.0,
+        help="Seconds between refreshes of the active screen (0 turns polling off)",
+    )
+    tui_parser.set_defaults(func=tui_command)
+
+    status_parser = subparsers.add_parser(
+        "status",
+        help="The config's facts, source-table checks and materializations",
+    )
+    status_parser.add_argument(
+        "--config", required=True, help="Path to YAML configuration file"
+    )
+    status_parser.add_argument(
+        "--schema",
+        help="Only look for materializations in this schema (default: every schema)",
+    )
+    status_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    status_parser.set_defaults(func=status_command)
+
+    runs_parser = subparsers.add_parser(
+        "runs",
+        help="The materializations in the database, one per <stem>_manifest table",
+    )
+    runs_sub = runs_parser.add_subparsers(dest="runs_command", required=True)
+    runs_list = runs_sub.add_parser("list", help="Every materialization")
+    runs_list.add_argument("--limit", type=int, default=20)
+    runs_list.add_argument("--schema", help="Only this schema")
+    runs_list.add_argument("--json", action="store_true")
+    runs_show = runs_sub.add_parser("show", help="One materialization and its groups")
+    runs_show.add_argument("run", help="schema.stem, or a unique prefix of one")
+    runs_show.add_argument("--schema", help="Only this schema")
+    runs_show.add_argument("--json", action="store_true")
+    runs_parser.set_defaults(func=runs_command)
+
+    query_parser = subparsers.add_parser(
+        "query",
+        help="Run one read-only statement against the database",
+    )
+    query_parser.add_argument("sql", help="The statement. Read-only, rolled back")
+    query_parser.add_argument("--json", action="store_true", help="Emit JSON records")
+    query_parser.set_defaults(func=query_command)
+
+    actions_parser = subparsers.add_parser(
+        "actions",
+        help="The just recipes and featurizer verbs the cockpit offers",
+    )
+    actions_sub = actions_parser.add_subparsers(dest="actions_command", required=True)
+    actions_list = actions_sub.add_parser("list", help="Every action")
+    actions_list.add_argument("--json", action="store_true")
+    actions_run = actions_sub.add_parser("run", help="Run one, streaming its output")
+    actions_run.add_argument("name", help='Action name, e.g. "just test-fast"')
+    actions_run.add_argument("args", nargs="*", help="Arguments passed through")
+    actions_parser.set_defaults(func=actions_command)
+
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Main entry point for CLI."""
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:

@@ -73,6 +73,14 @@ bridge = [
 parquet = [
     "pyarrow>=24.0.0",
 ]
+# The terminal cockpit (featurizer/tui/), on the shared lynkeus shell. lynkeus
+# needs Python 3.12; featurizer's floor is 3.10, so the extra is empty on 3.10
+# and 3.11 and `python -m featurizer tui` says so and exits 2 there. Pinned to
+# a public git tag, as consumers pin featurizer: no PyPI, and a tag is the only
+# ref that cannot move under a lock file.
+tui = [
+    "lynkeus @ git+https://github.com/nanounanue/lynkeus.git@v0.3.1 ; python_version >= '3.12'",
+]
 
 [dependency-groups]
 # Python side of the docs-site build (site/gen.py): notebook -> markdown
@@ -103,6 +111,13 @@ dev = [
     "datasketch>=1.6",
     "pytest>=8.2",
     "pytest-cov>=7.0.0",
+    # The cockpit's snapshot tests (tests/test_tui_screens.py) need the
+    # pytest-textual-snapshot fixture; both it and the `tui` extra follow the
+    # same version marker so 3.10 and 3.11 never see Textual. The self-reference
+    # makes a plain `uv sync` bring the cockpit on 3.12+, the way CI installs it
+    # with `--extra tui`.
+    "featurizer[tui] ; python_version >= '3.12'",
+    "pytest-textual-snapshot>=1.1 ; python_version >= '3.12'",
     # Pinned exactly, not floored. The formatter's output is not stable across
     # minor releases (0.9 rewrapped assert messages, 0.12 normalized quotes
     # inside f-strings), and an unpinned ruff means every contributor on a
@@ -171,6 +186,12 @@ exclude_lines = [
 [build-system]
 requires = ["hatchling>=1.13"]
 build-backend = "hatchling.build"
+
+# lynkeus (the `tui` extra) is pinned as a direct git reference to a tag;
+# hatchling rejects direct references in project metadata unless this is
+# opted in. meio-sim and triage-pg carry the same line for the same reason.
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["featurizer"]
