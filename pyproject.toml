@@ -79,7 +79,7 @@ parquet = [
 # a public git tag, as consumers pin featurizer: no PyPI, and a tag is the only
 # ref that cannot move under a lock file.
 tui = [
-    "lynkeus @ git+https://github.com/nanounanue/lynkeus.git@v0.3.1 ; python_version >= '3.12'",
+    "lynkeus @ git+https://github.com/nanounanue/lynkeus.git@v0.3.2 ; python_version >= '3.12'",
 ]
 
 [dependency-groups]

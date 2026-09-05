@@ -975,7 +975,7 @@ requires-dist = [
     { name = "datasketch", marker = "extra == 'bridge'", specifier = ">=1.6" },
     { name = "icecream" },
     { name = "loguru" },
-    { name = "lynkeus", marker = "python_full_version >= '3.12' and extra == 'tui'", git = "https://github.com/nanounanue/lynkeus.git?rev=v0.3.1" },
+    { name = "lynkeus", marker = "python_full_version >= '3.12' and extra == 'tui'", git = "https://github.com/nanounanue/lynkeus.git?rev=v0.3.2" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.5" },
     { name = "networkx", marker = "extra == 'bridge'", specifier = ">=3" },
     { name = "networkx", marker = "extra == 'viz'", specifier = ">=3" },
@@ -1657,8 +1657,8 @@ wheels = [
 
 [[package]]
 name = "lynkeus"
-version = "0.3.1"
-source = { git = "https://github.com/nanounanue/lynkeus.git?rev=v0.3.1#1912f62c848a61217067fd0239ffe9e48a0f01d8" }
+version = "0.3.2"
+source = { git = "https://github.com/nanounanue/lynkeus.git?rev=v0.3.2#9565fa19e8ff52aada0d6508c1d81037f9f4a5f0" }
 dependencies = [
     { name = "loguru", marker = "python_full_version >= '3.12'" },
     { name = "psycopg", extra = ["binary"], marker = "python_full_version >= '3.12'" },

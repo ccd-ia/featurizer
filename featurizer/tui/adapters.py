@@ -433,8 +433,8 @@ def run_for(materialization: Materialization) -> Run:
         started_at=None,
         finished_at=None,
         detail=(
-            f"{len(materialization.manifest)} features / {n_groups} "
-            f"group{'s' if n_groups != 1 else ''}"
+            f"{materialization.schema} · {len(materialization.manifest)} features"
+            f" / {n_groups} group{'s' if n_groups != 1 else ''}"
             + (
                 f" · {len(materialization.missing_groups)} missing"
                 if not materialization.complete
@@ -620,6 +620,9 @@ class FeaturizerRuns:
 
     #: Shown in the Runs screen's progress panel title.
     mode = "nothing to stream"
+    #: A run id here is ``schema.stem``, a name and not a hash; the shell's
+    #: default of eight characters would show ``example_`` for every one.
+    id_width = 20
 
     def __init__(self, source: PgSource, schema: Optional[str] = None) -> None:
         self.source = source
