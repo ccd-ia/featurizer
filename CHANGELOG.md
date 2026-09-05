@@ -49,7 +49,9 @@ and the headless twins of the screens.
   palette enumerates the verbs instead of keeping a second list.
 - **Tests** in both tiers: `tests/test_tui_screens.py` photographs each
   screen over fake adapters (DB-free, `pytest-textual-snapshot`);
-  `tests/test_tui_cli.py` covers the verbs, the actions and the models;
+  `tests/test_tui_cli.py` covers the verbs without lynkeus — so the exit-2
+  path is exercised on 3.10 and 3.11 too — and `tests/test_tui_models.py`
+  the actions and the models;
   `tests/integration/test_tui_adapters.py` runs the adapters against the
   ephemeral database with the `01-basic-aggregations` config materialized and
   then broken one piece at a time. All skip themselves where the extra cannot
