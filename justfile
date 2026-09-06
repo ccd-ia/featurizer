@@ -17,11 +17,21 @@ pg_url    := "postgresql://postgres:postgres@localhost:" + pg_port + "/featurize
 default:
     @just --list
 
-# Start an ephemeral PostgreSQL 16 for integration tests (removed on stop)
+# Start an ephemeral PostgreSQL 16 for integration tests (removed on stop).
+# Idempotent: several sessions share one machine, and `--rm` only removes the
+# container when it STOPS, so a container another session left running used to
+# fail this recipe on a name conflict. Reusing it is right — same image, name
+# and port this recipe would have created — but note the corollary: the
+# container is shared, so `just db-down` stops it for every session, not only
+# yours.
 db-up:
-    docker run -d --rm --name {{container}} \
-      -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=featurizer_test \
-      -p {{pg_port}}:5432 postgres:16
+    @if [ -n "$(docker ps -q -f name=^{{container}}$)" ]; then \
+      echo "reusing the running {{container}} on port {{pg_port}} (shared: db-down stops it for everyone)"; \
+    else \
+      docker run -d --rm --name {{container}} \
+        -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=featurizer_test \
+        -p {{pg_port}}:5432 postgres:16; \
+    fi
     @printf 'waiting for postgres'
     @until docker exec {{container}} pg_isready -U postgres -d featurizer_test >/dev/null 2>&1; do printf '.'; sleep 0.5; done
     @printf ' ready\n'
