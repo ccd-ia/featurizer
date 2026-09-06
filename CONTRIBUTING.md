@@ -116,19 +116,32 @@ must be current with `master` before it merges: rebase, `git push
 --force-with-lease`, wait for the checks, then `gh pr merge --rebase
 --delete-branch`. Linear history is required, so no merge commits.
 
-**Run that last command from the main checkout, not from inside the worktree
-rule 5 gives you.** After the merge lands, `gh` runs `git checkout master`
-locally to get off the branch it is about to delete, and in a linked worktree
-that is fatal — `master` is already checked out in the main working copy:
+**Remove the worktree before you merge, then merge from the main checkout.**
+`gh pr merge --delete-branch` finishes with local git work — get off the
+branch, delete it locally, then delete it on the remote — and a worktree
+holding that branch breaks the sequence in two different places:
 
 ```
+# merging from inside the worktree — gh cannot leave the branch
 failed to run git: fatal: 'master' is already used by worktree at '…/featurizer'
+
+# merging from the main checkout while the worktree still exists
+failed to delete local branch <branch>: … cannot delete branch '<branch>'
+used by worktree at '…/.worktrees/<need>'
 ```
 
-The pull request is already merged when that appears; only `gh`'s local
-cleanup failed. If you hit it, confirm with `gh pr view <n> --json state` and
-delete the branch by hand (`git push origin --delete <branch>`). Merging from
-the main checkout, or removing the worktree first, avoids it entirely.
+Either way **the pull request is already merged** — only the cleanup failed,
+and because the remote delete comes last, both branch copies survive. So the
+order that works is:
+
+```bash
+git worktree remove .worktrees/<need>          # from the main checkout
+gh pr merge <n> --rebase --delete-branch
+```
+
+If you hit one of the errors anyway, confirm the merge with `gh pr view <n>
+--json state` and finish by hand: `git branch -D <branch>` and `git push
+origin --delete <branch>`.
 
 Tags are not branches, and the release process below is unchanged by any of
 this: `git push origin vX.Y.Z` still triggers `release.yml`. Put the tag on
