@@ -154,3 +154,6 @@ COMPACT-archive-*.md
 !.claude/
 .claude/*
 !.claude/skills/
+
+# Session-local worktrees (see CONTRIBUTING: branch off origin/master)
+.worktrees/

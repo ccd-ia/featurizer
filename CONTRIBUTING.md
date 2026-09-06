@@ -106,6 +106,78 @@ These are deliberate and documented rather than silently configured — do not
   integration/realistic tiers carry the correctness burden the number
   doesn't show.
 
+## Changing featurizer from a consumer or another session
+
+`master` is protected. Nobody pushes to it — not a consumer session, not this
+repository's own. Every change arrives as a pull request that goes green on the
+eight required contexts (`fast tests (py 3.10 … 3.13)`, `integration
+(PostgreSQL 14 · 16 · 17)`, `packaging (build + twine check)`), and the branch
+must be current with `master` before it merges: rebase, `git push
+--force-with-lease`, wait for the checks, then `gh pr merge --rebase
+--delete-branch`. Linear history is required, so no merge commits.
+
+Tags are not branches, and the release process below is unchanged by any of
+this: `git push origin vX.Y.Z` still triggers `release.yml`. Put the tag on
+`master` *after* the merge, on the merged commit — never on a pull-request
+branch.
+
+Six rules govern what may be a pull request at all.
+
+**1. Issue first, and read before opening one.** Run `gh issue list` and `gh pr
+list` before you open anything. If an issue or a pull request already covers
+the need, comment there and pin its branch locally while you work — never open
+a second one. One need, one thread.
+
+**2. A need that touches every consumer is issue-only.** The Python floor
+(3.10) or a new cap, `uv.lock`, anything on ADR-0015's freeze list (the YAML
+config schema, the `Featurizer` public surface and its return shapes, the
+ADR-0007 output-naming contract, the imputation contract, the ADR-0001/0014
+bridge contract), an output-naming or imputation default: open an issue and
+stop there. This repository's own session makes the change and cuts the
+release, because it is the only session that can see all the consumers at
+once. A freeze-list change is a **major version and a deprecation cycle**, as
+the stability policy above and `CLAUDE.md` both say — the issue is where that
+is decided, not a pull request that has already written the code.
+
+**3. A local additive fix may be a pull request.** A new aggregation or
+transformation primitive, a new φ-bridge family, a cockpit screen — additive,
+nothing existing moved. The pull request references its issue and carries the
+test that fails without it (the three-tier convention above says which tests a
+new family owes). The review is three checks:
+
+- CI green on all eight contexts;
+- nothing on the freeze list moved;
+- no signature changed.
+
+**4. Pull requests do not edit `CHANGELOG.md`.** The release commit writes the
+version's section from the merged pull requests; that section is what
+`release.yml`'s guard already checks for at tag time (step 1 below). A pull
+request describes its change in its own body instead — that body is the raw
+material for the section. This is also why two open pull requests never
+conflict on the same three lines under `## [Unreleased]`.
+
+**5. Branch in a worktree off `origin/master`, named `<who>/<need>`.**
+
+```bash
+git worktree add .worktrees/<need> -b <who>/<need> origin/master
+```
+
+Another session may have `~/projects/featurizer` on a branch of its own; a
+worktree off `origin/master` never moves under it. `.worktrees/` is gitignored.
+Examples: `triage-pg/neighbour-share-denominator`, `policy/protected-master`.
+
+**6. In a committed `pyproject.toml`, a dependency is pinned to a tag** — never
+to a branch, a commit, or a path. Both directions of the seam obey this: the
+`tui` extra pins lynkeus as `lynkeus @ git+…/lynkeus.git@vX.Y.Z ;
+python_version >= '3.12'`, and consumers pin *this* repository the same way —
+`triage-pg` carries `featurizer[parquet] @
+git+https://github.com/ccd-ia/featurizer.git@v1.1.0`. There is no PyPI,
+deliberately (see the release process below), so the tag **is** the
+distribution channel and a branch pin is a moving target dressed as a version.
+An editable path (`uv add --editable ../featurizer`) or a branch pin is a
+working state: keep it in the uncommitted tree, swap it back to a tag before
+the commit.
+
 ## Release process
 
 Releases ride the CI/CD pipeline (`.github/workflows/release.yml`); nothing is

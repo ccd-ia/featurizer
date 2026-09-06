@@ -615,6 +615,11 @@ Run the test suite with:
     # With coverage report
     uv run pytest --cov=featurizer --cov-report=term-missing
 
+`master` is protected: every change lands through a pull request that goes
+green on the eight CI contexts, and what may be a pull request at all — as
+against an issue for this repository's own session — is the six rules under
+[Changing featurizer from a consumer or another session](CONTRIBUTING.md#changing-featurizer-from-a-consumer-or-another-session).
+
 ### Stability (v1.0+)
 
 Featurizer 1.0 is a **written stability commitment**, not just a version
