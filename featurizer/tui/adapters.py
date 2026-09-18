@@ -490,12 +490,18 @@ class FeaturizerStatus:
                 )
             )
         for m in inspection.materializations:
+            # The stem, not ``run_id`` (``schema.stem``): the Status panel sizes
+            # ONE label column to the widest thing in it, so a qualified name
+            # here costs every extras row the same characters and truncates
+            # them at 110 columns. The schema is not lost — it moves to the
+            # note, which is what ``run_for`` already does for the Runs list
+            # beside this panel, and what the entity gauges above already do.
             gauges.append(
                 Gauge(
-                    m.run_id,
+                    m.stem,
                     float(len(m.groups) - len(m.missing_groups)),
                     total=float(len(m.groups)),
-                    note="group tables",
+                    note=f"{m.schema} · group tables",
                 )
             )
         return Status(
