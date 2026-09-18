@@ -8,13 +8,13 @@ intervals:
   - P2W
   - P1M
 
-# whitelist:
-#   transformations: ['']
-#   aggregations: ['count']
-
-# blacklist:
-#   transformations: ['']
-#   aggregations: ['count']
+# Narrow the primitive set with the top-level `aggregations:` /
+# `transformations:` lists — an explicit list replaces the defaults, and an
+# empty list suppresses that layer entirely. (Earlier revisions of this file
+# advertised `whitelist:` / `blacklist:` blocks; nothing ever read them.)
+#
+# aggregations: [count, sum, mean]
+# transformations: [identity]
 
 entities:
   -
@@ -34,16 +34,8 @@ entities:
     variables:
       peso:
         type: numeric
-        intervals:
-          - P1D
-          - P3D
-          - P1W
       frecuencia_cardiaca:
         type: numeric
-        intervals:
-          - P1D
-          - P3D
-          - P1W
 
   # -
   #   alias: gender
@@ -62,10 +54,6 @@ entities:
     variables:
       health_status:
         type: text
-        intervals:
-          - P1W
-          - P2W
-          - P1M
   -
     alias: care_plans
     id: care_plan
