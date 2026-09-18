@@ -9,7 +9,7 @@
         -- sythetize aggregations and direct features for care_plans
         care_plans_synth as (
         select
-        analytics.care_plans.plan_id, analytics.care_plans.effective_at, analytics.care_plans.patient_id, risk_score
+        analytics.care_plans."plan_id", analytics.care_plans."effective_at", analytics.care_plans."patient_id", "risk_score"
         from analytics.care_plans
         
         
@@ -18,14 +18,14 @@
         -- transform care_plans
         care_plans_transform as (
         select
-        plan_id, effective_at, patient_id,  abs(risk_score)  as "ABS(care_plans.risk_score)" , risk_score as risk_score
+        "plan_id", "effective_at", "patient_id",  abs(risk_score)  as "ABS(care_plans.risk_score)" , "risk_score" as "risk_score"
         from care_plans_synth _ego
         )
         ,
         -- sythetize aggregations and direct features for visits
         visits_synth as (
         select
-        analytics.visits.visit_id, analytics.visits.visited_at, analytics.visits.patient_id, duration_minutes
+        analytics.visits."visit_id", analytics.visits."visited_at", analytics.visits."patient_id", "duration_minutes"
         from analytics.visits
         
         
@@ -34,7 +34,7 @@
         -- transform visits
         visits_transform as (
         select
-        visit_id, visited_at, patient_id,  abs(duration_minutes)  as "ABS(visits.duration_minutes)" , duration_minutes as duration_minutes
+        "visit_id", "visited_at", "patient_id",  abs(duration_minutes)  as "ABS(visits.duration_minutes)" , "duration_minutes" as "duration_minutes"
         from visits_synth _ego
         )
         ,
@@ -51,7 +51,7 @@
         -- sythetize aggregations and direct features for patients
         patients_synth as (
         select
-        analytics.patients.patient_id, analytics.patients.registered_at, "ABS(care_plans.risk_score)", "COUNT(visits.visit_id)", "COUNT(visits.visit_id|interval=P1D)", "COUNT(visits.visited_at)", "COUNT(visits.visited_at|interval=P1D)", "MEAN(visits.ABS(visits.duration_minutes))", "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEAN(visits.duration_minutes)", "MEAN(visits.duration_minutes|interval=P1D)", "MEDIAN(visits.ABS(visits.duration_minutes))", "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEDIAN(visits.duration_minutes)", "MEDIAN(visits.duration_minutes|interval=P1D)", "SUM(visits.ABS(visits.duration_minutes))", "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)", "SUM(visits.duration_minutes)", "SUM(visits.duration_minutes|interval=P1D)", age, risk_score
+        analytics.patients."patient_id", analytics.patients."registered_at", "ABS(care_plans.risk_score)", "COUNT(visits.visit_id)", "COUNT(visits.visit_id|interval=P1D)", "COUNT(visits.visited_at)", "COUNT(visits.visited_at|interval=P1D)", "MEAN(visits.ABS(visits.duration_minutes))", "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEAN(visits.duration_minutes)", "MEAN(visits.duration_minutes|interval=P1D)", "MEDIAN(visits.ABS(visits.duration_minutes))", "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEDIAN(visits.duration_minutes)", "MEDIAN(visits.duration_minutes|interval=P1D)", "SUM(visits.ABS(visits.duration_minutes))", "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)", "SUM(visits.duration_minutes)", "SUM(visits.duration_minutes|interval=P1D)", "age", "risk_score"
         from analytics.patients
          left join 
          lateral (
@@ -68,7 +68,7 @@
         -- transform patients
         patients_transform as (
         select
-        patient_id, registered_at,  abs("ABS(care_plans.risk_score)")  as "ABS(care_plans.ABS(care_plans.risk_score))" , "ABS(care_plans.risk_score)" as "ABS(care_plans.risk_score)",  abs("COUNT(visits.visit_id)")  as "ABS(patients.COUNT(visits.visit_id))" ,  abs("COUNT(visits.visit_id|interval=P1D)")  as "ABS(patients.COUNT(visits.visit_id|interval=P1D))" ,  abs("COUNT(visits.visited_at)")  as "ABS(patients.COUNT(visits.visited_at))" ,  abs("COUNT(visits.visited_at|interval=P1D)")  as "ABS(patients.COUNT(visits.visited_at|interval=P1D))" ,  abs("MEAN(visits.ABS(visits.duration_minutes))")  as "ABS(patients.MEAN(visits.ABS(visits.duration_minutes)))" ,  abs("MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.MEAN(visits.ABS(visits.duration_minutes)|~cbc003d9" ,  abs("MEAN(visits.duration_minutes)")  as "ABS(patients.MEAN(visits.duration_minutes))" ,  abs("MEAN(visits.duration_minutes|interval=P1D)")  as "ABS(patients.MEAN(visits.duration_minutes|interval=P1D))" ,  abs("MEDIAN(visits.ABS(visits.duration_minutes))")  as "ABS(patients.MEDIAN(visits.ABS(visits.duration_minutes)))" ,  abs("MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.MEDIAN(visits.ABS(visits.duration_minutes~ad7c8f19" ,  abs("MEDIAN(visits.duration_minutes)")  as "ABS(patients.MEDIAN(visits.duration_minutes))" ,  abs("MEDIAN(visits.duration_minutes|interval=P1D)")  as "ABS(patients.MEDIAN(visits.duration_minutes|interval=P1D))" ,  abs("SUM(visits.ABS(visits.duration_minutes))")  as "ABS(patients.SUM(visits.ABS(visits.duration_minutes)))" ,  abs("SUM(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.SUM(visits.ABS(visits.duration_minutes)|i~45bdae0d" ,  abs("SUM(visits.duration_minutes)")  as "ABS(patients.SUM(visits.duration_minutes))" ,  abs("SUM(visits.duration_minutes|interval=P1D)")  as "ABS(patients.SUM(visits.duration_minutes|interval=P1D))" ,  abs(age)  as "ABS(patients.age)" , "COUNT(visits.visit_id)" as "COUNT(visits.visit_id)", "COUNT(visits.visit_id|interval=P1D)" as "COUNT(visits.visit_id|interval=P1D)", "COUNT(visits.visited_at)" as "COUNT(visits.visited_at)", "COUNT(visits.visited_at|interval=P1D)" as "COUNT(visits.visited_at|interval=P1D)", "MEAN(visits.ABS(visits.duration_minutes))" as "MEAN(visits.ABS(visits.duration_minutes))", "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)" as "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEAN(visits.duration_minutes)" as "MEAN(visits.duration_minutes)", "MEAN(visits.duration_minutes|interval=P1D)" as "MEAN(visits.duration_minutes|interval=P1D)", "MEDIAN(visits.ABS(visits.duration_minutes))" as "MEDIAN(visits.ABS(visits.duration_minutes))", "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)" as "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEDIAN(visits.duration_minutes)" as "MEDIAN(visits.duration_minutes)", "MEDIAN(visits.duration_minutes|interval=P1D)" as "MEDIAN(visits.duration_minutes|interval=P1D)", "SUM(visits.ABS(visits.duration_minutes))" as "SUM(visits.ABS(visits.duration_minutes))", "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)" as "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)", "SUM(visits.duration_minutes)" as "SUM(visits.duration_minutes)", "SUM(visits.duration_minutes|interval=P1D)" as "SUM(visits.duration_minutes|interval=P1D)", age as age, risk_score as risk_score
+        "patient_id", "registered_at",  abs("ABS(care_plans.risk_score)")  as "ABS(care_plans.ABS(care_plans.risk_score))" , "ABS(care_plans.risk_score)" as "ABS(care_plans.risk_score)",  abs("COUNT(visits.visit_id)")  as "ABS(patients.COUNT(visits.visit_id))" ,  abs("COUNT(visits.visit_id|interval=P1D)")  as "ABS(patients.COUNT(visits.visit_id|interval=P1D))" ,  abs("COUNT(visits.visited_at)")  as "ABS(patients.COUNT(visits.visited_at))" ,  abs("COUNT(visits.visited_at|interval=P1D)")  as "ABS(patients.COUNT(visits.visited_at|interval=P1D))" ,  abs("MEAN(visits.ABS(visits.duration_minutes))")  as "ABS(patients.MEAN(visits.ABS(visits.duration_minutes)))" ,  abs("MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.MEAN(visits.ABS(visits.duration_minutes)|~cbc003d9" ,  abs("MEAN(visits.duration_minutes)")  as "ABS(patients.MEAN(visits.duration_minutes))" ,  abs("MEAN(visits.duration_minutes|interval=P1D)")  as "ABS(patients.MEAN(visits.duration_minutes|interval=P1D))" ,  abs("MEDIAN(visits.ABS(visits.duration_minutes))")  as "ABS(patients.MEDIAN(visits.ABS(visits.duration_minutes)))" ,  abs("MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.MEDIAN(visits.ABS(visits.duration_minutes~ad7c8f19" ,  abs("MEDIAN(visits.duration_minutes)")  as "ABS(patients.MEDIAN(visits.duration_minutes))" ,  abs("MEDIAN(visits.duration_minutes|interval=P1D)")  as "ABS(patients.MEDIAN(visits.duration_minutes|interval=P1D))" ,  abs("SUM(visits.ABS(visits.duration_minutes))")  as "ABS(patients.SUM(visits.ABS(visits.duration_minutes)))" ,  abs("SUM(visits.ABS(visits.duration_minutes)|interval=P1D)")  as "ABS(patients.SUM(visits.ABS(visits.duration_minutes)|i~45bdae0d" ,  abs("SUM(visits.duration_minutes)")  as "ABS(patients.SUM(visits.duration_minutes))" ,  abs("SUM(visits.duration_minutes|interval=P1D)")  as "ABS(patients.SUM(visits.duration_minutes|interval=P1D))" ,  abs(age)  as "ABS(patients.age)" , "COUNT(visits.visit_id)" as "COUNT(visits.visit_id)", "COUNT(visits.visit_id|interval=P1D)" as "COUNT(visits.visit_id|interval=P1D)", "COUNT(visits.visited_at)" as "COUNT(visits.visited_at)", "COUNT(visits.visited_at|interval=P1D)" as "COUNT(visits.visited_at|interval=P1D)", "MEAN(visits.ABS(visits.duration_minutes))" as "MEAN(visits.ABS(visits.duration_minutes))", "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)" as "MEAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEAN(visits.duration_minutes)" as "MEAN(visits.duration_minutes)", "MEAN(visits.duration_minutes|interval=P1D)" as "MEAN(visits.duration_minutes|interval=P1D)", "MEDIAN(visits.ABS(visits.duration_minutes))" as "MEDIAN(visits.ABS(visits.duration_minutes))", "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)" as "MEDIAN(visits.ABS(visits.duration_minutes)|interval=P1D)", "MEDIAN(visits.duration_minutes)" as "MEDIAN(visits.duration_minutes)", "MEDIAN(visits.duration_minutes|interval=P1D)" as "MEDIAN(visits.duration_minutes|interval=P1D)", "SUM(visits.ABS(visits.duration_minutes))" as "SUM(visits.ABS(visits.duration_minutes))", "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)" as "SUM(visits.ABS(visits.duration_minutes)|interval=P1D)", "SUM(visits.duration_minutes)" as "SUM(visits.duration_minutes)", "SUM(visits.duration_minutes|interval=P1D)" as "SUM(visits.duration_minutes|interval=P1D)", "age" as "age", "risk_score" as "risk_score"
         from patients_synth _ego
         )
         

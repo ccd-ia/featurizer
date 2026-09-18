@@ -47,6 +47,7 @@ from .primitives import (
     SpatialRelationshipSpec,
     Variable,
     pg_identifier,
+    quote_if_bare,
 )
 from .primitives.aggregations import haversine_m
 from .primitives.transformations import TRANSFORM_EGO_ALIAS
@@ -1838,24 +1839,44 @@ class FeaturePlanner:
     def _build_synth_cte(self, target: Entity) -> None:
         cte_table = f"{target.alias}_synth"
 
+        # Two forms, deliberately: ``id_columns`` is METADATA — it becomes the
+        # spec's ``key_columns``, which the sharder unqualifies with ``_bare``
+        # and ADR-0015 freezes as the group tables' leading columns — so it
+        # stays exactly as before, table-qualified and unquoted.
+        # ``projected_ids`` is the SQL, and carries the quoting.
         id_columns = [
             f"{target.table}.{name}" for name in self._identifier_columns(target)
+        ]
+        projected_ids = [
+            f"{target.table}.{quote_if_bare(name)}"
+            for name in self._identifier_columns(target)
         ]
         feature_names = [
             feature.name
             for feature in self._sort_features(self._features[target.alias])
             if feature.type not in ["index", "key"]
         ]
+        # The projection is a MIXED list: generated features (aggregates, as-of
+        # pulls) arrive already delimited, the target's own declared variables
+        # arrive exactly as the config wrote them. Emitting the latter bare is
+        # only invisible while every declared name is a plain identifier — a
+        # target whose columns are themselves generated names renders
+        # ``select MEAN(x.y) as MEAN(x.y)``, which PostgreSQL parses as an
+        # aggregate call over a column that does not exist (issue #13).
+        # ``quote_if_bare`` leaves the already-delimited ones alone.
+        projected_features = [quote_if_bare(name) for name in feature_names]
 
         # Record what synth projects so the transform CTE can reference these
         # columns by name instead of re-rendering their (base-table) definitions.
+        # Keyed on the OUTPUT name, not the projection expression: quoting
+        # changes how the column is written, never what it is called.
         self._synth_columns[target.alias] = set(feature_names)
 
         cte_query = f"""
         -- sythetize aggregations and direct features for {target.alias}
         {cte_table} as (
         select
-        {", ".join(id_columns + feature_names)}
+        {", ".join(projected_ids + projected_features)}
         from {target.table}
         {" left join " if self._joins[target.alias] else ""}
         {" left join ".join(self._joins[target.alias])}
@@ -1873,7 +1894,12 @@ class FeaturePlanner:
             f"{target.alias}\n        {cte_table} as (\n        select\n        "
         )
         suffix = f"\n        from {target.table}"
-        columns = [ColumnSpec(name=name, projection=name) for name in feature_names]
+        # ``name`` stays the output name (what the group table is keyed on);
+        # ``projection`` is the SQL, so it carries the quoting.
+        columns = [
+            ColumnSpec(name=name, projection=quote_if_bare(name))
+            for name in feature_names
+        ]
         spec = ShardableCTE(
             name=cte_table,
             kind="synth",
@@ -1921,7 +1947,8 @@ class FeaturePlanner:
                 # own definition references base-table columns absent from synth,
                 # so reference it by name. feature.name is already quoted when
                 # it needs to be.
-                projection = f"{feature.name} as {feature.name}"
+                quoted = quote_if_bare(feature.name)
+                projection = f"{quoted} as {quoted}"
                 # A pass-through depends on exactly its own synth column.
                 depends = frozenset({feature.name})
             else:
@@ -1941,7 +1968,7 @@ class FeaturePlanner:
         -- transform {target.alias}
         {cte_table} as (
         select
-        {", ".join(id_columns + rendered_features)}
+        {", ".join([quote_if_bare(name) for name in id_columns] + rendered_features)}
         from {target.alias}_synth {TRANSFORM_EGO_ALIAS}
         )
         """

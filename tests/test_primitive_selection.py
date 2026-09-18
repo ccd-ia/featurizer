@@ -168,4 +168,4 @@ def test_both_layers_empty_leaves_direct_passthrough_only():
     for marker in _TRANSFORM_MARKERS:
         assert marker not in query
     # The direct variable passes through the transform CTE unchanged.
-    assert "age as age" in query
+    assert '"age" as "age"' in query

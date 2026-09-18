@@ -56,8 +56,32 @@ def pg_identifier(raw: str) -> str:
 
     Long names are capped via :func:`_truncate_identifier` before quoting so
     they survive PostgreSQL's 63-byte cap without silently colliding (bug #8).
+
+    For a name featurizer did *not* generate — a column declared in the config
+    — use :func:`quote_if_bare` instead. This function is lossy by design
+    (it hash-caps past 63 bytes and drops embedded quotes), which is right
+    when featurizer owns the name and wrong when the database does.
     """
     return f'"{_truncate_identifier(raw)}"'
+
+
+def quote_if_bare(raw: str) -> str:
+    """Quote a *declared* column name, byte for byte, unless already delimited.
+
+    Declared variable and identifier names reach the planner exactly as the
+    config wrote them, and the database — not featurizer — owns them, so the
+    rendered reference has to match the real column. That rules out
+    :func:`pg_identifier`, which is deliberately lossy for generated names:
+    it hash-caps anything over 63 bytes (PostgreSQL truncates rather than
+    hashes, so the capped form would name no column) and strips embedded
+    quotes (``he"llo`` would silently become ``hello``).
+
+    Generated features arrive already delimited and pass through untouched,
+    so this is safe to apply to a mixed projection (issue #13).
+    """
+    if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
+        return raw
+    return '"' + raw.replace('"', '""') + '"'
 
 
 class ERGraph:

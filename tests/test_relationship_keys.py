@@ -81,7 +81,8 @@ class TestAggregationDirection:
     def test_child_key_is_carried_through_child_transform(self):
         sql = _render(_differing_keys_aggregation_config())
         synth = _segment(sql, "orders_synth as (", "orders_transform as (")
-        assert "orders.buyer_id" in synth
+        # The FK is projected from the base table, delimited (issue #13).
+        assert 'orders."buyer_id"' in synth
 
 
 class TestDirectTransferDirection:
@@ -136,7 +137,7 @@ class TestDirectTransferDirection:
     def test_parent_key_is_carried_through_parent_transform(self):
         sql = _render(self._config())
         synth = _segment(sql, "customers_synth as (", "customers_transform as (")
-        assert "customers.customer_ref" in synth
+        assert 'customers."customer_ref"' in synth
 
 
 class TestAsOfDirection:
@@ -183,7 +184,7 @@ class TestAsOfDirection:
     def test_parent_key_projected_in_parent_synth(self):
         sql = _render(self._config())
         synth = _segment(sql, "care_plans_synth as (", "care_plans_transform as (")
-        assert "care_plans.patient_ref" in synth
+        assert 'care_plans."patient_ref"' in synth
 
 
 class TestEqualKeysUnchanged:

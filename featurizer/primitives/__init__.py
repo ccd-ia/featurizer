@@ -17,6 +17,7 @@ from .abstractions import (
     SpatialRelationshipSpec,
     Variable,
     pg_identifier,
+    quote_if_bare,
 )
 from .aggregations import Aggregator
 from .transformations import Transformer
@@ -37,6 +38,7 @@ __all__ = [
     "ERGraph",
     "GraphRelationshipSpec",
     "pg_identifier",
+    "quote_if_bare",
     "Entity",
     "Feature",
     "Id",
