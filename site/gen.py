@@ -8,9 +8,11 @@ Run BEFORE ``npm run build``:
 
 Responsibilities (grown phase by phase — see specs/github-pages-docs-hub.html):
 
-1. Pass-through copies: the self-contained validation artifacts (``specs/``)
-   and repo images (``docs/images/``) into ``public/`` — they are lab reports,
-   not docs pages, and keep their own identity.
+1. Pass-through copies: the self-contained validation artifacts (``specs/``),
+   repo images (``docs/images/``) and the committed cockpit screenshots
+   (``tests/__snapshots__/test_tui_screens/`` -> ``public/cockpit/``) into
+   ``public/`` — they are lab reports and pictures, not docs pages, and keep
+   their own identity.
 2. Notebook conversion: each ``examples/*/tutorial.ipynb`` (its **committed**
    state — the outputs validated against a live database) converts to a
    markdown page inside the Starlight content collection, with image outputs
@@ -38,11 +40,20 @@ GITHUB = "https://github.com/ccd-ia/featurizer"
 
 
 def copy_passthrough() -> None:
-    """specs/ and docs/images/ → public/, verbatim (single sources stay put)."""
+    """specs/, docs/images/, explorables and the cockpit snapshots → public/.
+
+    Verbatim copies; every single source stays where it is. The cockpit
+    screenshots are read straight out of ``tests/__snapshots__/`` rather than
+    duplicated into ``docs/images/``: the snapshot tests fail when the TUI
+    drifts from those pictures, so sourcing them here is what keeps the
+    published screenshots from going quietly stale. ``pages.yml`` therefore
+    watches ``tests/__snapshots__/**`` too.
+    """
     for source, dest in [
         (REPO / "specs", PUBLIC / "specs"),
         (REPO / "docs" / "images", PUBLIC / "images"),
         (REPO / "site" / "explorables", PUBLIC / "explorables"),
+        (REPO / "tests" / "__snapshots__" / "test_tui_screens", PUBLIC / "cockpit"),
     ]:
         if dest.exists():
             shutil.rmtree(dest)

@@ -109,6 +109,34 @@ def test_explorable_copied_to_public(gen) -> None:
     assert (REPO / "public/explorables/phi-dfs.html").is_file()
 
 
+def test_cockpit_screenshots_copied_to_public(gen) -> None:
+    """The committed TUI snapshots are the published screenshots — one source."""
+    gen.copy_passthrough()
+    copied = sorted(p.name for p in (REPO / "public/cockpit").glob("*.svg"))
+    assert copied == [
+        "test_config_screen.svg",
+        "test_manifest_screen.svg",
+        "test_manifest_screen_filtered.svg",
+        "test_sql_screen.svg",
+    ]
+
+
+def test_referenced_cockpit_screenshots_exist() -> None:
+    """Every screenshot the Reference page names is a snapshot on disk.
+
+    Catches the failure the deploy would otherwise catch late: a snapshot
+    renamed or deleted by ``--snapshot-update`` leaves a dead image on a
+    published page. No ``gen`` fixture — this reads the sources, so it fails
+    without ever running the copy.
+    """
+    page = (REPO / "src/content/docs/reference/cockpit.md").read_text()
+    shots = REPO / "tests/__snapshots__/test_tui_screens"
+    refs = re.findall(r"\]\(/featurizer/cockpit/([^)]+)\)", page)
+    assert refs, "the cockpit page names no screenshots"
+    for ref in refs:
+        assert (shots / ref).is_file(), f"cockpit.md: missing snapshot {ref}"
+
+
 def test_explorer_generates_from_registry(gen) -> None:
     """The explorer embeds one record per registered primitive, counts wired."""
     gen.copy_passthrough()  # populates public/explorables/ before the explorer joins

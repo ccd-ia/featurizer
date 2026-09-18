@@ -80,6 +80,13 @@ Keys `1`–`5` open the standard screens, `6`–`8` featurizer's own, `?` help,
 | **7 Manifest** | `feature_manifest()` as a table: column, entity, primitive, interval, group; the full label and description of the selected column underneath | `/` filter · `y` copy the matching columns · `4` open the group table on Query |
 | **8 SQL** | `query_groups()` one group at a time, syntax-highlighted, read-only | `x` explain analyze (rolled back) · `y` copy |
 
+The three featurizer screens below are the pictures the test suite takes: every
+screenshot on this page is a committed snapshot rendered from the
+`01-basic-aggregations` example against a frozen clock, and a planner change
+that moves a column changes the picture.
+
+![The Config screen: the entity graph as a tree, customers at the root with the orders relationship beneath it, each entity's variables and the selected primitives and intervals listed below](/featurizer/cockpit/test_config_screen.svg)
+
 Three things are worth knowing about how the screens read.
 
 **Pending work is a comparison, never a flag.** Every line on the Status
@@ -99,11 +106,20 @@ Python and in `columns_matching`. Physical names capped at 63 bytes are
 matched by their label, never by the hash-truncated column; the selected row
 shows both.
 
+![The Manifest screen: every generated feature as a table of column, entity, primitive, interval and group, with the full label and description of the selected row underneath](/featurizer/cockpit/test_manifest_screen.svg)
+
+The same screen with a filter applied — `/` narrows the table to the columns
+whose label matches the glob, and the count in the header follows:
+
+![The Manifest screen with a glob filter active, the table narrowed to the matching columns](/featurizer/cockpit/test_manifest_screen_filtered.svg)
+
 **The SQL screen never runs a group for its rows.** `x` is `explain (analyze,
 buffers)` inside a transaction the shell rolls back, which is enough to see
 the plan and the timings. Writing the tables is the `featurizer materialize`
 action, confirmed and streamed from Actions like any other; it drops and
 recreates the group tables it writes, so the shell asks first.
+
+![The SQL screen: one feature group's generated query, syntax-highlighted and read-only, with the group selector in the header](/featurizer/cockpit/test_sql_screen.svg)
 
 ## Headless twins
 
