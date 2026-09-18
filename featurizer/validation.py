@@ -100,6 +100,35 @@ class ConfigValidator:
 
     VALID_AS_OF_BOUNDARIES = {"inclusive", "exclusive"}
 
+    #: Every key the loader reads at the top level. A config is a contract with
+    #: the planner, so a key nobody reads is a silent no-op rather than the
+    #: behaviour its author expected — the packaged example's own
+    #: ``whitelist:``/``blacklist:`` blocks were exactly that (issue #7).
+    VALID_TOP_LEVEL_KEYS = {
+        "target",
+        "max_depth",
+        "intervals",
+        "entities",
+        "relationships",
+        "aggregations",
+        "transformations",
+        "spatial_relationships",
+        "graph_relationships",
+        "as_of_boundary",
+    }
+
+    #: Relationship keys. The nested ``parent: {entity, key}`` form is the one
+    #: the config takes; the flat ``parent_key:``/``child_key:`` spelling is
+    #: what ``Relationship.__init__`` and the generated SQL use, which makes it
+    #: an easy and previously silent mistake (issue #12).
+    VALID_RELATIONSHIP_KEYS = {"parent", "child", "temporal", "name"}
+
+    #: Variable keys. ``Entity.__init__`` cherry-picks these four rather than
+    #: splatting the dict, so anything else was dropped without a word —
+    #: including the documented-but-unimplemented per-variable ``intervals``
+    #: (issue #12).
+    VALID_VARIABLE_KEYS = {"type", "predicates", "role", "vocabulary"}
+
     ISO8601_DURATION_PATTERN = re.compile(
         r"^P(?:(?P<years>\d+)Y)?(?:(?P<months>\d+)M)?(?:(?P<weeks>\d+)W)?(?:(?P<days>\d+)D)?"
         r"(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+(?:\.\d+)?)S)?)?$"
@@ -150,8 +179,32 @@ class ConfigValidator:
 
         return ValidationResult(errors=self.errors, warnings=self.warnings)
 
+    def _unknown_key_error(
+        self, key: str, valid: Set[str], location: str, what: str
+    ) -> None:
+        """Report a key nothing reads, with the nearest legal spelling."""
+        suggestion = self._suggest_similar(key, valid)
+        self.errors.append(
+            ValidationError(
+                message=f"Unknown key '{key}' {what}. Nothing reads it, so it "
+                "would be silently ignored.",
+                location=location,
+                suggestion=(f"Did you mean '{suggestion}'? " if suggestion else "")
+                + f"Valid keys: {', '.join(sorted(valid))}",
+            )
+        )
+
     def _validate_structure(self, config: Dict[str, Any]) -> None:
         """Validate configuration structure (required keys, types)."""
+        for key in config:
+            if str(key) not in self.VALID_TOP_LEVEL_KEYS:
+                self._unknown_key_error(
+                    str(key),
+                    self.VALID_TOP_LEVEL_KEYS,
+                    str(key),
+                    "at the top level",
+                )
+
         required_keys = {"target", "max_depth", "intervals", "entities"}
         missing = [key for key in required_keys if key not in config]
 
@@ -342,6 +395,15 @@ class ConfigValidator:
                                 )
                             )
                             continue
+
+                        for key in var_def:
+                            if str(key) not in self.VALID_VARIABLE_KEYS:
+                                self._unknown_key_error(
+                                    str(key),
+                                    self.VALID_VARIABLE_KEYS,
+                                    f"entities[{i}].variables.{var_name}.{key}",
+                                    f"in variable '{var_name}'",
+                                )
 
                         var_type = var_def["type"]
                         if var_type not in self.VALID_VARIABLE_TYPES:
@@ -648,6 +710,15 @@ class ConfigValidator:
             for i, rel in enumerate(relationships):
                 if not isinstance(rel, dict):
                     continue
+
+                for key in rel:
+                    if str(key) not in self.VALID_RELATIONSHIP_KEYS:
+                        self._unknown_key_error(
+                            str(key),
+                            self.VALID_RELATIONSHIP_KEYS,
+                            f"relationships[{i}].{key}",
+                            f"in relationship {i}",
+                        )
 
                 parent = rel.get("parent", {})
                 child = rel.get("child", {})
