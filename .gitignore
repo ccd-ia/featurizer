@@ -158,3 +158,6 @@ COMPACT-archive-*.md
 
 # Session-local worktrees (see CONTRIBUTING: branch off origin/master)
 .worktrees/
+
+# pytest-textual-snapshot writes this beside the tests on a snapshot run.
+snapshot_report.html

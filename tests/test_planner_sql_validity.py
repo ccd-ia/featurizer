@@ -161,7 +161,7 @@ def test_identifier_columns_are_not_duplicated():
     """Bug #6: a PK that doubles as an FK is projected once, not twice."""
     sql = _render(_asof_config())
     synth = _segment(sql, "patients_synth as (", "from patients")
-    assert synth.count("patients.patient_id") == 1
+    assert synth.count('patients."patient_id"') == 1
 
 
 def test_interval_windows_cast_event_column_to_date():
