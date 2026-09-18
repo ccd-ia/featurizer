@@ -17,6 +17,9 @@ on:
       - "specs/**"
       - "docs/**"
       - "examples/**"
+      # The cockpit screenshots on the Reference page are copied straight out
+      # of the committed snapshots, so a re-taken snapshot must redeploy.
+      - "tests/__snapshots__/**"
       - "CHANGELOG.md"
       # Whole package: the primitives reference reads the registry AND the pdoc
       # API reference documents every core module (site/gen.py generate_api).
