@@ -119,8 +119,15 @@ def test_status_and_runs_before_and_after_materializing(cockpit_schema: str) -> 
     assert [r.run_id for r in after.last_runs] == [f"{name}.customers"]
     assert after.last_runs[0].state is RunState.SUCCEEDED
     assert after.last_runs[0].started_at is None
-    gauge = {g.name: g for g in after.gauges}[f"{name}.customers"]
+    # The gauge is labelled by the STEM; the schema lives in the note. A
+    # qualified label would widen the panel's single shared label column and
+    # truncate the extras beside it (issue #14).
+    gauge = {g.name: g for g in after.gauges}["customers"]
     assert (gauge.value, gauge.total) == (1.0, 1.0)
+    assert gauge.note == f"{name} · group tables"
+    assert f"{name}.customers" not in {g.name for g in after.gauges}
+    # run_id keeps the qualified form — it is the identity, not the label.
+    assert after.last_runs[0].run_id == f"{name}.customers"
 
     # Runs: one per manifest table, one stage per group, keys from the lead.
     listed = runs.list()
@@ -177,7 +184,7 @@ def test_each_kind_of_breakage_is_pending_work_not_a_crash(cockpit_schema: str) 
         assert any(i.level == "error" and "group_000" in i.detail for i in s.pending)
         assert runs.list()[0].state is RunState.FAILED
         assert runs.show(f"{name}.customers").stages[0].note == "table missing"
-        assert {g.name: g.value for g in s.gauges}[f"{name}.customers"] == 0.0
+        assert {g.name: g.value for g in s.gauges}["customers"] == 0.0
 
         # A source table gone: the entity's gauge says so and pending is an error.
         conn.execute("drop table orders")
