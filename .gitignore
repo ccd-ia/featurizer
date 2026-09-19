@@ -161,3 +161,4 @@ COMPACT-archive-*.md
 
 # pytest-textual-snapshot writes this beside the tests on a snapshot run.
 snapshot_report.html
+reports/cc_report_*.html
