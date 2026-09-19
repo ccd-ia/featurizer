@@ -105,11 +105,12 @@ SAMPLE = {
     "text": ["'alpha beta'", "'Gamma!'", "'delta, epsilon.'"],
 }
 
-# Pre-existing defects that fail identically on a PLAIN column name at master,
-# so they say nothing about quoting. Tracked separately. (``cumprod`` also has
-# one — it aborts on a negative input — but these positive samples do not
-# reach it.)
-KNOWN_BROKEN = {"cdf", "daily_bin", "hourly_bin", "ema_7", "ema_14"}
+# Fails identically on a PLAIN column name, so it says nothing about quoting.
+# ``cdf`` renders ``cum_dist()``, which PostgreSQL does not have. It stays
+# broken on purpose: ``cume_dist()`` reads rows dated after the as-of date
+# (issue #27). The other four from issue #23 are fixed; their values are pinned
+# in tests/primitives/test_transformer_defects.py.
+KNOWN_BROKEN = {"cdf"}
 # Not configurable as a bare transformations: entry.
 NOT_STANDALONE = {"identity", "in_array"}
 
@@ -127,7 +128,7 @@ def _sweep_cases():
         marks = (
             [
                 pytest.mark.xfail(
-                    reason="pre-existing, not a quoting defect", strict=True
+                    reason="deliberately left broken, see issue #27", strict=True
                 )
             ]
             if name in KNOWN_BROKEN
