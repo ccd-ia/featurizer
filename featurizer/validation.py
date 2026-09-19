@@ -675,6 +675,91 @@ class ConfigValidator:
                         )
                     )
 
+    def _warn_inert_temporal_blocks(
+        self,
+        relationships: List[Any],
+        target: Any,
+    ) -> None:
+        """Flag ``temporal:`` blocks the planner will silently discard (issue #9).
+
+        ``temporal_mode`` is read in exactly one place — ``_build_direct``, the
+        forward transfer that carries a parent's value onto its child. The
+        aggregation path never looks at it, so a ``temporal:`` block on a
+        relationship whose child is rolled up onto its parent has no effect at
+        all, and validation used to return ``is_valid=True`` with nothing said.
+
+        Nothing is leaking: the aggregation path bounds the child stream with
+        ``causal_predicate`` regardless, so the result is point-in-time correct
+        either way. What is lost is ``grace``, which *widens* the window — so
+        the rendered query is stricter than the config asks for, not looser.
+
+        Direction is decided by hop distance from the target over the undirected
+        relationship graph: the planner descends from the target, so whichever
+        endpoint it reaches first is the side it traverses from. Only the
+        unambiguous case (parent strictly nearer) is reported, which keeps the
+        working orientation — lookup table as ``parent``, timestamped entity as
+        ``child`` — silent.
+        """
+        if not isinstance(target, str):
+            return
+
+        edges: Dict[str, Set[str]] = {}
+        for rel in relationships:
+            if not isinstance(rel, dict):
+                continue
+            p = rel.get("parent", {})
+            c = rel.get("child", {})
+            if not (isinstance(p, dict) and isinstance(c, dict)):
+                continue
+            pe, ce = p.get("entity"), c.get("entity")
+            if not (isinstance(pe, str) and isinstance(ce, str)):
+                continue
+            edges.setdefault(pe, set()).add(ce)
+            edges.setdefault(ce, set()).add(pe)
+
+        distance: Dict[str, int] = {target: 0}
+        frontier = [target]
+        while frontier:
+            nxt: List[str] = []
+            for node in frontier:
+                for peer in edges.get(node, ()):
+                    if peer not in distance:
+                        distance[peer] = distance[node] + 1
+                        nxt.append(peer)
+            frontier = nxt
+
+        for i, rel in enumerate(relationships):
+            if not isinstance(rel, dict) or not isinstance(rel.get("temporal"), dict):
+                continue
+            p = rel.get("parent", {})
+            c = rel.get("child", {})
+            if not (isinstance(p, dict) and isinstance(c, dict)):
+                continue
+            pe, ce = p.get("entity"), c.get("entity")
+            if pe not in distance or ce not in distance:
+                continue
+            if distance[pe] >= distance[ce]:
+                continue  # forward transfer, or ambiguous — the block is read
+
+            name = rel.get("name") or f"{pe} -> {ce}"
+            self.warnings.append(
+                ValidationWarning(
+                    message=(
+                        f"The 'temporal' block on relationship '{name}' has no "
+                        f"effect. '{pe}' is nearer the target than '{ce}', so "
+                        f"'{ce}' is aggregated onto '{pe}', and the block is "
+                        f"read only on a forward (parent -> child) transfer. "
+                        f"The child stream is still bounded by as_of_date, so "
+                        f"no data after the as-of date is read — but 'grace' is "
+                        f"not applied. For an as-of join, declare the "
+                        f"timestamped lookup entity as 'parent' and the entity "
+                        f"that receives its value as 'child'; otherwise delete "
+                        f"the block."
+                    ),
+                    location=f"relationships[{i}].temporal",
+                )
+            )
+
     def _validate_semantics(self, config: Dict[str, Any]) -> None:
         """Validate semantic relationships between config parts."""
         entities = config.get("entities", [])
@@ -707,6 +792,7 @@ class ConfigValidator:
         # Validate relationships reference valid entities
         if isinstance(relationships, list):
             self._check_relationship_names(relationships, entity_aliases)
+            self._warn_inert_temporal_blocks(relationships, target)
             for i, rel in enumerate(relationships):
                 if not isinstance(rel, dict):
                     continue

@@ -218,22 +218,25 @@ SQL examples.
 
 ## 8. Point-in-time joins (as-of)
 
-When a *parent* record should contribute the **most recent state as of each
-snapshot** — a patient's latest care plan, a school's history — declare the
-relationship temporal:
+When a *parent* record should contribute its **most recent state as of each
+child row's own date** — a patient's latest risk assessment at admission, a
+product's price at purchase — declare the relationship temporal:
 
 ```yaml
 relationships:
-  - parent: {entity: patients,   key: patient_id}
-    child:  {entity: care_plans, key: patient_id}
+  - parent: {entity: risk_assessments, key: patient_id}   # the timestamped lookup
+    child:  {entity: patients,         key: patient_id}   # receives the value
     temporal:
       mode: as_of
-      grace: P21D        # optional: only look back this far
+      grace: P30D        # optional: only look back this far
 ```
 
-featurizer renders a `left join lateral … order by … limit 1` that picks the
-newest child row at or before each `as_of_date`. Tutorial 02 (healthcare)
-works through this in depth —
+featurizer renders a `left join lateral … order by … limit 1` that picks, for
+each child row, the newest parent row dated at or before that row's own
+`temporal_ix`. The lookup table is the `parent` here — the reverse of an
+aggregation, where the target is the parent. A `temporal:` block on an
+aggregation relationship is discarded, and `validate` warns about it.
+Tutorial 02 (healthcare) puts the two directions side by side —
 [examples/02-temporal-joins](https://github.com/ccd-ia/featurizer/tree/master/examples/02-temporal-joins).
 
 ## 9. Visualize the matrix

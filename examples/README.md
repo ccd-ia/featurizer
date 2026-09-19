@@ -33,9 +33,10 @@ Basic parent-child aggregations (count, sum, mean, min, max, stddev, nunique),
 time windows (P7D, P30D), feature naming. **Start here.**
 
 ### [02-temporal-joins](./02-temporal-joins/)
-**Difficulty:** Intermediate — Healthcare (Patients → Care Plans)
+**Difficulty:** Intermediate — Healthcare (Patients ← Care Plans, Risk Assessments → Patients)
 
-As-of join semantics, grace periods, point-in-time generation, LATERAL SQL.
+An aggregation and an as-of lookup side by side: which side is `parent` for
+each, grace periods as a lookback cap, LATERAL SQL.
 Also exercises rolling stats (`rolling_mean_7`, `rolling_median_7`,
 `rolling_iqr_7`) — the ordered-set rolling stats render as correlated subqueries
 (PostgreSQL forbids `OVER` on `percentile_cont`).

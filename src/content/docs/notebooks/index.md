@@ -17,7 +17,7 @@ in order:
 | # | Tutorial | Difficulty | Scenario |
 |---|---|---|---|
 | 1 | [Basic aggregations](/featurizer/notebooks/01-basic-aggregations/) | Beginner | E-commerce: Customers → Orders |
-| 2 | [Temporal joins](/featurizer/notebooks/02-temporal-joins/) | Intermediate | Healthcare: Patients → Care plans |
+| 2 | [Temporal joins](/featurizer/notebooks/02-temporal-joins/) | Intermediate | Healthcare: care plans aggregated, risk assessments looked up as-of |
 | 3 | [Deep nesting](/featurizer/notebooks/03-deep-nesting/) | Intermediate | Retail supply chain, depth 3 |
 | 4 | [Custom primitives](/featurizer/notebooks/04-custom-primitives/) | Advanced | Financial analytics: Accounts → Transactions |
 | 5 | [Categoricals, output & imputation](/featurizer/notebooks/05-categoricals-output/) | Advanced | Food inspections: Facilities → Inspections |

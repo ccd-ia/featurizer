@@ -326,8 +326,8 @@ against PostgreSQL (`just db-up` starts a throwaway container):
 
 <tr>
 <td class="org-left"><a href="examples/02-temporal-joins/">02-temporal-joins</a></td>
-<td class="org-left">Healthcare (Patients → Care Plans)</td>
-<td class="org-left">As-of joins, grace periods</td>
+<td class="org-left">Healthcare (Patients ← Care Plans, Risk Assessments → Patients)</td>
+<td class="org-left">Aggregation vs. as-of lookup, grace periods</td>
 </tr>
 
 <tr>
