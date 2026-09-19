@@ -6,7 +6,6 @@ from ._utils import _require
 
 if TYPE_CHECKING:
     import matplotlib.figure
-    import pandas as pd
 
 
 def plot_missing_heatmap(
