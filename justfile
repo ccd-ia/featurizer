@@ -122,3 +122,42 @@ bench-truncation:
 bench-aggs SCALE="1k" TIMEOUT="300" LABEL="":
     DATABASE_URL={{pg_url}} uv run python -m benchmarks bench \
       --scale {{SCALE}} --timeout {{TIMEOUT}} {{ if LABEL != "" { "--label " + LABEL } else { "" } }}
+
+# The last part of release step 1 in CONTRIBUTING.md:
+#   just revendor-skill ~/.claude/skills/featurizer-dfs/SKILL.md <other copy>…
+# Each copy keeps everything above its own H1 (its frontmatter and header
+# comment); from the H1 down it becomes this repo's body. It refuses a copy
+# that has no single H1 to anchor on, and ends by comparing the bodies byte for
+# byte. It writes outside this repository: that is its job, so it takes the
+# paths as arguments and commits none. Paths must not contain spaces.
+# Re-vendor the featurizer-dfs skill body into other copies of the skill
+revendor-skill +DESTS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src=".claude/skills/featurizer-dfs/SKILL.md"
+    anchor='^# Featurizer'
+    body_of() { awk -v re="$anchor" 'found || $0 ~ re { found = 1; print }' "$1"; }
+    head_of() { awk -v re="$anchor" '$0 ~ re { exit } { print }' "$1"; }
+    anchors_in() { grep -c "$anchor" "$1" || true; }
+    fail() { echo "revendor-skill: $*" >&2; exit 1; }
+
+    [ "$(anchors_in "$src")" = 1 ] \
+      || fail "$src must have exactly one line matching '$anchor' (found $(anchors_in "$src")); the body starts there."
+    for dest in {{DESTS}}; do
+      [ -f "$dest" ] || fail "$dest is not a file. Pass the path of a vendored SKILL.md."
+      [ "$(anchors_in "$dest")" = 1 ] \
+        || fail "$dest has $(anchors_in "$dest") lines matching '$anchor', expected 1. Without that anchor there is no telling its header from its body; fix the copy by hand first."
+      tmp="$(mktemp)"
+      { head_of "$dest"; body_of "$src"; } > "$tmp"
+      if cmp -s "$tmp" "$dest"; then
+        rm -f "$tmp"
+        echo "in parity already: $dest"
+      else
+        cat "$tmp" > "$dest"   # keeps the copy's permissions and any symlink
+        rm -f "$tmp"
+        echo "re-vendored:       $dest"
+      fi
+      cmp -s <(body_of "$src") <(body_of "$dest") \
+        || fail "$dest still differs from $src below the H1 after writing it. Compare the two by hand."
+    done
+    echo "body parity holds across $(echo {{DESTS}} | wc -w | tr -d ' ') copies"

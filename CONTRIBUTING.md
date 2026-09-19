@@ -217,7 +217,9 @@ published by hand:
    line, and any surface the CHANGELOG section adds or changes.
    `tests/test_skill_parity.py` fails the fast tier when the skill disagrees
    with the code, so a forgotten update cannot reach the tag. Afterwards
-   re-vendor the body (from the H1 down) into the other copies of the skill.
+   re-vendor the body (from the H1 down) into the other copies of the skill:
+   `just revendor-skill <path/to/copy/SKILL.md>…`. Each copy keeps its own
+   frontmatter and header; the recipe ends with a byte-for-byte parity check.
    Bump `version` and `date-released` in `CITATION.cff` in the same commit too
    — `tests/test_citation_parity.py` holds them to `pyproject.toml` and to the
    CHANGELOG section's date. That one matters more than it looks: a stale
