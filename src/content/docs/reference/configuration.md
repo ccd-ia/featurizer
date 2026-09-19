@@ -50,6 +50,7 @@ primitive names get a "did you mean?" from the registry. Disable with
 | `aggregations` | no | subset of registered aggregations to apply — see the [primitives reference](/featurizer/reference/primitives/); omit (or `null`) for the curated default set. An explicit `[]` suppresses the aggregation layer: zero aggregation features (since v1.0.1) |
 | `transformations` | no | subset of registered transformers; omit (or `null`) for the curated default set. An explicit `[]` suppresses the transform layer — features pass through unchanged, identical to `[identity]` (since v1.0.1) |
 | `as_of_boundary` | no | `inclusive` (events at the as-of date count) or `exclusive` (strictly before) |
+| `as_of_dates` | no | `{id_column: <name>}` — declares that your `as_of_dates` table pairs each date with target ids, so the matrix holds only those pairs. See [Paired cohorts](/featurizer/concepts/paired-cohorts/) |
 | `entities` | yes | the tables — see below |
 | `relationships` | no | foreign-key links — see below |
 | `spatial_relationships` | no | second-table spatial features — see below |
@@ -57,7 +58,23 @@ primitive names get a "did you mean?" from the registry. Disable with
 
 The runtime also expects an **`as_of_dates` table** (one `as_of_date` column)
 in the database at execution time — it is the outer spine every feature is
-computed *as of*.
+computed *as of*. By default every target row is emitted under every date.
+
+When each date has its own set of entities, add a column holding the target's
+id to that table and name it:
+
+```yaml
+as_of_dates:
+  id_column: cohort_id   # a column of YOUR as_of_dates table
+```
+
+The matrix then has one row per `(as_of_date, id)` pair in the table, with the
+same values the dense run gives for those pairs. `validate` checks the block's
+shape only. It has no database connection, so a column name that does not exist
+surfaces as a PostgreSQL error when the query runs. Without the block the
+rendered SQL is byte-identical to what it was before the key existed.
+[Paired cohorts](/featurizer/concepts/paired-cohorts/) covers when to use it
+and what it saves.
 
 ## Entities
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections import OrderedDict
@@ -120,6 +120,13 @@ class Featurizer:
             "as_of_boundary", DEFAULT_BOUNDARY
         )
 
+        # Paired cohort (issue #10): the column of the caller's as_of_dates
+        # table that holds the target id. Absent -> the dense cohort, every
+        # target row under every as-of date, rendered exactly as before.
+        self.cohort_id_column: Optional[str] = (config.get("as_of_dates") or {}).get(
+            "id_column"
+        )
+
         self.graph: ERGraph = ERGraph(
             config["entities"],
             config["relationships"],
@@ -162,6 +169,7 @@ class Featurizer:
             transformations=self.transformations,
             boundary=self.as_of_boundary,
             debug=self._debug_enabled,
+            cohort_id_column=self.cohort_id_column,
         )
         self._plan: PlannerResult = planner.plan()
 
