@@ -81,21 +81,20 @@ typecheck:
     uv run basedpyright
 
 # Format the tree (ruff is pinned exactly in the dev group — see pyproject).
-# Formatting ONLY: no `ruff check --fix` here. Autofix would delete the
-# deliberate `cached_download` re-export in tests/integration/datasets/
-# food_inspections.py (its `# noqa: F401` sits on the closing paren, one line
-# below the diagnostic, so it never applies) — a semantic change has no
-# business riding along in a format recipe.
+# Formatting ONLY: no `ruff check --fix` here. An autofix can be a semantic
+# change — it once stood to delete the deliberate `cached_download` re-export
+# in tests/integration/datasets/food_inspections.py, whose `# noqa: F401` sat
+# on the wrong line — and that has no business riding along in a format recipe.
 fmt:
     uv run ruff format .
 
-# Formatting check only — safe to gate CI on, the tree passes it today.
+# Formatting check only. CI gates on it (test.yml, the py 3.12 fast-tests job).
 fmt-check:
     uv run ruff format --check .
 
-# Advisory lint. NOT clean: 8 pre-existing findings (4 F401 unused imports,
-# 4 F541 placeholder-less f-strings in example notebooks). Cleaning them is a
-# separate change from adopting the formatter — do not blanket `--fix`.
+# Advisory lint, not yet a CI gate. Two findings remain, both F541 in
+# examples/02-temporal-joins/tutorial.ipynb, and they go away with the rewrite
+# of that notebook (#25); after that this can gate too. Do not blanket `--fix`.
 lint:
     uv run ruff check .
 
