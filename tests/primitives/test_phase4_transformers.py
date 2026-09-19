@@ -62,8 +62,10 @@ def test_cumprod_definition_is_log_sum_exp_and_guarded():
     tx = get_transformers(["cumprod"])["cumprod"]
     result = tx(e, _feature(e, "value"))
     assert result.definition is not None
-    assert 'exp(sum(ln("value"))' in result.definition
-    assert 'case when min("value")' in result.definition  # positivity guard
+    # The inner guard is the one that works: the outer ``case`` cannot stop
+    # ``ln`` from raising on a non-positive value (issue #23).
+    assert 'exp(sum(ln(case when "value" > 0 then "value" end))' in result.definition
+    assert 'case when min("value")' in result.definition  # yields the NULL
 
 
 @pytest.mark.parametrize("name", PHASE4_NAMES)

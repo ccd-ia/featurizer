@@ -289,16 +289,22 @@ class HourlyBinning(Transformer):
         )
 
     def _build_transformer_call(self, feature):
+        # ``extract`` returns numeric since PostgreSQL 14, and numeric has no
+        # ``<@ int4range`` operator, so the hour is cast to int. The input is
+        # cast to timestamp because ``extract(hour from <date>)`` raises; a
+        # date bins as midnight, the same answer ``hour`` gives it.
+        hour = f"extract(hour from {_col(feature)}::timestamp)::int"
         return f"""
         (
         case
-        when extract(hour from {_col(feature)}) <@ int4range(0,5) then 'night'
-        when extract(hour from {_col(feature)}) <@ int4range(5,8) then 'early_morning'
-        when extract(hour from {_col(feature)}) <@ int4range(8,11) then 'morning'
-        when extract(hour from {_col(feature)}) <@ int4range(11,14) then 'midday'
-        when extract(hour from {_col(feature)}) <@ int4range(14,19) then 'afternoon'
-        when extract(hour from {_col(feature)}) <@ int4range(19,22) then 'evening'
-        when extract(hour from {_col(feature)}) <@ int4range(22,24) then 'night'
+        when {hour} <@ int4range(0,5) then 'night'
+        when {hour} <@ int4range(5,8) then 'early_morning'
+        when {hour} <@ int4range(8,11) then 'morning'
+        when {hour} <@ int4range(11,14) then 'midday'
+        when {hour} <@ int4range(14,19) then 'afternoon'
+        when {hour} <@ int4range(19,22) then 'evening'
+        when {hour} <@ int4range(22,24) then 'night'
+        end
         )
         """
 
@@ -314,11 +320,14 @@ class DailyBinning(Transformer):
         )
 
     def _build_transformer_call(self, feature):
+        # ISO day of week: Monday is 1, Sunday is 7. int4range is half-open.
+        isodow = f"to_char({_col(feature)},'ID')::int"
         return f"""
         (
         case
-        when to_char({_col(feature)},'ID')::smallint <@ int4range(0,5) then 'weekday'
-        when to_char({_col(feature)},'ID')::smallint <@ int4range(5,7) then 'weekday'
+        when {isodow} <@ int4range(1,6) then 'weekday'
+        when {isodow} <@ int4range(6,8) then 'weekend'
+        end
         )
         """
 
@@ -709,6 +718,11 @@ class CumProd:
     ``exp(sum(ln x) over (partition by id order by ts))``. Returns NULL once a
     non-positive value enters the running window — a documented limitation,
     since ``ln`` is undefined there. Backward-only.
+
+    The guard sits in two places on purpose. The outer ``case`` yields the NULL;
+    it cannot stop ``ln`` from raising, because PostgreSQL evaluates a window
+    aggregate over every row of the frame before the ``case`` picks a branch.
+    The inner ``case`` is what keeps a non-positive value away from ``ln``.
     """
 
     def __init__(self, name="cumprod", input_types=["numeric"], output_type="numeric"):
@@ -729,7 +743,8 @@ class CumProd:
         window = f"over (partition by {partition} order by {order_by})"
         definition = (
             f"case when min({x}) {window} > 0 "
-            f"then exp(sum(ln({x})) {window}) else null end"
+            f"then exp(sum(ln(case when {x} > 0 then {x} end)) {window}) "
+            f"else null end"
         )
         name, label = _name_label(self.name, feature)
         return Feature(
@@ -791,6 +806,12 @@ class DistributionTransformer(WindowFunctionTransformer):
         return " ".join(pieces)
 
 
+# ``cum_dist`` is not a PostgreSQL function (it is ``cume_dist``), so ``cdf`` has
+# never executed. The name is left alone on purpose: ``cume_dist()`` divides by
+# the size of the whole partition, which counts rows dated after the as-of date
+# — measured in issue #27, where ``percent_rank`` and ``ntile`` share the
+# fault. Spelling it correctly would switch on a third primitive that reads the
+# future. Fix the three together there.
 cdf = DistributionTransformer(
     name="cdf", function="cum_dist", order_by=_temporal_ordering
 )
@@ -947,7 +968,14 @@ class ExponentialMovingAverageTransformer:
         decay: Decay rate for exponential weighting (higher = faster decay).
 
     SQL Pattern:
-        SUM(value * EXP(decay * time)) / SUM(EXP(decay * time)) OVER (...)
+        SUM(value::numeric * EXP(decay * time)) / SUM(EXP(decay * time)) OVER (...)
+
+    ``time`` is days since 1970, so the weight is astronomically large —
+    ``exp(0.25 * 19700)`` for a 2024 date. Only the *ratio* of two such sums is
+    used, and in ``numeric`` it is exact enough; in ``float8`` the weight
+    overflows past ``exp(709)``. The value and the epoch are therefore cast to
+    ``numeric`` so a ``double precision`` or ``real`` column never drags the
+    weight into floating point. The result is ``numeric`` for every input type.
 
     Use cases:
         - Trend following in financial time series
@@ -971,10 +999,12 @@ class ExponentialMovingAverageTransformer:
         if frame:
             start, end = frame
             frame_clause = f" rows between {start} and {end}"
-        timestamp_expr = f"(extract(epoch from {order_by}) / 86400.0)"
+        timestamp_expr = f"(extract(epoch from {order_by})::numeric / 86400.0)"
         weight_expr = f"exp({self.decay} * {timestamp_expr})"
         base_window = f"partition by {partition} order by {order_by}{frame_clause}"
-        numerator = f"sum({_col(feature)} * {weight_expr}) over ({base_window})"
+        numerator = (
+            f"sum({_col(feature)}::numeric * {weight_expr}) over ({base_window})"
+        )
         denominator = f"sum({weight_expr}) over ({base_window})"
         expression = f"{numerator} / NULLIF({denominator}, 0)"
         name, label = _name_label(self.name, feature)
