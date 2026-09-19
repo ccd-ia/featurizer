@@ -1373,6 +1373,12 @@ for _periods in (1, 3):
 class PopulationWindowTransformer:
     """Cross-entity window functions (no PARTITION BY)."""
 
+    #: The value depends on the OTHER rows of the entity. A paired cohort
+    #: (issue #10) must not narrow the target before such a transformer runs,
+    #: so the planner filters after the transform when it sees this flag. A
+    #: custom transformer that windows across entities should set it too.
+    population_level = True
+
     def __init__(
         self, name, expression_template, input_types=None, output_type="numeric"
     ):

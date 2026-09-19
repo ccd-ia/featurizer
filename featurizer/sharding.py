@@ -39,6 +39,7 @@ from typing import AbstractSet, Dict, List, Set, Tuple
 
 from loguru import logger
 
+from .boundary import as_of_dates_source
 from .planner import ColumnSpec, PlannerResult, ShardableCTE
 
 # PostgreSQL's hard limit on entries in a result/CTE target list. A table is
@@ -672,11 +673,15 @@ class ColumnGroupSharder:
         joins_sql = ""
         if kept_joins:
             joins_sql = "\n        left join " + "\n        left join ".join(kept_joins)
+        # The paired-cohort predicate (issue #10) follows whatever joins this
+        # group kept. Empty for the default dense cohort.
+        where_sql = f"\n        {spec.where}" if spec.where else ""
         return (
             spec.prefix
             + select_list
             + spec.suffix
             + joins_sql
+            + where_sql
             + "\n        )\n        "
         )
 
@@ -703,16 +708,21 @@ class ColumnGroupSharder:
         both correct and limit-safe.
         """
         ctes = ",".join(rendered_ctes)
+        # Same two switches as SQLRenderer (issue #10); bare defaults otherwise.
+        spine = as_of_dates_source(paired=self.plan.cohort_id_column is not None)
+        post_filter = (
+            f" {self.plan.cohort_post_filter}" if self.plan.cohort_post_filter else ""
+        )
         return f"""
         select aod.as_of_date, t.*
-        from as_of_dates as aod
+        from {spine} as aod
         cross join lateral (
 
         with
 
         {ctes}
 
-        select * from {self.transform_name}
+        select * from {self.transform_name}{post_filter}
         ) as t
 
         order by aod.as_of_date
@@ -837,7 +847,6 @@ _TRANSFORM_EGO_ALIAS = "_ego"  # matches planner.TRANSFORM_EGO_ALIAS
 # shape). Introduced once via ``cross join as_of_dates aod`` where ``aod`` is
 # first needed, then carried (and joined on) downstream.
 AS_OF_DATE = "as_of_date"
-_AS_OF_SOURCE = "as_of_dates"
 
 
 @dataclass(frozen=True)
@@ -917,6 +926,11 @@ class MaterializationPlanner:
             and plan.cte_specs[cte_name].kind == "aggs"
         }
         self._scanner = _cte_name_scanner(plan.cte_order) if plan.cte_order else None
+
+    def _as_of_source(self) -> str:
+        """``as_of_dates``, or its distinct dates when the cohort is paired —
+        see :func:`featurizer.boundary.as_of_dates_source` for why."""
+        return as_of_dates_source(paired=self.plan.cohort_id_column is not None)
 
     # ------------------------------------------------------------------ #
     # Detection + ordering
@@ -1111,7 +1125,7 @@ class MaterializationPlanner:
         where = self._extract_where(spec.suffix)
         parts = [
             with_clause + "select\n        " + ",\n        ".join(projections),
-            f"from {_AS_OF_SOURCE} aod cross join {source}",
+            f"from {self._as_of_source()} aod cross join {source}",
         ]
         if where:
             parts.append(where)
@@ -1170,7 +1184,7 @@ class MaterializationPlanner:
             with_clause
             + "select\n        "
             + ",\n        ".join(projections)
-            + f"\n        from {_AS_OF_SOURCE} aod cross join {table}"
+            + f"\n        from {self._as_of_source()} aod cross join {table}"
             + joins_sql
         )
 
