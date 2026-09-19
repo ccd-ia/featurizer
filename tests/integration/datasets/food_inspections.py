@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Any
 
 from ._download import (
-    cached_download as _cached_download,
-)  # noqa: F401  (re-export for tests)
+    cached_download as _cached_download,  # noqa: F401  (re-export for tests)
+)
 from ._download import download_socrata_csv, sha256_of
 from ._meta import mark_seeded
 
