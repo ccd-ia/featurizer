@@ -27,6 +27,7 @@ from .boundary import (
     DEFAULT_BOUNDARY,
     AsOfBoundary,
     causal_predicate,
+    cohort_predicate,
     daterange_window,
     use_boundary,
 )
@@ -99,6 +100,12 @@ class ShardableCTE:
     (``from ... where ... group by ...``). ``key_columns`` are always-projected
     identifier/join-key columns that must survive pruning. ``columns`` are the
     prunable feature columns in deterministic order.
+
+    ``where`` is for the one CTE whose joins are rebuilt per column group — the
+    target's synth, where ``suffix`` stops at the base table and the sharder
+    appends only the joins a group needs. A predicate has to follow those
+    joins, so it cannot live in ``suffix``. Empty unless the config declares a
+    paired cohort (issue #10).
     """
 
     name: str
@@ -108,6 +115,7 @@ class ShardableCTE:
     key_columns: List[str]
     columns: List[ColumnSpec]
     rendered: str = ""
+    where: str = ""
 
 
 @dataclass(frozen=True)
@@ -158,6 +166,14 @@ class PlannerResult:
     # on those actually over it. Unlike ``synth_column_source`` (target-scoped),
     # this spans every entity's CTEs, since the oversized CTE is usually a child's.
     materialization_keys: Dict[str, "MaterializationKey"] = field(default_factory=dict)
+    # ``as_of_dates.id_column`` from the config (issue #10), already quoted for
+    # SQL, or None for the default dense cohort. The renderers read it to pick
+    # the relation bound to ``aod``.
+    cohort_id_column: Optional[str] = None
+    # ``where …`` to append to the final ``select * from <target>_transform``, or
+    # "". Set instead of narrowing the target's base read when a selected
+    # transformer compares a target row with the other target rows.
+    cohort_post_filter: str = ""
 
 
 class FeaturePlanner:
@@ -174,8 +190,14 @@ class FeaturePlanner:
         transformations: Mapping[str, Callable[..., Feature | None]],
         boundary: AsOfBoundary = DEFAULT_BOUNDARY,
         debug: bool = False,
+        cohort_id_column: Optional[str] = None,
     ) -> None:
         self.graph = graph
+        # The caller's as_of_dates column that pairs each date with target ids
+        # (issue #10). Quoted once here: the database owns the name.
+        self.cohort_id_column: Optional[str] = (
+            quote_if_bare(cohort_id_column) if cohort_id_column else None
+        )
         self.target_alias = target_alias
         self.max_depth = max_depth
         self.intervals = intervals
@@ -269,6 +291,8 @@ class FeaturePlanner:
             ),
             materialization_keys=dict(self._materialization_keys),
             target_output_features=list(self._output_features),
+            cohort_id_column=self.cohort_id_column,
+            cohort_post_filter=self._cohort_post_filter(),
         )
 
     # ------------------------------------------------------------------ #
@@ -1836,6 +1860,60 @@ class FeaturePlanner:
                     lateral_join,
                 )
 
+    def _cohort_reads_population(self) -> bool:
+        """True when a selected transformer compares a target row with the
+        OTHER target rows (``cross_entity_zscore``: ``avg(x) over ()``).
+
+        Narrowing the target's base read would shrink that population to the
+        cohort and change the value — measured: every ``CROSS_ENTITY_ZSCORE``
+        turned NULL. A transformer declares it with ``population_level = True``.
+        """
+        return any(
+            getattr(transformer, "population_level", False)
+            for transformer in self.transformations.values()
+        )
+
+    def _cohort_where(self, target: Entity) -> str:
+        """The paired-cohort predicate for ``target``'s base read, or ``""``.
+
+        Only the plan's target is paired, and only when the config names the
+        column (issue #10); every other entity, and every config without the
+        block, gets the empty string and renders exactly as before. So does a
+        plan that reads the population: it is filtered after the transform
+        instead (:meth:`_cohort_post_filter`).
+        """
+        if (
+            self.cohort_id_column is None
+            or self._target is None
+            or target.alias != self._target.alias
+            or target.id is None
+            or self._cohort_reads_population()
+        ):
+            return ""
+        return cohort_predicate(
+            f"{target.table}.{quote_if_bare(target.id.name)}",
+            self.cohort_id_column,
+            prefix="where",
+        ).strip()
+
+    def _cohort_post_filter(self) -> str:
+        """The same cut, applied to the final ``select * from <target>_transform``.
+
+        Values then equal the dense run for every primitive, because nothing
+        upstream was narrowed; the price is that nothing upstream was saved.
+        """
+        target = self._target
+        if (
+            self.cohort_id_column is None
+            or target is None
+            or target.id is None
+            or not self._cohort_reads_population()
+        ):
+            return ""
+        return cohort_predicate(
+            quote_if_bare(target.id.name), self.cohort_id_column, prefix="where"
+        ).strip()
+
     def _build_synth_cte(self, target: Entity) -> None:
         cte_table = f"{target.alias}_synth"
 
@@ -1872,6 +1950,13 @@ class FeaturePlanner:
         # changes how the column is written, never what it is called.
         self._synth_columns[target.alias] = set(feature_names)
 
+        # A paired cohort narrows the TARGET's base read, here and nowhere
+        # else. Filtering the lateral's output instead would return the same
+        # rows and still compute every discarded one. ``where_block`` is empty
+        # for the default dense cohort, which keeps that SQL byte-identical.
+        where = self._cohort_where(target)
+        where_block = f"        {where}\n" if where else ""
+
         cte_query = f"""
         -- sythetize aggregations and direct features for {target.alias}
         {cte_table} as (
@@ -1880,7 +1965,7 @@ class FeaturePlanner:
         from {target.table}
         {" left join " if self._joins[target.alias] else ""}
         {" left join ".join(self._joins[target.alias])}
-        )
+{where_block}        )
         """
 
         # Sharding metadata. A synth column is either a base-table variable
@@ -1908,6 +1993,7 @@ class FeaturePlanner:
             key_columns=list(id_columns),
             columns=columns,
             rendered=cte_query,
+            where=where,
         )
         self._emit_shardable(spec, cte_query)
         # Temp-table materialization key (issue #7): a synth is one row per entity,

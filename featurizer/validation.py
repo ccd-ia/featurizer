@@ -115,7 +115,11 @@ class ConfigValidator:
         "spatial_relationships",
         "graph_relationships",
         "as_of_boundary",
+        "as_of_dates",
     }
+
+    #: Keys of the optional ``as_of_dates:`` block (paired cohorts, issue #10).
+    VALID_AS_OF_DATES_KEYS = {"id_column"}
 
     #: Relationship keys. The nested ``parent: {entity, key}`` form is the one
     #: the config takes; the flat ``parent_key:``/``child_key:`` spelling is
@@ -318,6 +322,71 @@ class ConfigValidator:
                     + (f"\n  Did you mean '{suggestion}'?" if suggestion else ""),
                 )
             )
+
+        self._validate_as_of_dates(config)
+
+    def _validate_as_of_dates(self, config: Dict[str, Any]) -> None:
+        """Shape-check the optional ``as_of_dates:`` block (issue #10).
+
+        ``id_column`` names a column of the caller's ``as_of_dates`` table. That
+        table exists only in the database and validation has no connection, so
+        the name cannot be checked here: a wrong one surfaces as a PostgreSQL
+        ``column does not exist`` error when the query runs.
+        """
+        if "as_of_dates" not in config:
+            return
+        block = config["as_of_dates"]
+        if not isinstance(block, dict):
+            self.errors.append(
+                ValidationError(
+                    message="'as_of_dates' must be a mapping "
+                    f"(got: {type(block).__name__})",
+                    location="as_of_dates",
+                    suggestion="as_of_dates: {id_column: <column of your "
+                    "as_of_dates table holding the target id>}",
+                )
+            )
+            return
+        for key in block:
+            if str(key) not in self.VALID_AS_OF_DATES_KEYS:
+                self._unknown_key_error(
+                    str(key),
+                    self.VALID_AS_OF_DATES_KEYS,
+                    f"as_of_dates.{key}",
+                    "in the as_of_dates block",
+                )
+        id_column = block.get("id_column")
+        if not isinstance(id_column, str) or not id_column.strip():
+            self.errors.append(
+                ValidationError(
+                    message="'as_of_dates.id_column' must be a non-empty string "
+                    f"(got: {id_column!r})",
+                    location="as_of_dates.id_column",
+                    suggestion="Name the column of your as_of_dates table that "
+                    "holds the target entity's id.",
+                )
+            )
+            return
+        target = config.get("target")
+        entities = config.get("entities")
+        if isinstance(target, str) and isinstance(entities, list):
+            for entity in entities:
+                if (
+                    isinstance(entity, dict)
+                    and entity.get("alias") == target
+                    and "id" in entity
+                    and entity["id"] is None
+                ):
+                    self.errors.append(
+                        ValidationError(
+                            message="'as_of_dates.id_column' pairs each as-of "
+                            f"date with target ids, but target '{target}' "
+                            "declares no id",
+                            location="as_of_dates.id_column",
+                            suggestion=f"Give entity '{target}' an 'id', or "
+                            "remove the as_of_dates block.",
+                        )
+                    )
 
     def _validate_values(self, config: Dict[str, Any]) -> None:
         """Validate individual values (formats, ranges)."""

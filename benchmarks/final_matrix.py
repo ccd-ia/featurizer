@@ -22,12 +22,24 @@ are read from ``<triage>/<dataset>-database.yaml`` (never hardcoded here).
 Runs are read-only — everything happens on one connection whose transaction
 is rolled back (TEMP ``as_of_dates`` + TEMP shard tables vanish with it).
 
+The single-date cell above is the one every published figure since ADR-0009
+was measured with, and it is kept exactly as it is. It cannot see the cost of a
+*paired* cohort, though: with one as-of date the dense ``as_of_dates x target``
+product is exactly the wanted rows. ``--dates N`` adds the case that can
+(issue #10). It spans N monthly as-of dates, pairs each date with the entities
+that had an event in the month before it, and records the rows the dense query
+computes against the rows on that diagonal — then runs the same config with
+``as_of_dates: {id_column: …}`` and checks the paired result equals the dense
+one on those pairs. Its artifacts go to their own directory,
+``specs/paired-cohorts/raw/``, so the v1.0.0 record stays what it was.
+
 Usage::
 
     uv run python -m benchmarks.final_matrix --dry-run          # counts only, no DB
     uv run python -m benchmarks.final_matrix --db dirtyduck     # one DB, all variants
     uv run python -m benchmarks.final_matrix --db donorschoose --variant wide
     uv run python -m benchmarks.final_matrix                    # the full matrix
+    uv run python -m benchmarks.final_matrix --db dirtyduck --variant narrow --dates 6
 """
 
 from __future__ import annotations
@@ -44,7 +56,11 @@ import yaml
 ARTIFACT_DIR = (
     Path(__file__).resolve().parent.parent / "specs" / "live-db-revalidation-v100"
 )
-DEFAULT_TRIAGE_DIR = Path.home() / "projects" / "triage"
+# The checkout was renamed; the harness could not find its configs by default.
+DEFAULT_TRIAGE_DIR = Path.home() / "projects" / "triage-pg"
+MULTI_DATE_ARTIFACT_DIR = (
+    Path(__file__).resolve().parent.parent / "specs" / "paired-cohorts"
+)
 
 #: dataset -> the triage experiment file its ``feature_config`` comes from.
 DATASETS: Dict[str, str] = {
@@ -203,6 +219,170 @@ def run_cell(
     return record
 
 
+#: The pair table's id column in the multi-date case.
+PAIR_ID_COLUMN = "cohort_entity_id"
+
+
+def _pairing(config: Dict[str, Any]) -> Dict[str, str]:
+    """What the multi-date case needs to build a diagonal from the config.
+
+    The events entity is the one :func:`latest_knowledge_date` uses; an entity
+    is in a date's cohort when it has an event in the month before that date.
+    Only the plain shape is handled — the events' relationship to the target
+    must join on the target's own id — because that is the shape of all three
+    live datasets and a wrong pairing would measure the wrong thing.
+    """
+    target = next(e for e in config["entities"] if e["alias"] == config["target"])
+    events = next(
+        e
+        for e in config["entities"]
+        if e.get("temporal_ix") and e["alias"] != config["target"]
+    )
+    rel = next(
+        r
+        for r in config["relationships"]
+        if r["parent"]["entity"] == target["alias"]
+        and r["child"]["entity"] == events["alias"]
+    )
+    if rel["parent"]["key"] != target["id"]:
+        raise ValueError(
+            f"multi-date case: relationship {target['alias']} <- {events['alias']} "
+            f"joins on {rel['parent']['key']!r}, not on the target id "
+            f"{target['id']!r}; the diagonal cannot be derived from the events. "
+            "Extend _pairing() for this shape before benchmarking it."
+        )
+    return {
+        "target_id": target["id"],
+        "events_table": events["table"],
+        "events_ts": events["temporal_ix"],
+        "events_key": rel["child"]["key"],
+    }
+
+
+def _create_pairs(cur, pairing: Dict[str, str], table: str, last: str, n: int) -> None:
+    """``table(as_of_date, <PAIR_ID_COLUMN>)``: each of ``n`` monthly dates ending
+    at ``last``, paired with the ids that had an event in the month before it."""
+    cur.execute(
+        f"create temp table {table} (as_of_date date, {PAIR_ID_COLUMN} bigint) "
+        "on commit drop"
+    )
+    cur.execute(
+        f"""
+        insert into {table}
+        select d::date, ev.{pairing["events_key"]}
+        from generate_series(%s::date - (%s - 1) * interval '1 month',
+                             %s::date, interval '1 month') as d
+        join lateral (
+            select distinct {pairing["events_key"]}
+            from {pairing["events_table"]}
+            where {pairing["events_ts"]} < d::date
+              and {pairing["events_ts"]} >= d::date - interval '1 month'
+        ) ev on true
+        """,
+        (last, n, last),
+    )
+    cur.execute(f"analyze {table}")
+
+
+def run_multi_date_cell(
+    triage_dir: Path, dataset: str, variant: str, n_dates: int
+) -> Dict[str, Any]:
+    """Dense vs paired over ``n_dates`` monthly as-of dates (issue #10).
+
+    Two transactions on one connection, each rolled back, so each run gets its
+    own TEMP ``as_of_dates``: the distinct dates for the dense run, the pair
+    table itself for the paired run.
+    """
+    import copy
+
+    config = build_variant(load_feature_config(triage_dir, dataset), variant)
+    pairing = _pairing(config)
+    paired_config = copy.deepcopy(config)
+    paired_config["as_of_dates"] = {"id_column": PAIR_ID_COLUMN}
+
+    dense_f = featurizer_for(config)
+    paired_f = featurizer_for(paired_config)
+    record: Dict[str, Any] = {
+        "dataset": dataset,
+        "variant": variant,
+        "case": "multi-date",
+        "features": len(dense_f.feature_manifest),
+        "featurizer_version": _version(),
+    }
+
+    conn = connect(triage_dir, dataset)
+    try:
+        last = latest_knowledge_date(conn, config)
+
+        with conn.cursor() as cur:
+            _create_pairs(cur, pairing, "cohort_pairs", last, n_dates)
+            cur.execute(f"select as_of_date, {PAIR_ID_COLUMN} from cohort_pairs")
+            wanted = set(cur.fetchall())
+            cur.execute(
+                "create temp table as_of_dates on commit drop as "
+                "select distinct as_of_date from cohort_pairs"
+            )
+        t0 = time.perf_counter()
+        dense = dense_f.to_dataframe(connection=conn)
+        dense_s = time.perf_counter() - t0
+        conn.rollback()
+
+        with conn.cursor() as cur:
+            _create_pairs(cur, pairing, "as_of_dates", last, n_dates)
+        t1 = time.perf_counter()
+        paired = paired_f.to_dataframe(connection=conn)
+        paired_s = time.perf_counter() - t1
+
+        # Compare VALUES on the pairs, column by column. ``DataFrame.equals``
+        # also compares dtypes, and those legitimately differ: an entity with
+        # no events gives NULL in the dense frame (float64) where the paired
+        # cohort, all of which have events, stays int64.
+        keys = ["as_of_date", pairing["target_id"]]
+        dense = dense.reset_index()
+        paired = paired.reset_index().sort_values(keys).reset_index(drop=True)
+        on_pairs = (
+            dense.merge(paired[keys], on=keys).sort_values(keys).reset_index(drop=True)
+        )
+        differing = [
+            col
+            for col in on_pairs.columns
+            if len(on_pairs) != len(paired)
+            or not (
+                (on_pairs[col] == paired[col])
+                | (on_pairs[col].isna() & paired[col].isna())
+            ).all()
+        ]
+        same = (
+            len(paired) == len(wanted)
+            and list(on_pairs.columns) == list(paired.columns)
+            and not differing
+        )
+        record.update(
+            {
+                "last_as_of_date": last,
+                "dates": n_dates,
+                "rows_computed_dense": int(len(dense)),
+                "rows_on_diagonal": len(wanted),
+                "dense_to_diagonal": round(len(dense) / max(len(wanted), 1), 1),
+                "rows_paired": int(len(paired)),
+                "dense_exec_seconds": round(dense_s, 1),
+                "paired_exec_seconds": round(paired_s, 1),
+                "paired_equals_dense_on_pairs": bool(same),
+                "columns_differing": len(differing),
+                "status": "materialized",
+            }
+        )
+    finally:
+        conn.rollback()
+        conn.close()
+
+    out = MULTI_DATE_ARTIFACT_DIR / "raw" / f"{dataset}-{variant}-dates{n_dates}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps(record))
+    return record
+
+
 def _version() -> str:
     from importlib.metadata import version
 
@@ -224,6 +404,13 @@ def main() -> None:
         help="render + count only (no database connection)",
     )
     parser.add_argument(
+        "--dates",
+        type=int,
+        metavar="N",
+        help="run the multi-date paired-cohort case over N monthly as-of dates "
+        "instead of the single-date cell (issue #10)",
+    )
+    parser.add_argument(
         "--triage-dir",
         type=Path,
         default=DEFAULT_TRIAGE_DIR,
@@ -235,7 +422,12 @@ def main() -> None:
     variants = [args.variant] if args.variant else ["narrow", "all-agg", "wide"]
     for dataset in datasets:
         for variant in variants:
-            run_cell(args.triage_dir, dataset, variant, dry_run=args.dry_run)
+            if args.dates:
+                if args.dry_run:
+                    parser.error("--dates needs a database; drop --dry-run")
+                run_multi_date_cell(args.triage_dir, dataset, variant, args.dates)
+            else:
+                run_cell(args.triage_dir, dataset, variant, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

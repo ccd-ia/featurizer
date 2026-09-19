@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from loguru import logger
 
+from .boundary import as_of_dates_source
 from .planner import PlannerResult
 
 
@@ -23,16 +24,20 @@ class SQLRenderer:
         """
         ctes = ",".join(plan.ctes)
         target_alias = plan.target.alias
+        # Both are the bare defaults unless the config pairs each as-of date
+        # with its own ids (issue #10), which keeps the default byte-identical.
+        spine = as_of_dates_source(paired=plan.cohort_id_column is not None)
+        post_filter = f" {plan.cohort_post_filter}" if plan.cohort_post_filter else ""
         query = f"""
         select aod.as_of_date, t.*
-        from as_of_dates as aod
+        from {spine} as aod
         cross join lateral (
 
         with
 
         {ctes}
 
-        select * from {target_alias}_transform
+        select * from {target_alias}_transform{post_filter}
         ) as t
 
         order by aod.as_of_date

@@ -1,0 +1,55 @@
+{
+  "captured_from": "3e1790d",
+  "cases": {
+    "examples/01-basic-aggregations/config.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "028b82cc15f95b1f06322aefe8329fa79413f817e2bcee1edcd93d8309204fef",
+      "n_groups": "1",
+      "query": "f7cca2e28041107f25872ff4bd4ebaeabdb88b3ad1a09facfd2aaf959fe87ec8"
+    },
+    "examples/03-deep-nesting/config.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "b698e609371307b848b4d17a25552965c25bcce4b6ceb1c01fd776f4018233cf",
+      "n_groups": "1",
+      "query": "dac8f25784c6daea2a499191f2987b38b89a9a10057549e66c53401281e5c62b"
+    },
+    "examples/05-categoricals-output/config.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "ee180f046a810a65b1f650b97a164860fda6436f157ecf3f707867e2b434f87e",
+      "n_groups": "1",
+      "query": "a7da18b409ce2230428501daf60e092e72c45836d5f290a19ca04690e06cff14"
+    },
+    "examples/06-graph-text-bridge/config.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "2507452e663858b74d2d27c0d794f795cb59b4bbbea82fbb18a1b37e306663c9",
+      "n_groups": "1",
+      "query": "17e7c4e70e492ff135ea6c1e0f86407c391d552b213bc5baac315f90d46beb01"
+    },
+    "featurizer/featurizer.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "f75ce82150a5fd054eb2b23f9fb7b4727c5c7b4ccce137150c1457522b83f9a7",
+      "n_groups": "5"
+    },
+    "generated/chain": {
+      "ddl": "627edac66b801527c824bc5b69c973b7201fb4a00f05b615c18cdf5166335ea7",
+      "groups": "247d721805ac189109a3d946c971dee5fb43a94beda5853a19274013b2cc1492",
+      "n_groups": "1"
+    },
+    "generated/wide": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "1c293d7e3839a9aa50b165bb926c288466392c5d9dc2567e8af1ab8b0865fb81",
+      "n_groups": "11"
+    },
+    "tests/fixtures/sample_config.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "d5423c77bac45118d1107943b8068e858559cd51872cde056d36586d8b9cbe08",
+      "n_groups": "6"
+    },
+    "tests/fixtures/sample_config_snapshot.yaml": {
+      "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "groups": "f5ffea97a636c2b5aa66061e0677d6bf16425c7a125a096991df68c7aeb05ce3",
+      "n_groups": "1",
+      "query": "1feb0cc1d0e5b034e017dc5981ada871500ecd9406eadda5fd1440d8424f69f6"
+    }
+  }
+}

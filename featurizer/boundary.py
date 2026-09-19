@@ -15,7 +15,10 @@ This module defines the boundary *once*:
 * :data:`DEFAULT_BOUNDARY` / the ``inclusive`` vs ``exclusive`` modes,
 * :func:`causal_predicate` — the scalar ``<col> <op> aod.as_of_date`` fragment,
 * :func:`daterange_bound` — the matching ``daterange(..., <bound>)`` literal for
-  interval windows.
+  interval windows,
+* :func:`cohort_predicate` — the optional cut that pairs each as-of date with
+  its own entities, and :func:`as_of_dates_source`, the relation ``aod``
+  ranges over (issue #10).
 
 Mode plumbing without circular imports
 --------------------------------------
@@ -112,6 +115,64 @@ def causal_predicate(
     if prefix:
         return f" {prefix} {predicate}"
     return predicate
+
+
+#: The caller's table of as-of dates, bound to ``aod`` in every rendered query.
+AS_OF_DATES_TABLE = "as_of_dates"
+
+
+def cohort_predicate(target_id: str, id_column: str, *, prefix: str = "") -> str:
+    """Render the paired-cohort cut for one as-of date (issue #10).
+
+    By default ``as_of_dates`` holds dates only and every target row is emitted
+    under every date. When the config declares ``as_of_dates: {id_column: …}``
+    the table holds ``(as_of_date, id)`` pairs, and this predicate keeps the
+    target rows paired with the date ``aod`` is currently on::
+
+        <target id> in (select _cohort.<id_column> from as_of_dates _cohort
+                        where _cohort.as_of_date = aod.as_of_date)
+
+    It sits beside :func:`causal_predicate` because it has the same reach:
+    ``aod`` is in scope inside every CTE of the lateral, so the cut can be
+    applied where the target is *read*, before anything is computed for a row
+    that would be thrown away.
+
+    A semi-join, not ``<target id> = aod.<id_column>`` with ``aod`` ranging over
+    the pairs. That shape evaluates the lateral once per *pair*, and every CTE
+    PostgreSQL cannot inline is recomputed each time: measured on a 65-aggregation
+    config it had not finished after 1,520 s where the dense query took 72 s.
+    This one evaluates once per *date*, as the dense query does, so its cost
+    stays close to dense: measured 4% and 8% slower on that same config, and
+    2.8x faster on a 147-feature one. It also makes a duplicated pair harmless.
+
+    Args:
+        target_id: The already-quoted target id column, qualified as the
+            surrounding query needs it.
+        id_column: The already-quoted column of ``as_of_dates`` holding the id.
+        prefix: Optional leading keyword, as in :func:`causal_predicate`.
+    """
+    predicate = (
+        f"{target_id} in (select _cohort.{id_column} from {AS_OF_DATES_TABLE} "
+        f"_cohort where _cohort.as_of_date = aod.as_of_date)"
+    )
+    if prefix:
+        return f" {prefix} {predicate}"
+    return predicate
+
+
+def as_of_dates_source(*, paired: bool) -> str:
+    """The relation ``aod`` ranges over: one row per as-of date.
+
+    Unpaired, that is the caller's table, by its bare name as it always was.
+    Paired, the table repeats each date once per id, so ``aod`` ranges over its
+    distinct dates. Every statement that binds ``aod`` goes through here — the
+    query's outer spine and the temp-table preamble alike. The preamble is the
+    one that silently breaks otherwise: it cross-joins the dates and groups by
+    them, so a repeated date multiplies every ``count`` and ``sum``.
+    """
+    if paired:
+        return f"(select distinct as_of_date from {AS_OF_DATES_TABLE})"
+    return AS_OF_DATES_TABLE
 
 
 def daterange_bound(boundary: AsOfBoundary | None = None) -> str:
