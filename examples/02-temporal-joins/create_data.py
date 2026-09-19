@@ -18,6 +18,10 @@ SCHEMA = "example_02"
 NUM_PATIENTS = 50
 MIN_PLANS_PER_PATIENT = 0
 MAX_PLANS_PER_PATIENT = 10
+MAX_ASSESSMENTS_PER_PATIENT = 4
+# Assessments fall on both sides of admission on purpose: the as-of join must
+# skip the ones dated after it, and `grace: P30D` the ones too far before it.
+ASSESSMENT_DAYS_FROM_ADMISSION = (-75, 60)
 
 SEVERITY_LEVELS = ["low", "medium", "high", "critical"]
 TREATMENT_TYPES = ["medication", "therapy", "surgery", "monitoring", "rehabilitation"]
@@ -48,6 +52,16 @@ def create_database():
             plan_date DATE NOT NULL,
             treatment_type TEXT NOT NULL,
             cost DOUBLE PRECISION NOT NULL,
+            FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE risk_assessments (
+            assessment_id INTEGER PRIMARY KEY,
+            patient_id INTEGER NOT NULL,
+            assessed_on DATE NOT NULL,
+            risk_score DOUBLE PRECISION NOT NULL,
             FOREIGN KEY (patient_id) REFERENCES patients(patient_id)
         )
     """)
@@ -95,6 +109,24 @@ def create_database():
 
     cursor.executemany("INSERT INTO care_plans VALUES (%s, %s, %s, %s, %s)", plans)
 
+    # Generate risk assessments (the timestamped lookup the as-of join reads).
+    # Drawn after the care plans so the plan data keeps its seeded values.
+    assessments = []
+    assessment_id = 1
+
+    for patient_id in range(1, NUM_PATIENTS + 1):
+        patient_admission = patients[patient_id - 1][1]
+        for _ in range(random.randint(0, MAX_ASSESSMENTS_PER_PATIENT)):
+            offset = random.randint(*ASSESSMENT_DAYS_FROM_ADMISSION)
+            assessed_on = patient_admission + timedelta(days=offset)
+            risk_score = round(random.uniform(0.0, 1.0), 3)
+            assessments.append((assessment_id, patient_id, assessed_on, risk_score))
+            assessment_id += 1
+
+    cursor.executemany(
+        "INSERT INTO risk_assessments VALUES (%s, %s, %s, %s)", assessments
+    )
+
     # Generate as_of_dates (quarterly snapshots for 2023-2024)
     as_of_dates = []
     for year in [2023, 2024]:
@@ -122,15 +154,19 @@ def create_database():
     cursor.execute("SELECT AVG(cost), MIN(cost), MAX(cost) FROM care_plans")
     avg_cost, min_cost, max_cost = cursor.fetchone()
 
-    # Example of temporal join behavior
+    cursor.execute("SELECT COUNT(*) FROM risk_assessments")
+    num_assessments = cursor.fetchone()[0]
+
+    # What the as-of join will find: an assessment dated at or before the
+    # admission and no more than 30 days (the config's grace) before it.
     cursor.execute("""
-        SELECT
-            COUNT(DISTINCT p.patient_id) as patients_with_active_plans
+        SELECT COUNT(DISTINCT p.patient_id)
         FROM patients p
-        JOIN care_plans cp ON p.patient_id = cp.patient_id
-        WHERE cp.plan_date <= '2024-01-01'
+        JOIN risk_assessments ra ON p.patient_id = ra.patient_id
+        WHERE ra.assessed_on <= p.admission_date
+          AND ra.assessed_on >= p.admission_date - interval 'P30D'
     """)
-    active_plans = cursor.fetchone()[0]
+    matched = cursor.fetchone()[0]
 
     conn.close()
 
@@ -141,7 +177,8 @@ def create_database():
     print(f"  As-of dates: {num_dates}")
     print(f"  Plan date range: {min_date} to {max_date}")
     print(f"  Plan costs: ${min_cost:.2f} - ${max_cost:.2f} (avg: ${avg_cost:.2f})")
-    print(f"  Patients with plans by 2024-01-01: {active_plans}")
+    print(f"  Risk assessments: {num_assessments}")
+    print(f"  Patients with an assessment in the 30 days before admission: {matched}")
     print(f"\nSchema: {SCHEMA}")
 
 
