@@ -34,9 +34,9 @@ def test_registered(name):
 @pytest.mark.parametrize(
     "name,sql",
     [
-        ("recency", "max(ordered_at)"),
-        ("tenure", "min(ordered_at)"),
-        ("age_in_system", "min(ordered_at)"),
+        ("recency", 'max("ordered_at")'),
+        ("tenure", 'min("ordered_at")'),
+        ("age_in_system", 'min("ordered_at")'),
         ("inter_event_hazard_proxy", "count(*)"),
     ],
 )

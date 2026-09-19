@@ -64,7 +64,7 @@ def test_right_censoring_fires_with_terminal_predicate():
     agg = get_aggregations(["right_censoring_indicator"])["right_censoring_indicator"]
     result = agg(parent, child, _feat(child, "event_type"), relationship=rel)
     assert result is not None
-    assert "FILTER (WHERE sub.event_type = 'cancel')" in result.definition
+    assert "FILTER (WHERE sub.\"event_type\" = 'cancel')" in result.definition
     assert "= 0)::int" in result.definition
     assert "<= aod.as_of_date" in result.definition  # causal bound
 
@@ -89,17 +89,17 @@ def test_cross_type_latency_fires_with_a_b_predicates():
     agg = get_aggregations(["cross_type_latency"])["cross_type_latency"]
     result = agg(parent, child, _feat(child, "event_type"), relationship=rel)
     assert result is not None
-    assert "a.event_type = 'order'" in result.definition
-    assert "b.event_type = 'deliver'" in result.definition
+    assert "a.\"event_type\" = 'order'" in result.definition
+    assert "b.\"event_type\" = 'deliver'" in result.definition
     # Latency in days, epoch-extracted per side so it is numeric for both date
     # and timestamp columns (raw ``MIN(b.ts) - a.ts`` breaks on date columns).
     assert (
-        "(EXTRACT(EPOCH FROM MIN(b.ts)) - EXTRACT(EPOCH FROM a.ts)) / 86400.0"
+        '(EXTRACT(EPOCH FROM MIN(b."ts")) - EXTRACT(EPOCH FROM a."ts")) / 86400.0'
         in result.definition
     )
     # both sides causally bounded
-    assert "a.ts <= aod.as_of_date" in result.definition
-    assert "b.ts <= aod.as_of_date" in result.definition
+    assert 'a."ts" <= aod.as_of_date' in result.definition
+    assert 'b."ts" <= aod.as_of_date' in result.definition
 
 
 def test_cross_type_latency_skips_without_predicates():

@@ -16,8 +16,9 @@ The division of labour:
   optional ``reduction_where``, and registers the CTE with the existing join /
   synth-source / sharding / materialization machinery.
 
-This module imports only from :mod:`featurizer.boundary` and the stdlib, so it
-introduces no import cycle with the primitives or the planner.
+This module imports only from :mod:`featurizer.boundary`, the stdlib and the
+leaf helper ``quote_if_bare`` of :mod:`.abstractions` (which imports neither the
+primitives nor the planner), so it introduces no import cycle.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from ..boundary import causal_predicate, daterange_window
+from .abstractions import quote_if_bare
 
 if TYPE_CHECKING:
     from .abstractions import Feature
@@ -63,7 +65,9 @@ def causal_where(
     tix = getattr(feature.entity, "temporal_ix", None) if feature.entity else None
     if tix is None:
         return ""
-    col = column if column is not None else tix.name
+    # Every caller in aggregations.py passes an already-quoted ``column``; the
+    # fallback reads the declared temporal index by name, so it quotes (#29).
+    col = column if column is not None else quote_if_bare(tix.name)
     if interval:
         return f"where {daterange_window(interval, column=col)}"
     return causal_predicate(col, prefix="where")

@@ -78,14 +78,14 @@ def test_distance_uses_haversine_and_lag():
     agg = get_aggregations(["distance_travelled"])["distance_travelled"]
     result = agg(parent, child, child.temporal_ix, relationship=rel)
     assert "asin(sqrt(" in result.definition
-    assert "LAG(sub.latitude)" in result.definition
+    assert 'LAG(sub."latitude")' in result.definition
 
 
 def test_spatial_std_formula():
     parent, child, rel = _setup()
     agg = get_aggregations(["spatial_std"])["spatial_std"]
     result = agg(parent, child, child.temporal_ix, relationship=rel)
-    assert "var_samp(sub.latitude) + var_samp(sub.longitude)" in result.definition
+    assert 'var_samp(sub."latitude") + var_samp(sub."longitude")' in result.definition
 
 
 def test_requires_spatial_ix():

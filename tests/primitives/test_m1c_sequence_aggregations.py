@@ -73,7 +73,7 @@ def test_sequence_interval_variant_uses_daterange(name):
     full = _full_sql(result)
     assert "daterange" in full and "P1W" in full
     # Bug #7 guard: the event column inside the window is date-cast.
-    assert "@>" in full and "ts::date" in full
+    assert "@>" in full and '"ts"::date' in full
 
 
 @pytest.mark.parametrize("name", SEQUENCE)
@@ -105,9 +105,10 @@ def test_recurrence_interval_partitions_by_state():
     # Set-based (ADR-0010): the same-state LAG partitions by (child key, value).
     full = _full_sql(result).lower()
     assert (
-        "partition by events_transform.customer_id, events_transform.plain_cat" in full
+        'partition by events_transform.customer_id, events_transform."plain_cat"'
+        in full
     )
-    assert "order by events_transform.ts" in full
+    assert 'order by events_transform."ts"' in full
     assert "avg(gap)" in result.definition.lower()
 
 
@@ -135,8 +136,8 @@ def test_first_passage_time_fires_with_target_predicate():
     agg = get_aggregations(["first_passage_time"])["first_passage_time"]
     result = agg(parent, child, _feat(child, "status"), relationship=rel)
     assert result is not None
-    assert "FILTER (WHERE sub.status = 'failed')" in result.definition
-    assert "MIN(sub.ts)" in result.definition
+    assert "FILTER (WHERE sub.\"status\" = 'failed')" in result.definition
+    assert 'MIN(sub."ts")' in result.definition
     assert "<= aod.as_of_date" in result.definition
 
 
