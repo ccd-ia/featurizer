@@ -36,7 +36,7 @@ def test_abs_transformer_creates_distinct_feature():
     result = transformer(entity, feature)
 
     assert result is not feature
-    assert result.definition.strip() == "abs(duration_minutes)"
+    assert result.definition.strip() == 'abs("duration_minutes")'
 
 
 def test_ln_transformer_is_domain_guarded():
@@ -48,7 +48,9 @@ def test_ln_transformer_is_domain_guarded():
     result = get_transformers(["ln"])["ln"](entity, feature)
 
     definition = result.definition.strip()
-    assert definition == "case when duration_minutes > 0 then ln(duration_minutes) end"
+    assert (
+        definition == 'case when "duration_minutes" > 0 then ln("duration_minutes") end'
+    )
     # The domain guard lives in the definition only — the output name is unchanged
     # (ADR-0007 naming contract): still LN(...), never a 'case' identifier.
     assert result.name.startswith('"LN(') or result.name.startswith("LN(")
@@ -61,7 +63,7 @@ def test_log_transformer_is_domain_guarded():
     result = get_transformers(["log"])["log"](entity, feature)
     assert (
         result.definition.strip()
-        == "case when duration_minutes > 0 then log(duration_minutes) end"
+        == 'case when "duration_minutes" > 0 then log("duration_minutes") end'
     )
 
 
@@ -72,7 +74,7 @@ def test_sqrt_transformer_is_domain_guarded():
     result = get_transformers(["sqrt"])["sqrt"](entity, feature)
     assert (
         result.definition.strip()
-        == "case when duration_minutes >= 0 then sqrt(duration_minutes) end"
+        == 'case when "duration_minutes" >= 0 then sqrt("duration_minutes") end'
     )
 
 
@@ -119,7 +121,7 @@ def test_lag_transformer_builds_temporal_window():
     result = transformer(entity, feature)
 
     assert result is not None
-    assert f"lag({feature.name}, 3)" in result.definition
+    assert f'lag("{feature.name}", 3)' in result.definition
     assert "order by visited_at" in result.definition.lower()
 
 
@@ -225,7 +227,7 @@ def test_pct_change_transformer_computes_ratio():
 
     assert result is not None
     assert "case" in result.definition.lower()
-    assert f"({feature.name} - lag" in result.definition
+    assert f'("{feature.name}" - lag' in result.definition
 
 
 def test_last_transformer_uses_full_partition_frame():

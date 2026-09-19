@@ -72,7 +72,7 @@ def test_num_chars_uses_char_length_not_typo():
     entity = _text_entity()
     body = _feature(entity, "body")
     result = get_transformers(["num_chars"])["num_chars"](entity, body)
-    assert "char_length(body)" in result.definition
+    assert 'char_length("body")' in result.definition
     assert "char_lenght" not in result.definition
 
 
@@ -82,4 +82,4 @@ def test_word_based_transformers_are_null_safe():
     body = _feature(entity, "body")
     for name in ("num_words", "avg_word_length", "unique_word_ratio", "caps_ratio"):
         result = get_transformers([name])[name](entity, body)
-        assert "coalesce(body" in result.definition
+        assert 'coalesce("body"' in result.definition
