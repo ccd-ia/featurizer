@@ -41,8 +41,8 @@ def test_diff2_definition():
     tx = get_transformers(["diff2"])["diff2"]
     result = tx(e, _feature(e, "value"))
     assert result.definition is not None
-    assert "lag(value, 1)" in result.definition
-    assert "lag(value, 2)" in result.definition
+    assert 'lag("value", 1)' in result.definition
+    assert 'lag("value", 2)' in result.definition
     assert "- 2*(" in result.definition
     assert "partition by sensor_id order by ts" in result.definition
 
@@ -52,7 +52,7 @@ def test_diff3_definition():
     tx = get_transformers(["diff3"])["diff3"]
     result = tx(e, _feature(e, "value"))
     assert result.definition is not None
-    for k in ("lag(value, 1)", "lag(value, 2)", "lag(value, 3)"):
+    for k in ('lag("value", 1)', 'lag("value", 2)', 'lag("value", 3)'):
         assert k in result.definition
     assert "3*(" in result.definition
 
@@ -62,8 +62,8 @@ def test_cumprod_definition_is_log_sum_exp_and_guarded():
     tx = get_transformers(["cumprod"])["cumprod"]
     result = tx(e, _feature(e, "value"))
     assert result.definition is not None
-    assert "exp(sum(ln(value))" in result.definition
-    assert "case when min(value)" in result.definition  # positivity guard
+    assert 'exp(sum(ln("value"))' in result.definition
+    assert 'case when min("value")' in result.definition  # positivity guard
 
 
 @pytest.mark.parametrize("name", PHASE4_NAMES)

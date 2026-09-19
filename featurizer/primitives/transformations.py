@@ -37,8 +37,26 @@ to preserve hashing semantics for set operations and deduplication.
 
 from typing import Callable, Iterable, Optional, Sequence, Tuple
 
-from .abstractions import Entity, Feature, pg_identifier
+from .abstractions import Entity, Feature, pg_identifier, quote_if_bare
 from .utils import register_transformer
+
+
+def _col(feature: Feature) -> str:
+    """The SQL reference to a transformer's input column (issue #18).
+
+    Every transformer wraps its input in SQL — ``abs(<col>)``,
+    ``lag(<col>, 1) over (...)``, ``char_length(<col>)``. A generated input
+    arrives already delimited, but a column *declared* in the config arrives
+    exactly as written, so one named like an aggregate call rendered
+    ``abs(MEAN(games.goals))`` — which PostgreSQL parses as a function call
+    over a table that is not in the FROM clause.
+
+    ``quote_if_bare`` leaves an already-delimited name untouched, so this is
+    a no-op for every generated input and quotes only the declared ones.
+    Names and labels are built separately (``_name_label``) and do not pass
+    through here, so no output column name moves.
+    """
+    return quote_if_bare(feature.name)
 
 
 def _parent_token(feature: Feature, *, use_label: bool) -> str:
@@ -122,7 +140,7 @@ class Transformer:
         return _name_label(name, feature)[1]
 
     def _build_transformer_call(self, feature):
-        return f""" {self.transformer}({feature.name}) """
+        return f""" {self.transformer}({_col(feature)}) """
 
     def __call__(self, parent, feature):
         if feature.type == "key" or feature.type not in self.input_types:
@@ -164,7 +182,7 @@ class DomainGuardedTransformer(Transformer):
         self.domain = domain
 
     def _build_transformer_call(self, feature):
-        x = feature.name
+        x = _col(feature)
         return (
             f""" case when {self.domain.format(x=x)} """
             f"""then {self.transformer}({x}) end """
@@ -203,7 +221,7 @@ class Identity(Transformer):
         return f'''"{name.replace('"', "")}"'''
 
     def _build_transformer_call(self, feature):
-        return f""" {feature.name} """
+        return f""" {_col(feature)} """
 
     def __call__(self, parent, feature):
         return feature
@@ -223,7 +241,7 @@ class DateTransformer(Transformer):
         )
 
     def _build_transformer_call(self, feature):
-        return f"to_char({feature.name}, '{self.date_part}')"
+        return f"to_char({_col(feature)}, '{self.date_part}')"
 
     def __call__(self, parent, feature):
         if feature.type == "key":
@@ -274,13 +292,13 @@ class HourlyBinning(Transformer):
         return f"""
         (
         case
-        when extract(hour from {feature.name}) <@ int4range(0,5) then 'night'
-        when extract(hour from {feature.name}) <@ int4range(5,8) then 'early_morning'
-        when extract(hour from {feature.name}) <@ int4range(8,11) then 'morning'
-        when extract(hour from {feature.name}) <@ int4range(11,14) then 'midday'
-        when extract(hour from {feature.name}) <@ int4range(14,19) then 'afternoon'
-        when extract(hour from {feature.name}) <@ int4range(19,22) then 'evening'
-        when extract(hour from {feature.name}) <@ int4range(22,24) then 'night'
+        when extract(hour from {_col(feature)}) <@ int4range(0,5) then 'night'
+        when extract(hour from {_col(feature)}) <@ int4range(5,8) then 'early_morning'
+        when extract(hour from {_col(feature)}) <@ int4range(8,11) then 'morning'
+        when extract(hour from {_col(feature)}) <@ int4range(11,14) then 'midday'
+        when extract(hour from {_col(feature)}) <@ int4range(14,19) then 'afternoon'
+        when extract(hour from {_col(feature)}) <@ int4range(19,22) then 'evening'
+        when extract(hour from {_col(feature)}) <@ int4range(22,24) then 'night'
         )
         """
 
@@ -299,8 +317,8 @@ class DailyBinning(Transformer):
         return f"""
         (
         case
-        when to_char({feature.name},'ID')::smallint <@ int4range(0,5) then 'weekday'
-        when to_char({feature.name},'ID')::smallint <@ int4range(5,7) then 'weekday'
+        when to_char({_col(feature)},'ID')::smallint <@ int4range(0,5) then 'weekday'
+        when to_char({_col(feature)},'ID')::smallint <@ int4range(5,7) then 'weekday'
         )
         """
 
@@ -317,9 +335,9 @@ class CyclicalDateTransformer(DateTransformer):
 
     def _build_transformer_call(self, feature, trig_function):
         if self.adjust:
-            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint - 1)*(2*pi()/{self.period}))"""
+            return f"""{trig_function}((to_char({_col(feature)}, '{self.date_part}')::smallint - 1)*(2*pi()/{self.period}))"""
         else:
-            return f"""{trig_function}((to_char({feature.name}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
+            return f"""{trig_function}((to_char({_col(feature)}, '{self.date_part}')::smallint)*(2*pi()/{self.period}))"""
 
     def __call__(self, parent, feature):
         if feature.type == "key" or feature.type not in self.input_types:
@@ -436,7 +454,7 @@ class WindowFunctionTransformer:
         return args
 
     def _build_window_function_call(self, parent, feature):
-        expression = feature.name
+        expression = _col(feature)
         partition = parent.id.name if parent.id else None
         if not partition:
             return None
@@ -444,7 +462,7 @@ class WindowFunctionTransformer:
         window_call = [f"{self.function}({', '.join(window_args)})"]
         if self.filter and feature.specials:
             # filter by clause
-            window_call.append(f" filter (where {feature.name} = {feature.specials}) ")
+            window_call.append(f" filter (where {_col(feature)} = {feature.specials}) ")
         window_call.append(f" over (partition by {partition}")
         order_clause = self._resolve_order_by(feature, parent)
         if order_clause:
@@ -515,7 +533,7 @@ def _build_temporal_window(
     order_by = _temporal_ordering(feature, parent)
     if order_by is None:
         return None
-    args_sql = ", ".join([feature.name] + list(args))
+    args_sql = ", ".join([_col(feature)] + list(args))
     window_bits = [f"partition by {partition}", f"order by {order_by}"]
     if frame:
         start, end = frame
@@ -561,7 +579,7 @@ def _build_rolling_percentile(
     ego = TRANSFORM_EGO_ALIAS
     return (
         f"(select percentile_cont({percentile}) within group (order by _w.v) "
-        f"from (select {synth}.{feature.name} as v from {synth} "
+        f"from (select {synth}.{_col(feature)} as v from {synth} "
         f"where {synth}.{partition} = {ego}.{partition} "
         f"and {synth}.{order_by} <= {ego}.{order_by} "
         f"order by {synth}.{order_by} desc limit {window}) _w)"
@@ -629,7 +647,7 @@ class Diff:
         return Feature(
             name=name,
             type=self.output_type,
-            definition=f"{feature.name} - {lag_expr}",
+            definition=f"{_col(feature)} - {lag_expr}",
             parents=feature,
             entity=parent,
             stack_depth=feature.stack_depth + 1,
@@ -666,7 +684,7 @@ class NthDiff:
             if expr is None:
                 return None
             lags[k] = expr
-        x = feature.name
+        x = _col(feature)
         if self.order == 2:
             definition = f"({x}) - 2*({lags[1]}) + ({lags[2]})"
         elif self.order == 3:
@@ -707,7 +725,7 @@ class CumProd:
         order_by = _temporal_ordering(feature, parent)
         if order_by is None:
             return None
-        x = feature.name
+        x = _col(feature)
         window = f"over (partition by {partition} order by {order_by})"
         definition = (
             f"case when min({x}) {window} > 0 "
@@ -956,7 +974,7 @@ class ExponentialMovingAverageTransformer:
         timestamp_expr = f"(extract(epoch from {order_by}) / 86400.0)"
         weight_expr = f"exp({self.decay} * {timestamp_expr})"
         base_window = f"partition by {partition} order by {order_by}{frame_clause}"
-        numerator = f"sum({feature.name} * {weight_expr}) over ({base_window})"
+        numerator = f"sum({_col(feature)} * {weight_expr}) over ({base_window})"
         denominator = f"sum({weight_expr}) over ({base_window})"
         expression = f"{numerator} / NULLIF({denominator}, 0)"
         name, label = _name_label(self.name, feature)
@@ -1074,7 +1092,7 @@ class PercentageChangeTransformer:
         expression = f"""
         case
         when {lag_expr} is null or {lag_expr} = 0 then null
-        else ({feature.name} - {lag_expr}) / {lag_expr}
+        else ({_col(feature)} - {lag_expr}) / {lag_expr}
         end
         """
         name, label = _name_label(self.name, feature)
@@ -1111,7 +1129,7 @@ class BinaryTransformer(Transformer):
         return _name_label(name, feature1, feature2)[1]
 
     def _build_transformer_call(self, feature1, feature2):
-        return f"{feature1.entity.alias}.{feature1.name} {self.operation}  {feature2.entity.alias}.{feature2.name}"
+        return f"{feature1.entity.alias}.{_col(feature1)} {self.operation}  {feature2.entity.alias}.{_col(feature2)}"
 
     def __call__(self, parent, feature1, feature2):
         if (
@@ -1182,7 +1200,7 @@ class IsNull(Transformer):
         )
 
     def _build_transformer_call(self, feature):
-        return f"({feature.name} is null)"
+        return f"({_col(feature)} is null)"
 
 
 class IsInArray(Transformer):
@@ -1197,7 +1215,7 @@ class IsInArray(Transformer):
         )
 
     def _build_transformer_call(self, feature, an_array):
-        return f"({feature.name} = ANY (ARRAY {an_array})"
+        return f"({_col(feature)} = ANY (ARRAY {an_array})"
 
     def __call__(self, parent, feature, an_array):
         if feature.type not in self.input_types:
@@ -1336,7 +1354,7 @@ class PopulationWindowTransformer:
     def __call__(self, parent, feature):
         if feature.type == "key" or feature.type not in self.input_types:
             return feature
-        expression = self.expression_template.format(col=feature.name)
+        expression = self.expression_template.format(col=_col(feature))
         name, label = _name_label(self.name, feature)
         return Feature(
             name=name,
@@ -1381,8 +1399,8 @@ class MeanShiftRatioTransformer:
         recent_start = self.window - 1
         prior_end = self.window
         prior_start = 2 * self.window - 1
-        recent = f"AVG({feature.name}) OVER (partition by {partition} order by {order_by} rows between {recent_start} preceding and current row)"
-        prior = f"AVG({feature.name}) OVER (partition by {partition} order by {order_by} rows between {prior_start} preceding and {prior_end} preceding)"
+        recent = f"AVG({_col(feature)}) OVER (partition by {partition} order by {order_by} rows between {recent_start} preceding and current row)"
+        prior = f"AVG({_col(feature)}) OVER (partition by {partition} order by {order_by} rows between {prior_start} preceding and {prior_end} preceding)"
         expression = f"{recent} / NULLIF({prior}, 0)"
         name, label = _name_label(self.name, feature)
         return Feature(
@@ -1415,10 +1433,10 @@ class CusumTransformer:
         if not partition or not order_by:
             return None
         cum_sum = (
-            f"SUM({feature.name}) OVER (partition by {partition} order by {order_by})"
+            f"SUM({_col(feature)}) OVER (partition by {partition} order by {order_by})"
         )
         row_num = f"ROW_NUMBER() OVER (partition by {partition} order by {order_by})"
-        part_avg = f"AVG({feature.name}) OVER (partition by {partition})"
+        part_avg = f"AVG({_col(feature)}) OVER (partition by {partition})"
         expression = f"{cum_sum} - {row_num} * {part_avg}"
         name, label = _name_label(self.name, feature)
         return Feature(
@@ -1479,7 +1497,7 @@ class TextTransformer(Transformer):
         self._template = template
 
     def _build_transformer_call(self, feature):
-        return f" {self._template.replace('{col}', feature.name)} "
+        return f" {self._template.replace('{col}', _col(feature))} "
 
 
 # Non-empty whitespace-delimited tokens of the (NULL-safe) text column.
