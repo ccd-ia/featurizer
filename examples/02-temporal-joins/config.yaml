@@ -1,4 +1,10 @@
-# Healthcare feature generation: Patients with temporal Care Plans
+# Healthcare feature generation: two relationships, two directions.
+#
+#   patients <- care_plans          aggregation  (care_plans is the CHILD)
+#   risk_assessments -> patients    as-of lookup (risk_assessments is the PARENT)
+#
+# The `temporal:` block is read only on the second kind. Declared on the first
+# it is discarded, and validation says so.
 
 target: patients
 max_depth: 2
@@ -48,14 +54,34 @@ entities:
       cost:
         type: numeric
 
+  - alias: risk_assessments
+    id: assessment_id
+    table: risk_assessments
+    temporal_ix: assessed_on
+    variables:
+      risk_score:
+        type: numeric
+
 relationships:
+  # Aggregation. patients is the parent and the target, so its care plans roll
+  # up onto it. Every read of care_plans is already bounded by the as-of date;
+  # no `temporal:` block belongs here.
   - parent:
       entity: patients
       key: patient_id
     child:
       entity: care_plans
       key: patient_id
+
+  # As-of lookup. The timestamped lookup table is the PARENT and the entity
+  # receiving the value is the CHILD: each patient row pulls the most recent
+  # assessment dated at or before its own admission_date.
+  - parent:
+      entity: risk_assessments
+      key: patient_id
+    child:
+      entity: patients
+      key: patient_id
     temporal:
       mode: as_of
-      grace: P7D  # Allow matching plans up to 7 days in the future
-      child_timestamp: plan_date
+      grace: P30D  # Lookback cap: ignore assessments older than 30 days

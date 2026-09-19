@@ -42,17 +42,14 @@ def main():
     print(f"  Entities: {len(list(featurizer.entities))}")
     print(f"  Relationships: {len(featurizer.relationships)}")
 
-    # Check for temporal relationships
-    temporal_rels = [
-        r for r in featurizer.relationships if hasattr(r, "temporal") and r.temporal
-    ]
+    # Temporal relationships: the lookup (parent) feeds the receiving child.
+    temporal_rels = [r for r in featurizer.relationships if r.temporal_mode]
     if temporal_rels:
         print(f"  Temporal relationships: {len(temporal_rels)}")
         for rel in temporal_rels:
-            mode = rel.temporal.get("mode", "N/A")
-            grace = rel.temporal.get("grace", "none")
             print(
-                f"    - {rel.parent.entity.alias} → {rel.child.entity.alias} (mode: {mode}, grace: {grace})"
+                f"    - {rel.parent.alias} → {rel.child.alias} "
+                f"(mode: {rel.temporal_mode}, grace: {rel.temporal_grace or 'none'})"
             )
 
     target_features = featurizer.features[featurizer.target.alias]

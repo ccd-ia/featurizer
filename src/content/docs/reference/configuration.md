@@ -127,18 +127,45 @@ column.
 ### Temporal (as-of) joins
 
 ```yaml
+target: patients
 relationships:
-  - parent: {entity: patients,   key: patient_id}
-    child:  {entity: care_plans, key: patient_id}
+  - parent: {entity: risk_assessments, key: patient_id}   # the timestamped lookup
+    child:  {entity: patients,         key: patient_id}   # the entity receiving the value
     temporal:
       mode: as_of                # the only mode
-      grace: P21D                # optional — look back at most this far
-      child_timestamp: recorded  # optional — override the child's temporal_ix
+      grace: P30D                # optional — look back at most this far
+      child_timestamp: recorded  # optional — see below
 ```
 
-Renders a `left join lateral … order by <timestamp> desc limit 1`: the most
-recent child row at or before each `as_of_date` (bounded by `grace` when
-given). This is the point-in-time join for slowly-changing state.
+Renders a `left join lateral … order by <timestamp> desc limit 1`: for each
+row of the **child**, the most recent **parent** row dated at or before that
+child row's own `temporal_ix`, and no older than `grace` when one is given.
+This is the point-in-time join for slowly-changing state — a patient's latest
+risk assessment at admission, a product's price at purchase.
+
+**Direction matters, and it is the opposite of an aggregation.** The lookup
+table is the `parent`; the entity that receives the value is the `child`. The
+block is read only on that forward transfer, where a parent's value is carried
+onto its child. Declared the other way round — the target as `parent` of the
+timestamped table — the relationship is an aggregation, the `temporal:` block
+is discarded, and `validate` warns:
+
+```text
+The 'temporal' block on relationship 'patients -> care_plans' has no effect. …
+```
+
+Nothing leaks in that case: an aggregation bounds its child rows on
+`as_of_date` with or without the block. What is lost is `grace`, so the query
+is stricter than the config asked for. Delete the block, or re-orient the
+relationship if an as-of lookup is what you meant.
+
+`grace` is a **lookback cap**, never a look-ahead: `grace: P30D` renders
+`<lookup timestamp> >= <child timestamp> - interval 'P30D'`. No value of
+`grace` lets the join read a row dated after the child's timestamp.
+
+`child_timestamp` names the column on the **lookup (parent)** entity to order
+and bound by, for when that differs from the entity's declared `temporal_ix`.
+The name is historical; the key is frozen under the 1.0 API.
 
 **Windows over a transferred value walk the target's timeline.** A window
 transformer (`lag_*`, `rolling_*`, `cum_*`, `ema_*`, …) applied to a feature
