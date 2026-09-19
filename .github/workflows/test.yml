@@ -44,6 +44,12 @@ jobs:
       - name: basedpyright
         if: matrix.python == '3.12'
         run: uv run basedpyright
+      - name: ruff format --check
+        # A step of this job, not a job of its own: branch protection lists
+        # its required contexts by job name, and a new job would be a check
+        # nothing requires.
+        if: matrix.python == '3.12'
+        run: uv run ruff format --check .
       - name: validate shipped example configs
         # 04-custom-primitives is excluded by design: its config references
         # custom primitives (log1p, zscore, bin) that run_example.py registers
