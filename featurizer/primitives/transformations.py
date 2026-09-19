@@ -414,7 +414,14 @@ class WindowFunctionTransformer:
     def _build_label(name, feature):
         return _name_label(name, feature)[1]
 
-    def _resolve_order_by(self, feature: Feature) -> Optional[str]:
+    def _resolve_order_by(
+        self, feature: Feature, parent: Optional[Entity] = None
+    ) -> Optional[str]:
+        # The built-in temporal ordering resolves against the transforming
+        # entity (issue #21). Any other callable keeps its one-argument
+        # ``order_by(feature)`` contract untouched.
+        if self.order_by is _temporal_ordering:
+            return _temporal_ordering(feature, parent)
         if callable(self.order_by):
             return self.order_by(feature)
         return self.order_by
@@ -439,7 +446,7 @@ class WindowFunctionTransformer:
             # filter by clause
             window_call.append(f" filter (where {feature.name} = {feature.specials}) ")
         window_call.append(f" over (partition by {partition}")
-        order_clause = self._resolve_order_by(feature)
+        order_clause = self._resolve_order_by(feature, parent)
         if order_clause:
             window_call.append(f" order by {order_clause}")
         if self.frame:
@@ -467,8 +474,28 @@ class WindowFunctionTransformer:
         )
 
 
-def _temporal_ordering(feature: Feature) -> Optional[str]:
-    temporal_ix = getattr(feature.entity, "temporal_ix", None)
+def _temporal_ordering(
+    feature: Feature, parent: Optional[Entity] = None
+) -> Optional[str]:
+    """The ORDER BY of a window: the timeline of the entity doing the transform.
+
+    A window's PARTITION BY has always been ``parent.id`` — the transforming
+    entity. Its ORDER BY used to be ``feature.entity.temporal_ix`` — the entity
+    the feature *came from*. For a native feature those are one entity. For a
+    feature brought across a direct transfer (as-of or plain) they are not, and
+    the ORDER BY named a column the transforming entity's ``_synth`` CTE does not
+    project: ``order by plan_date`` inside ``patients_transform`` (issue #21).
+
+    Ordering by ``parent`` is also the right semantics, not only the valid SQL.
+    A transferred value is already "the source's state as of this row's date";
+    the transfer has collapsed the source's history to one row per target row,
+    so the only timeline left to walk is the target's.
+
+    ``parent`` is optional so a one-argument call still resolves exactly as it
+    always did — that is the native-feature case, where the two coincide.
+    """
+    entity = parent if parent is not None else feature.entity
+    temporal_ix = getattr(entity, "temporal_ix", None)
     if temporal_ix is None:
         return None
     return temporal_ix.name
@@ -485,7 +512,7 @@ def _build_temporal_window(
     partition = parent.id.name if parent.id else None
     if partition is None:
         return None
-    order_by = _temporal_ordering(feature)
+    order_by = _temporal_ordering(feature, parent)
     if order_by is None:
         return None
     args_sql = ", ".join([feature.name] + list(args))
@@ -527,7 +554,7 @@ def _build_rolling_percentile(
     partition = parent.id.name if parent.id else None
     if partition is None:
         return None
-    order_by = _temporal_ordering(feature)
+    order_by = _temporal_ordering(feature, parent)
     if order_by is None:
         return None
     synth = f"{parent.alias}_synth"
@@ -677,7 +704,7 @@ class CumProd:
         partition = parent.id.name if parent.id else None
         if partition is None:
             return None
-        order_by = _temporal_ordering(feature)
+        order_by = _temporal_ordering(feature, parent)
         if order_by is None:
             return None
         x = feature.name
@@ -733,7 +760,7 @@ class DistributionTransformer(WindowFunctionTransformer):
             pieces.append(f"{self.function}()")
         pieces.append(f" over (partition by {partition}")
         order_clause = (
-            self._resolve_order_by(feature)
+            self._resolve_order_by(feature, parent)
             if hasattr(self, "_resolve_order_by")
             else None
         )
@@ -918,7 +945,7 @@ class ExponentialMovingAverageTransformer:
         if feature.type != "numeric":
             return feature
         partition = parent.id.name if parent.id else None
-        order_by = _temporal_ordering(feature)
+        order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None
         frame = _frame_for_window(self.window)
@@ -1004,7 +1031,7 @@ class HoltWintersTrendTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        order_by = _temporal_ordering(feature)
+        order_by = _temporal_ordering(feature, parent)
         if order_by is None:
             return None
         frame = _frame_for_window(self.window)
@@ -1348,7 +1375,7 @@ class MeanShiftRatioTransformer:
         if feature.type != "numeric":
             return feature
         partition = parent.id.name if parent.id else None
-        order_by = _temporal_ordering(feature)
+        order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None
         recent_start = self.window - 1
@@ -1384,7 +1411,7 @@ class CusumTransformer:
         if feature.type != "numeric":
             return feature
         partition = parent.id.name if parent.id else None
-        order_by = _temporal_ordering(feature)
+        order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None
         cum_sum = (

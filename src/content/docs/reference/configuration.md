@@ -140,6 +140,17 @@ Renders a `left join lateral … order by <timestamp> desc limit 1`: the most
 recent child row at or before each `as_of_date` (bounded by `grace` when
 given). This is the point-in-time join for slowly-changing state.
 
+**Windows over a transferred value walk the target's timeline.** A window
+transformer (`lag_*`, `rolling_*`, `cum_*`, `ema_*`, …) applied to a feature
+brought in by a transfer — as-of or plain — orders by the *receiving* entity's
+`temporal_ix`, not the source's. The transfer has already collapsed the
+source's history to one row per receiving row, so the value is "the source's
+state as of this row" and the only timeline left to walk is the receiver's.
+The two windows mean different things and both are kept:
+`CUM_SUM(plans.cost)` is computed on the source side and walks the source's
+history; `CUM_SUM(plans.CUM_SUM(plans.cost))` is the same window applied again
+after the transfer, and walks the receiver's rows.
+
 **Known boundary (v1.0):** the correlated LATERAL cannot be flattened into
 temp-table shards. If the entity carrying an as-of join *also* grows past
 the oversized-CTE materialization threshold (issue-#7 sharding), featurizer
