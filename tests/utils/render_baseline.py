@@ -3,7 +3,7 @@
 ``as_of_dates: {id_column: …}`` is additive under ADR-0015: a config without
 the block must render exactly the SQL it rendered before the key existed. "Exactly"
 is checked, not asserted — ``tests/fixtures/render_baseline_pre_cohort.json``
-holds SHA-256 digests captured from master at ``3e1790d``, the commit before the
+holds SHA-256 digests captured from master at ``3dbbfd8``, the commit before the
 change, and ``tests/test_cohort_pairs.py`` compares against them byte for byte.
 
 Three renderers read the target's base relation, so all three are digested: the

@@ -67,7 +67,7 @@ def _featurizer(tmp_path: Path, config: dict, **kwargs) -> Featurizer:
 
 def test_the_baseline_was_captured_before_the_change() -> None:
     baseline = json.loads(BASELINE.read_text())
-    assert baseline["captured_from"] == "3e1790d"
+    assert baseline["captured_from"] == "3dbbfd8"
     # One case must exercise the temp-table preamble, the only reader of
     # as_of_dates outside the query itself.
     empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
