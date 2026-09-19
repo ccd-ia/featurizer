@@ -6,7 +6,6 @@ from ._utils import _get_feature_matrix, _require
 
 if TYPE_CHECKING:
     import matplotlib.figure
-    import pandas as pd
 
 
 def plot_correlation_clustermap(
@@ -29,7 +28,6 @@ def plot_correlation_clustermap(
     """
     _require("seaborn")
     _require("matplotlib")
-    import matplotlib.pyplot as plt
     import seaborn as sns
 
     matrix = _get_feature_matrix(self.df, self.feature_cols)
