@@ -1548,8 +1548,11 @@ class FeaturePlanner:
         # (the same spelling every other builder uses), so the invariant reads
         # identically everywhere. Previously written reversed as
         # ``aod.as_of_date >= temporal_ix`` (issue #1).
+        # The temporal index is a declared column like any other, so it is
+        # quoted where it is read (issue #29): ``where Event Date <= …`` does
+        # not parse.
         where_clause = (
-            causal_predicate(source.temporal_ix.name, prefix="where")
+            causal_predicate(quote_if_bare(source.temporal_ix.name), prefix="where")
             if source.temporal_ix
             else ""
         )

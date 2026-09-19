@@ -356,8 +356,8 @@ def test_spatial_emits_expected_families():
 def test_as_of_boundary_defaults_to_inclusive_operator():
     """Without the key the scalar cut stays ``<=`` (unchanged behaviour)."""
     flat = " ".join(_render(_parent_child_config(max_depth=2)).split())
-    assert "ordered_at <= aod.as_of_date" in flat
-    assert "ordered_at < aod.as_of_date" not in flat
+    assert '"ordered_at" <= aod.as_of_date' in flat
+    assert '"ordered_at" < aod.as_of_date' not in flat
 
 
 def test_as_of_boundary_exclusive_flips_scalar_operator():
@@ -365,8 +365,8 @@ def test_as_of_boundary_exclusive_flips_scalar_operator():
     config = _parent_child_config(max_depth=2)
     config["as_of_boundary"] = "exclusive"
     flat = " ".join(_render(config).split())
-    assert "ordered_at < aod.as_of_date" in flat
-    assert "ordered_at <= aod.as_of_date" not in flat
+    assert '"ordered_at" < aod.as_of_date' in flat
+    assert '"ordered_at" <= aod.as_of_date' not in flat
 
 
 def test_as_of_boundary_exclusive_flips_daterange_upper_bound():

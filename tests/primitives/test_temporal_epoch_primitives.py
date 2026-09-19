@@ -49,11 +49,11 @@ GAP_AGGS = ["gap_mean", "gap_stddev", "gap_min", "gap_max", "gap_cv", "burstines
 def test_span_aggs_extract_epoch_per_side_in_days():
     for name in TEMPORAL_SPAN_AGGS:
         d = _agg(name, "ts")
-        assert "EXTRACT(EPOCH FROM max(ts))" in d, (name, d)
-        assert "EXTRACT(EPOCH FROM min(ts))" in d, (name, d)
+        assert 'EXTRACT(EPOCH FROM max("ts"))' in d, (name, d)
+        assert 'EXTRACT(EPOCH FROM min("ts"))' in d, (name, d)
         assert "/ 86400.0" in d, (name, d)
         # The type-fragile raw form must be gone.
-        assert "EXTRACT(EPOCH FROM max(ts) - min(ts))" not in d, (name, d)
+        assert 'EXTRACT(EPOCH FROM max("ts") - min("ts"))' not in d, (name, d)
 
 
 def _gap_sql(name):
@@ -74,17 +74,17 @@ def test_gap_aggs_difference_epoch_days():
     # (never a raw interval), which is the property this regression guards.
     for name in GAP_AGGS:
         d = _gap_sql(name)
-        assert "EXTRACT(EPOCH FROM ord_transform.ts)" in d, (name, d)
-        assert "EXTRACT(EPOCH FROM LAG(ord_transform.ts)" in d, (name, d)
+        assert 'EXTRACT(EPOCH FROM ord_transform."ts")' in d, (name, d)
+        assert 'EXTRACT(EPOCH FROM LAG(ord_transform."ts")' in d, (name, d)
         assert "/ 86400.0" in d, (name, d)
         # No raw temporal subtraction left to yield an interval.
-        assert "ord_transform.ts - LAG" not in d, (name, d)
+        assert 'ord_transform."ts" - LAG' not in d, (name, d)
 
 
 def test_geometric_mean_is_positive_domain_natural_log():
     d = _agg("geometric_mean", "amt")
     assert "exp(avg(ln(" in d
-    assert "min(amt) > 0" in d  # outer positive-domain guard
+    assert 'min("amt") > 0' in d  # outer positive-domain guard
     assert "else null end" in d
     # Base-10 log and the old unbalanced/negative branch are gone.
     assert "log(" not in d

@@ -42,7 +42,7 @@ def _num_agg(name: str) -> str:
 def test_skewness_kurtosis_are_pure_aggregate_moments():
     for name in ("skewness", "kurtosis"):
         d = _num_agg(name)
-        assert "power(" in d and "var_pop(num)" in d, (name, d)
+        assert "power(" in d and 'var_pop("num")' in d, (name, d)
         assert "**" not in d, (name, d)  # PostgreSQL has no ** operator
         assert "- avg(num))" not in d  # no bare un-grouped column term
         assert d.count("(") == d.count(")"), f"unbalanced: {name}: {d}"

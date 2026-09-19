@@ -591,7 +591,7 @@ class TestEntropy:
         feature = _get_feature(child, "category")
         agg = get_aggregations(["entropy"])["entropy"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "orders_transform.category" in _feature_sql(result)
+        assert 'orders_transform."category"' in _feature_sql(result)
         assert "group by" in _feature_sql(result).lower()
 
     def test_definition_contains_ln(self):
@@ -641,7 +641,7 @@ class TestHHI:
         feature = _get_feature(child, "category")
         agg = get_aggregations(["hhi"])["hhi"]
         result = agg(parent, child, feature, relationship=rel)
-        assert "orders_transform.category" in _feature_sql(result)
+        assert 'orders_transform."category"' in _feature_sql(result)
         assert "group by" in _feature_sql(result).lower()
 
     def test_definition_contains_power(self):

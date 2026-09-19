@@ -28,9 +28,41 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 """
 
 from ..boundary import causal_predicate, daterange_window
-from .abstractions import Feature, SpatialIx, pg_identifier
+from .abstractions import Feature, SpatialIx, pg_identifier, quote_if_bare
 from .preagg import PreAggSpec, causal_where
 from .utils import register_aggregation
+
+
+def _col(feature: Feature) -> str:
+    """The SQL reference to the column an aggregation wraps (issue #29).
+
+    The aggregation-side twin of ``transformations._col`` (issue #18). Every
+    aggregation wraps its input in SQL — ``sum(<col>)``, ``percentile_cont(0.5)
+    within group (order by <col>)``, ``sub.<col>`` inside a correlated subquery
+    or a set-based pre-pass. A generated input arrives already delimited, but a
+    column *declared* in the config arrives exactly as written, so one named
+    like an aggregate call rendered ``sum(MEAN(games.goals))`` — which
+    PostgreSQL parses as an aggregate over a table that is not in the FROM
+    clause.
+
+    ``quote_if_bare`` leaves an already-delimited name untouched, so this is a
+    no-op for every generated input and quotes only the declared ones. Names,
+    labels and the ADR-0010 ``family_key`` are built from the raw
+    ``feature.name`` and never pass through here, so no output column name and
+    no companion CTE name moves.
+    """
+    return quote_if_bare(feature.name)
+
+
+def _tix(feature: Feature) -> str:
+    """The SQL reference to the temporal index of the feature's entity.
+
+    Read by every interval filter, causal bound and ``order by`` in this module,
+    and wrapped directly by the ``index``-typed aggregations (``recency``,
+    ``gap_mean``, …). Declared in the config like any other column, so it gets
+    the same treatment as :func:`_col`.
+    """
+    return quote_if_bare(feature.entity.temporal_ix.name)
 
 
 def _epoch_day_span(hi: str, lo: str) -> str:
@@ -135,7 +167,7 @@ class Aggregator:
         return label
 
     def _build_aggregate_expression(self, feature, interval):
-        expression = feature.name
+        expression = _col(feature)
         aggregate_expression = [
             f"{self.aggregate}({'distinct' if self.distinct else ''} {expression}"
         ]
@@ -146,7 +178,7 @@ class Aggregator:
             aggregate_expression.append(")")
         if interval:
             # filter by clause
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             window = daterange_window(interval, column=event_date)
             aggregate_expression.append(f" filter (where {window}) ")
         return " ".join(aggregate_expression)
@@ -202,7 +234,7 @@ class Skewness(Aggregator):
         # Population skewness m3 / m2^1.5 via raw moments — pure aggregates only
         # (the old ``(x - avg(x)) / stddev(x)**3`` referenced a bare, un-grouped
         # column and used ``**``, which PostgreSQL rejects). m2 = var_pop.
-        col = feature.name
+        col = _col(feature)
         m3 = (
             f"avg(power({col},3)) - 3*avg({col})*avg(power({col},2)) "
             f"+ 2*power(avg({col}),3)"
@@ -227,7 +259,7 @@ class Kurtosis(Aggregator):
         # Population kurtosis m4 / m2^2 via raw moments — pure aggregates only
         # (the old form referenced a bare, un-grouped column and used ``**``).
         # A normal distribution gives 3.
-        col = feature.name
+        col = _col(feature)
         m4 = (
             f"avg(power({col},4)) - 4*avg({col})*avg(power({col},3)) "
             f"+ 6*power(avg({col}),2)*avg(power({col},2)) - 3*power(avg({col}),4)"
@@ -257,7 +289,7 @@ class HarmonicMean(Aggregator):
         # division-by-zero regardless of the guard — hence ``1.0/NULLIF(x,0)``
         # (a zero contributes NULL, ignored by sum); the outer ``min(x) > 0`` then
         # nulls the whole result whenever any non-positive value was present.
-        col = feature.name
+        col = _col(feature)
         return (
             f"case when min({col}) > 0 "
             f"then count({col}) / NULLIF(sum(1.0/NULLIF({col}, 0)), 0) "
@@ -291,7 +323,7 @@ class GeometricMean(Aggregator):
         # (ln 1 = 0) for those rows; the outer ``min(col) > 0`` guard then nulls
         # the whole result whenever any non-positive value was present, so the
         # placeholder never contaminates a returned value.
-        col = feature.name
+        col = _col(feature)
         safe = f"case when {col} > 0 then {col} else 1 end"
         return f"case when min({col}) > 0 then exp(avg(ln({safe}))) else null end"
 
@@ -386,7 +418,7 @@ class OrderedSetAggregator(Aggregator):
         )
 
     def _build_aggregate_expression(self, feature, interval=None):
-        expression = feature.name
+        expression = _col(feature)
         if self.direct_argument:
             aggregate_expression = [f"{self.aggregate}({self.direct_argument})"]
         else:
@@ -394,9 +426,9 @@ class OrderedSetAggregator(Aggregator):
         aggregate_expression.append(f"within group(order by {expression})")
         filters = []
         if self.filter and feature.specials:
-            filters.append(f"{feature.name} = {feature.specials}")
+            filters.append(f"{_col(feature)} = {feature.specials}")
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filters.append(daterange_window(interval, column=event_date))
         if filters:
             aggregate_expression.append(f" filter (where {' and '.join(filters)})")
@@ -434,10 +466,10 @@ class IQR(Aggregator):
         super().__init__(name="iqr")
 
     def _build_aggregate_expression(self, feature, interval=None):
-        p75 = f"percentile_cont(0.75) within group(order by {feature.name})"
-        p25 = f"percentile_cont(0.25) within group(order by {feature.name})"
+        p75 = f"percentile_cont(0.75) within group(order by {_col(feature)})"
+        p25 = f"percentile_cont(0.25) within group(order by {_col(feature)})"
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
             p75 += filt
             p25 += filt
@@ -456,9 +488,9 @@ class CoefficientOfVariation(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return f"stddev({feature.name}){filt} / NULLIF(avg({feature.name}){filt}, 0)"
+        return f"stddev({_col(feature)}){filt} / NULLIF(avg({_col(feature)}){filt}, 0)"
 
 
 cv = CoefficientOfVariation()
@@ -473,9 +505,9 @@ class Range(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return f"max({feature.name}){filt} - min({feature.name}){filt}"
+        return f"max({_col(feature)}){filt} - min({_col(feature)}){filt}"
 
 
 range_agg = Range()
@@ -497,10 +529,10 @@ class EventRate(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
         span_days = _epoch_day_span(
-            f"max({feature.name}){filt}", f"min({feature.name}){filt}"
+            f"max({_col(feature)}){filt}", f"min({_col(feature)}){filt}"
         )
         return f"count(*){filt} / NULLIF({span_days}, 0)"
 
@@ -524,10 +556,10 @@ class TimeSpan(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return _epoch_day_span(
-            f"max({feature.name}){filt}", f"min({feature.name}){filt}"
+            f"max({_col(feature)}){filt}", f"min({_col(feature)}){filt}"
         )
 
 
@@ -556,9 +588,9 @@ class Recency(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return f"(aod.as_of_date::date - (max({feature.name}){filt})::date)"
+        return f"(aod.as_of_date::date - (max({_col(feature)}){filt})::date)"
 
 
 class Tenure(Aggregator):
@@ -580,9 +612,9 @@ class Tenure(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
-        return f"(aod.as_of_date::date - (min({feature.name}){filt})::date)"
+        return f"(aod.as_of_date::date - (min({_col(feature)}){filt})::date)"
 
 
 class InterEventHazard(Aggregator):
@@ -604,11 +636,11 @@ class InterEventHazard(Aggregator):
     def _build_aggregate_expression(self, feature, interval=None):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
-            event_date = feature.entity.temporal_ix.name
+            event_date = _tix(feature)
             filt = f" filter (where {daterange_window(interval, column=event_date)})"
         return (
             f"(count(*){filt})::float / "
-            f"NULLIF((aod.as_of_date::date - (min({feature.name}){filt})::date), 0)"
+            f"NULLIF((aod.as_of_date::date - (min({_col(feature)}){filt})::date), 0)"
         )
 
 
@@ -691,7 +723,7 @@ class SubqueryAggregator(Aggregator):
         tix = getattr(feature.entity, "temporal_ix", None) if feature.entity else None
         if tix is None:
             return ""
-        col = f"{alias}.{tix.name}"
+        col = f"{alias}.{_tix(feature)}"
         if interval:
             return f" and {daterange_window(interval, column=col)}"
         return causal_predicate(col, prefix="and")
@@ -712,7 +744,7 @@ def _gap_prepass(feature, child, relationship, interval):
     """
     ck = relationship.child_key
     ct = f"{child.alias}_transform"
-    ecol = feature.name
+    ecol = _col(feature)
     lag = f"LAG({ct}.{ecol}) OVER (PARTITION BY {ct}.{ck} ORDER BY {ct}.{ecol})"
     gap = _epoch_day_span(f"{ct}.{ecol}", lag)
     where = causal_where(feature, interval, column=f"{ct}.{ecol}")
@@ -753,7 +785,7 @@ class GapStatAggregator(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.name
+        event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT {self.gap_aggregate}(gap) FROM ("
@@ -785,7 +817,7 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
@@ -793,7 +825,7 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"meandev:{col}",
+            family_key=f"meandev:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="AVG(ABS(val - mean_val))",
@@ -802,7 +834,7 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         outer = self._causal_filter(feature, interval)  # alias 'sub'
         inner = self._causal_filter(feature, interval, alias="m_sub")
         return (
@@ -843,7 +875,7 @@ class GapCV(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.name
+        event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT STDDEV(gap) / NULLIF(AVG(gap), 0) FROM ("
@@ -884,7 +916,7 @@ class Burstiness(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.name
+        event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT (STDDEV(gap) - AVG(gap)) / NULLIF(STDDEV(gap) + AVG(gap), 0) FROM ("
@@ -910,9 +942,9 @@ def _catfreq_prepass(feature, child, relationship, interval):
     """
     ck = relationship.child_key
     ct = f"{child.alias}_transform"
-    col = feature.name
+    col = _col(feature)
     tix = feature.entity.temporal_ix if feature.entity else None
-    tcol = f"{ct}.{tix.name}" if tix is not None else None
+    tcol = f"{ct}.{_tix(feature)}" if tix is not None else None
     where = causal_where(feature, interval, column=tcol)
     return (
         f"select {ct}.{ck} as {ck}, count(*) as freq, "
@@ -944,7 +976,7 @@ class Entropy(SubqueryAggregator):
             f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter} "
-            f"GROUP BY sub.{feature.name}) entropy_calc)"
+            f"GROUP BY sub.{_col(feature)}) entropy_calc)"
         )
 
 
@@ -974,7 +1006,7 @@ class HHI(SubqueryAggregator):
             f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter} "
-            f"GROUP BY sub.{feature.name}) hhi_calc)"
+            f"GROUP BY sub.{_col(feature)}) hhi_calc)"
         )
 
 
@@ -987,7 +1019,7 @@ def _num_causal_where(feature, child, interval):
     temporal_ix — matching the correlated ``_causal_filter``."""
     ct = f"{child.alias}_transform"
     tix = feature.entity.temporal_ix if feature.entity else None
-    tcol = f"{ct}.{tix.name}" if tix is not None else None
+    tcol = f"{ct}.{_tix(feature)}" if tix is not None else None
     return causal_where(feature, interval, column=tcol)
 
 
@@ -1004,7 +1036,7 @@ class Gini(SubqueryAggregator):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
@@ -1012,7 +1044,7 @@ class Gini(SubqueryAggregator):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"gini:{col}",
+            family_key=f"gini:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction=(
@@ -1028,8 +1060,8 @@ class Gini(SubqueryAggregator):
         return (
             f"(SELECT (2.0 * SUM(rn * val)) / NULLIF(COUNT(*) * SUM(val), 0) "
             f"- (COUNT(*) + 1.0) / NULLIF(COUNT(*), 0) "
-            f"FROM (SELECT sub.{feature.name} as val, "
-            f"ROW_NUMBER() OVER (ORDER BY sub.{feature.name}) as rn "
+            f"FROM (SELECT sub.{_col(feature)} as val, "
+            f"ROW_NUMBER() OVER (ORDER BY sub.{_col(feature)}) as rn "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") gini_calc)"
@@ -1044,8 +1076,8 @@ def _transitions_inner(feature, child, relationship, interval):
     sequence, ordered within each child key (ADR-0010 set-based pre-pass)."""
     ck = relationship.child_key
     ct = f"{child.alias}_transform"
-    col = feature.name
-    ts = feature.entity.temporal_ix.name
+    col = _col(feature)
+    ts = _tix(feature)
     where = _num_causal_where(feature, child, interval)
     return (
         f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, "
@@ -1089,8 +1121,8 @@ class NgramFrequency(SubqueryAggregator):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         lag_cols = ", ".join(
             f"lag({ct}.{col}, {i}) over "
@@ -1104,7 +1136,7 @@ class NgramFrequency(SubqueryAggregator):
             f"where lag_1 is not null group by {ck}, curr, {lag_names}"
         )
         return PreAggSpec(
-            family_key=f"ngram{self.n}:{col}",
+            family_key=f"ngram{self.n}:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="MAX(cnt)",
@@ -1113,16 +1145,16 @@ class NgramFrequency(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.entity.temporal_ix.name
+        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
         lag_cols = ", ".join(
-            f"LAG(sub.{feature.name}, {i}) OVER (ORDER BY sub.{event_col}) as lag_{i}"
+            f"LAG(sub.{_col(feature)}, {i}) OVER (ORDER BY sub.{event_col}) as lag_{i}"
             for i in range(1, self.n)
         )
         return (
             f"(SELECT MAX(cnt) FROM ("
             f"SELECT COUNT(*) as cnt FROM ("
-            f"SELECT sub.{feature.name} as curr, {lag_cols} "
+            f"SELECT sub.{_col(feature)} as curr, {lag_cols} "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") ngrams WHERE lag_1 IS NOT NULL "
@@ -1163,13 +1195,13 @@ class SequenceEntropy(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.entity.temporal_ix.name
+        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT -SUM(freq::float / total * LN(freq::float / total)) "
             f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
-            f"FROM (SELECT sub.{feature.name} as curr, "
-            f"LAG(sub.{feature.name}) OVER (ORDER BY sub.{event_col}) as prev "
+            f"FROM (SELECT sub.{_col(feature)} as curr, "
+            f"LAG(sub.{_col(feature)}) OVER (ORDER BY sub.{event_col}) as prev "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") transitions WHERE prev IS NOT NULL "
@@ -1196,8 +1228,8 @@ class LongestStreak(SubqueryAggregator):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         # Consecutive-run identity: rows of the same value in one run share a
         # constant (global rank - per-value rank). Group by (value, run) to get
@@ -1214,7 +1246,7 @@ class LongestStreak(SubqueryAggregator):
             f"group by {ck}, val, grp"
         )
         return PreAggSpec(
-            family_key=f"streak:{col}",
+            family_key=f"streak:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="MAX(streak_len)",
@@ -1223,17 +1255,17 @@ class LongestStreak(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
-        event_col = feature.entity.temporal_ix.name
+        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT MAX(streak_len) FROM ("
             f"SELECT COUNT(*) as streak_len FROM ("
-            f"SELECT sub.{feature.name}, "
+            f"SELECT sub.{_col(feature)}, "
             f"ROW_NUMBER() OVER (ORDER BY sub.{event_col}) - "
-            f"ROW_NUMBER() OVER (PARTITION BY sub.{feature.name} ORDER BY sub.{event_col}) as grp "
+            f"ROW_NUMBER() OVER (PARTITION BY sub.{_col(feature)} ORDER BY sub.{event_col}) as grp "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
-            f") streaks GROUP BY {feature.name}, grp) streak_counts)"
+            f") streaks GROUP BY {_col(feature)}, grp) streak_counts)"
         )
 
 
@@ -1252,7 +1284,7 @@ class Theil(SubqueryAggregator):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         # Positive-domain filter (mirrors the correlated ``AND col > 0``) applied
         # before the window mean, so ``m`` is the mean of positive values only.
@@ -1263,7 +1295,7 @@ class Theil(SubqueryAggregator):
             f"from {ct} {where} {pos}"
         )
         return PreAggSpec(
-            family_key=f"theil:{col}",
+            family_key=f"theil:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="AVG((val / m) * LN(val / m))",
@@ -1273,7 +1305,7 @@ class Theil(SubqueryAggregator):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        col = feature.name
+        col = _col(feature)
         return (
             f"(SELECT AVG((val / m) * LN(val / m)) FROM ("
             f"SELECT sub.{col} AS val, AVG(sub.{col}) OVER () AS m "
@@ -1300,7 +1332,7 @@ class TrimmedMean(SubqueryAggregator):
         # back to the value rows — two set-based scans, not a per-target rescan.
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select v.{ck} as {ck}, v.val from "
@@ -1312,7 +1344,7 @@ class TrimmedMean(SubqueryAggregator):
             f"where v.val between b.lo and b.hi"
         )
         return PreAggSpec(
-            family_key=f"trimmedmean_{int(self.lower * 100)}_{int(self.upper * 100)}:{col}",
+            family_key=f"trimmedmean_{int(self.lower * 100)}_{int(self.upper * 100)}:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="AVG(val)",
@@ -1322,7 +1354,7 @@ class TrimmedMean(SubqueryAggregator):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        col = feature.name
+        col = _col(feature)
         return (
             f"(SELECT AVG(q.val) FROM ("
             f"SELECT sub.{col} AS val FROM {child_table} sub "
@@ -1350,7 +1382,7 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
         # ordered-set aggregate in the reduction.
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select v.{ck} as {ck}, abs(v.val - b.med) as dev from "
@@ -1360,7 +1392,7 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
             f"from {ct} {where} group by {ct}.{ck}) b on v.{ck} = b.bk"
         )
         return PreAggSpec(
-            family_key=f"mad:{col}",
+            family_key=f"mad:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="percentile_cont(0.5) within group (order by dev)",
@@ -1370,7 +1402,7 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        col = feature.name
+        col = _col(feature)
         return (
             f"(SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY abs(q.val - b.med)) "
             f"FROM (SELECT sub.{col} AS val FROM {child_table} sub "
@@ -1405,8 +1437,8 @@ class _SequenceReduction(SubqueryAggregator):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         return (
             f"SELECT sub.{col} AS curr, "
             f"LAG(sub.{col}) OVER (ORDER BY sub.{ts}) AS prev "
@@ -1503,8 +1535,8 @@ class TimeInCurrentState(_SequenceReduction):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         # The companion CTE sits inside the lateral, so aod.as_of_date is in
         # scope for the reduction (as it is for every causal bound). Days since
@@ -1516,7 +1548,7 @@ class TimeInCurrentState(_SequenceReduction):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"dwell:{col}",
+            family_key=f"dwell:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction=(
@@ -1529,8 +1561,8 @@ class TimeInCurrentState(_SequenceReduction):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval, alias="s")
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         return (
             f"(aod.as_of_date::date - (SELECT max(run.ts) FROM ("
             f"SELECT s.{ts} AS ts, s.{col} AS curr, "
@@ -1559,8 +1591,8 @@ class RecurrenceInterval(_SequenceReduction):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         # LAG partitioned by (child key, value): days between consecutive
         # occurrences of the SAME state (not any two events, unlike gap_mean).
@@ -1570,7 +1602,7 @@ class RecurrenceInterval(_SequenceReduction):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"recur:{col}",
+            family_key=f"recur:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="AVG(gap)",
@@ -1581,8 +1613,8 @@ class RecurrenceInterval(_SequenceReduction):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         return (
             f"(SELECT AVG(gap) FROM ("
             f"SELECT sub.{ts}::date - LAG(sub.{ts}::date) "
@@ -1695,8 +1727,8 @@ class FirstPassageTime(SubqueryAggregator):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         target = feature.predicates["target"]
         return (
             f"(SELECT (MIN(sub.{ts}) FILTER (WHERE sub.{col} = '{target}'))::date "
@@ -1733,8 +1765,8 @@ class AutoCorrelation(_NumericStreamReduction):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
@@ -1743,7 +1775,7 @@ class AutoCorrelation(_NumericStreamReduction):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"acf{self.k}:{col}",
+            family_key=f"acf{self.k}:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="corr(val, lagk)",
@@ -1754,8 +1786,8 @@ class AutoCorrelation(_NumericStreamReduction):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         return (
             f"(SELECT corr(val, lagk) FROM ("
             f"SELECT sub.{col} AS val, "
@@ -1778,8 +1810,8 @@ class VarianceRatio(_NumericStreamReduction):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
@@ -1788,7 +1820,7 @@ class VarianceRatio(_NumericStreamReduction):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"varratio:{col}",
+            family_key=f"varratio:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="var_samp(val) / NULLIF(var_samp(d), 0)",
@@ -1798,8 +1830,8 @@ class VarianceRatio(_NumericStreamReduction):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         return (
             f"(SELECT var_samp(val) / NULLIF(var_samp(d), 0) FROM ("
             f"SELECT sub.{col} AS val, "
@@ -1829,8 +1861,8 @@ class CosinorAmplitude(_NumericStreamReduction):
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
-        ts = feature.entity.temporal_ix.name
+        col = _col(feature)
+        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         omega = f"2 * pi() * extract(epoch from {ct}.{ts}) / {self.period_seconds}"
         prepass = (
@@ -1838,7 +1870,7 @@ class CosinorAmplitude(_NumericStreamReduction):
             f"sin({omega}) as s, cos({omega}) as c from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"cosinor{self.period_seconds}:{col}",
+            family_key=f"cosinor{self.period_seconds}:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2))",
@@ -1848,8 +1880,8 @@ class CosinorAmplitude(_NumericStreamReduction):
         child_key = relationship.child_key
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         omega = f"2 * pi() * extract(epoch from sub.{ts}) / {self.period_seconds}"
         return (
             f"(SELECT sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2)) "
@@ -1886,7 +1918,7 @@ class TwoWindowDriftAggregator(SubqueryAggregator):
 
     @staticmethod
     def _windows(feature, interval):
-        ts = feature.entity.temporal_ix.name
+        ts = _tix(feature)
         # The recent window's upper bound IS the as-of cut, so it follows the
         # boundary mode. The baseline window's '[)' upper bound is structural —
         # it tiles against the recent window's lower bound at t0-W and must stay
@@ -1919,7 +1951,7 @@ class KLDrift(TwoWindowDriftAggregator):
         # support exactly.
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         recent, baseline = self._windows(feature, interval)
         prepass = (
             f"select {ck}, "
@@ -1932,7 +1964,7 @@ class KLDrift(TwoWindowDriftAggregator):
             f"group by sub.{ck}, sub.{col}) per_cat"
         )
         return PreAggSpec(
-            family_key=f"kldrift:{col}",
+            family_key=f"kldrift:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction=(
@@ -1944,7 +1976,7 @@ class KLDrift(TwoWindowDriftAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         recent, baseline = self._windows(feature, interval)
 
         def dist(win):
@@ -1980,7 +2012,7 @@ class WassersteinDrift(TwoWindowDriftAggregator):
         # term, matching the correlated form's NULL-on-empty behaviour exactly.
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         recent, baseline = self._windows(feature, interval)
         prepass = (
             f"select sub.{ck} as {ck}, sub.{col} as val, "
@@ -1996,7 +2028,7 @@ class WassersteinDrift(TwoWindowDriftAggregator):
             )
 
         return PreAggSpec(
-            family_key=f"wsdrift:{col}",
+            family_key=f"wsdrift:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction=f"ABS({q('0.1')}) + ABS({q('0.5')}) + ABS({q('0.9')})",
@@ -2005,7 +2037,7 @@ class WassersteinDrift(TwoWindowDriftAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        col = feature.name
+        col = _col(feature)
         recent, baseline = self._windows(feature, interval)
 
         def quants(win):
@@ -2049,7 +2081,7 @@ class RightCensoringIndicator(SubqueryAggregator):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        col = feature.name
+        col = _col(feature)
         terminal = feature.predicates["terminal"]
         return (
             f"(SELECT (count(*) FILTER (WHERE sub.{col} = '{terminal}') = 0)::int "
@@ -2082,8 +2114,8 @@ class CrossTypeLatency(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
-        ts = feature.entity.temporal_ix.name
-        col = feature.name
+        ts = _tix(feature)
+        col = _col(feature)
         a_val = feature.predicates["a"]
         b_val = feature.predicates["b"]
         a_causal = self._causal_filter(feature, interval, alias="a")
@@ -2131,6 +2163,11 @@ class SpatialAggregator(SubqueryAggregator):
             return sx
         return None
 
+    def _latlon(self, feature):
+        """The declared lat / lon columns as SQL references (issue #29)."""
+        sx = self._spatial(feature)
+        return quote_if_bare(sx.lat), quote_if_bare(sx.lon)
+
     def __call__(self, parent, child, feature, interval=None, *, relationship=None):
         if feature.entity is None or feature.entity.temporal_ix is None:
             return None
@@ -2153,14 +2190,14 @@ class DistanceTravelled(SpatialAggregator):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        sx = self._spatial(feature)
-        ts = feature.name
+        lat, lon = self._latlon(feature)
+        ts = _col(feature)
         step = haversine_m("plat", "plon", "lat", "lon")
         return (
             f"(SELECT SUM({step}) FROM ("
-            f"SELECT sub.{sx.lat} AS lat, sub.{sx.lon} AS lon, "
-            f"LAG(sub.{sx.lat}) OVER (ORDER BY sub.{ts}) AS plat, "
-            f"LAG(sub.{sx.lon}) OVER (ORDER BY sub.{ts}) AS plon "
+            f"SELECT sub.{lat} AS lat, sub.{lon} AS lon, "
+            f"LAG(sub.{lat}) OVER (ORDER BY sub.{ts}) AS plat, "
+            f"LAG(sub.{lon}) OVER (ORDER BY sub.{ts}) AS plon "
             f"FROM {ct} sub WHERE sub.{ck} = {ct}.{ck}{causal}"
             f") steps WHERE plat IS NOT NULL)"
         )
@@ -2176,12 +2213,12 @@ class RadiusOfGyration(SpatialAggregator):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        sx = self._spatial(feature)
+        lat, lon = self._latlon(feature)
         dist = haversine_m("clat", "clon", "lat", "lon")
         return (
             f"(SELECT sqrt(AVG(power({dist}, 2))) FROM ("
-            f"SELECT sub.{sx.lat} AS lat, sub.{sx.lon} AS lon, "
-            f"AVG(sub.{sx.lat}) OVER () AS clat, AVG(sub.{sx.lon}) OVER () AS clon "
+            f"SELECT sub.{lat} AS lat, sub.{lon} AS lon, "
+            f"AVG(sub.{lat}) OVER () AS clat, AVG(sub.{lon}) OVER () AS clon "
             f"FROM {ct} sub WHERE sub.{ck} = {ct}.{ck}{causal}"
             f") pts)"
         )
@@ -2197,9 +2234,9 @@ class SpatialStd(SpatialAggregator):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        sx = self._spatial(feature)
+        lat, lon = self._latlon(feature)
         return (
-            f"(SELECT sqrt(var_samp(sub.{sx.lat}) + var_samp(sub.{sx.lon})) "
+            f"(SELECT sqrt(var_samp(sub.{lat}) + var_samp(sub.{lon})) "
             f"FROM {ct} sub WHERE sub.{ck} = {ct}.{ck}{causal})"
         )
 
@@ -2214,11 +2251,11 @@ class BoundingBoxArea(SpatialAggregator):
         ck = relationship.child_key
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        sx = self._spatial(feature)
+        lat, lon = self._latlon(feature)
         return (
-            f"(SELECT (max(sub.{sx.lat}) - min(sub.{sx.lat})) "
-            f"* (max(sub.{sx.lon}) - min(sub.{sx.lon})) "
-            f"* cos(radians(avg(sub.{sx.lat}))) * 111320 * 111320 "
+            f"(SELECT (max(sub.{lat}) - min(sub.{lat})) "
+            f"* (max(sub.{lon}) - min(sub.{lon})) "
+            f"* cos(radians(avg(sub.{lat}))) * 111320 * 111320 "
             f"FROM {ct} sub WHERE sub.{ck} = {ct}.{ck}{causal})"
         )
 
