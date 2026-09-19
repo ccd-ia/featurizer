@@ -46,7 +46,7 @@ primitive names get a "did you mean?" from the registry. Disable with
 |---|---|---|
 | `target` | yes | the entity alias the output matrix is indexed on: one row per `(as_of_date, target id)` |
 | `max_depth` | yes | how many relationship hops the planner traverses from the target |
-| `intervals` | yes | ISO-8601 durations (`P7D`, `P1M`, `P1Y`…); every interval multiplies the windowed aggregations |
+| `intervals` | yes | ISO-8601 durations (`P7D`, `P1M`, `P1Y`…). Each one adds a windowed variant of every aggregation, on top of the lifetime variant that is always emitted — see [Column budget](#column-budget) |
 | `aggregations` | no | subset of registered aggregations to apply — see the [primitives reference](/featurizer/reference/primitives/); omit (or `null`) for the curated default set. An explicit `[]` suppresses the aggregation layer: zero aggregation features (since v1.0.1) |
 | `transformations` | no | subset of registered transformers; omit (or `null`) for the curated default set. An explicit `[]` suppresses the transform layer — features pass through unchanged, identical to `[identity]` (since v1.0.1) |
 | `as_of_boundary` | no | `inclusive` (events at the as-of date count) or `exclusive` (strictly before) |
@@ -235,6 +235,66 @@ default set; note that all defaults on a wide schema can synthesize past
 PostgreSQL's 1664-column row limit, which featurizer handles by sharding the
 output into column groups automatically (and warns when a config predicts a
 pathological query plan).
+
+## Column budget
+
+### Each aggregation yields `I + 1` columns, not `I`
+
+For every aggregated child column the planner calls each aggregator once with
+no interval, then once per entry in `intervals`. With `I` intervals that is
+`I + 1` columns: the lifetime value plus one per window.
+
+```yaml
+intervals: [P30D, P90D]      # I = 2
+aggregations: [sum, mean]
+```
+
+renders, for a child column `orders.amount`, six columns and not four:
+
+```text
+SUM(orders.amount)     SUM(orders.amount|interval=P30D)     SUM(orders.amount|interval=P90D)
+MEAN(orders.amount)    MEAN(orders.amount|interval=P30D)    MEAN(orders.amount|interval=P90D)
+```
+
+The lifetime column cannot be switched off. `intervals: []` still emits it,
+and gives exactly one column per aggregation. The windowed variants are
+skipped only for a child entity that declares no `temporal_ix`, because
+there is nothing to window on. Budget the aggregation layer as
+
+```text
+child columns × aggregations × (I + 1)
+```
+
+and multiply by the transformers applied on top. At `I = 2` the lifetime
+column is a third of the aggregation layer, which is easy to miss until you
+count the output.
+
+### The limit that binds a numeric matrix is row size, not column count
+
+Three limits in this documentation are column counts: PostgreSQL's 1664
+entries per target list, its 1600 columns per table, and featurizer's default
+of 1400 columns per output group. A matrix of fixed-width numbers reaches a
+fourth limit first. A PostgreSQL heap row must fit one 8 kB page (about
+8160 usable bytes), and `double precision` and `bigint` are 8 bytes each and
+cannot be moved out of line by TOAST. That puts the ceiling near **1,000
+numeric columns per table**, under all three column counts. A 1,396-column
+`float8` table fails with `row is too big: size 11176, maximum size 8160`.
+
+`to_tables()` checks this before it writes. It estimates each group's row
+width and re-partitions into narrower tables when a group would exceed an
+8000-byte budget, which with two key columns allows 979 feature columns per
+table. Reading the matrix with `to_dataframe()`, `to_arrow()` or
+`to_parquet()` is not affected, because PostgreSQL streams a result row and
+never stores it in a page.
+
+**The check protects only the tables featurizer writes.** If you take
+`Featurizer.query` and write the result yourself with `create table … as` or
+`COPY`, nothing pre-flights the row width and PostgreSQL reports the error at
+the first over-wide row. Split the write at the same 979 feature columns per
+table, carrying `(as_of_date, <target id>)` in each, or call `to_tables()` and
+read its groups. See the
+[FAQ entry](/featurizer/faq/#row-is-too-big-size--maximum-size-8160--but-only-with-to_tables)
+and [Staying under PostgreSQL's limits](/featurizer/engineering/internals/#staying-under-postgresqls-limits).
 
 ## Common validator messages
 
