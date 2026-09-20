@@ -747,3 +747,93 @@ def test_to_tables_fits_single_writes_one_table(pg_conn):
     manifest = f.to_tables("fztest", connection=pg_conn, table_prefix="cust")
     assert [m.name for m in manifest] == ['"fztest"."cust_group_000"']
     assert len(_run(pg_conn, f"select * from {manifest[0].name}")) == 2
+
+
+# ------------------------------------------------------------------ #
+# The materialized path keeps the as-of date apart (issue #27).
+#
+# A materialized child is an ``(as_of_date × row)`` table, so everything that
+# windows over it has to be evaluated one as-of date at a time — a window that
+# partitions by the entity id alone would run across the dates. Every case
+# below compares against the single query, which evaluates per date by
+# construction (it lives inside the ``aod`` lateral).
+# ------------------------------------------------------------------ #
+
+WINDOWED = ["identity", "lag_1", "cum_sum", "percent_rank", "cross_entity_zscore"]
+
+
+def _seed_two_dates(conn) -> None:
+    """``_seed_depth3`` plus a second as-of date, an order that only the second
+    date may see, and an order that neither may."""
+    _seed_depth3(conn)
+    with conn.cursor() as cur:
+        cur.execute("insert into as_of_dates values (date '2023-08-01')")
+        cur.execute("insert into orders values (12, 1, date '2023-07-15', 7.0)")
+        cur.execute("insert into items values (103, 12, date '2023-07-15', 9.0)")
+        cur.execute("insert into orders values (13, 1, date '2023-09-30', 1.0)")
+        cur.execute("insert into items values (104, 13, date '2023-09-30', 2.0)")
+
+
+def _assert_materialized_equals_single(conn, config: dict, threshold: int = 1) -> None:
+    single = {
+        (r["as_of_date"], r["store_id"]): r
+        for r in _run(conn, _featurizer(config).query)
+    }
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(config, handle)
+    grouped = Featurizer(
+        handle.name, validate=False, materialize_threshold=threshold
+    )._grouped()
+    assert grouped.materialization is not None, "expected a materialization preamble"
+    with conn.cursor() as cur:
+        for ddl in grouped.materialization.ddl:
+            cur.execute(ddl)
+    joined: dict = {}
+    for sql in grouped.queries.values():
+        for row in _run(conn, sql):
+            joined.setdefault((row["as_of_date"], row["store_id"]), {}).update(row)
+    assert set(joined) == set(single)
+    differing = [
+        (key, col, single[key][col], joined[key].get(col))
+        for key in single
+        for col in single[key]
+        if not _null_eq(single[key][col], joined[key].get(col))
+    ]
+    assert not differing, f"{len(differing)} cells differ, e.g. {differing[:3]}"
+
+
+def test_materialized_windows_do_not_run_across_as_of_dates(pg_conn):
+    """Two as-of dates. ``cum_sum`` used to come back doubled and ``lag_1`` read
+    the same row under the other date: 96 of 512 cells, measured on de03142."""
+    _seed_two_dates(pg_conn)
+    config = {**_depth3_config(), "transformations": WINDOWED}
+    _assert_materialized_equals_single(pg_conn, config)
+
+
+def test_materialized_rolling_percentile_finds_its_synth(pg_conn):
+    """``rolling_median_7`` re-scans ``<entity>_synth`` by name, and a
+    materialized synth has no such name: ``relation "items_synth" does not
+    exist``. It is a curated default."""
+    _seed_two_dates(pg_conn)
+    config = {**_depth3_config(), "transformations": ["identity", "rolling_median_7"]}
+    _assert_materialized_equals_single(pg_conn, config)
+
+
+def test_an_oversized_agg_over_an_inline_child_keeps_the_bound(pg_conn):
+    """The common shape: ``items_transform`` is narrow and stays an inline CTE,
+    the aggregation over it is wide and is materialized. The inline child's
+    causal ``where`` reads ``aod``, so the preamble has to bind it *around* the
+    inline ``with``, not beside it."""
+    _seed_two_dates(pg_conn)
+    config = {
+        **_depth3_config(),
+        "intervals": ["P90D"],
+        "transformations": ["identity", "cum_sum", "percent_rank"],
+    }
+    threshold = 10
+    widths = {
+        name: len(spec.key_columns) + len(spec.columns)
+        for name, spec in _featurizer(config)._plan.cte_specs.items()
+    }
+    assert widths["items_transform"] <= threshold < widths["items_aggs_for_orders"]
+    _assert_materialized_equals_single(pg_conn, config, threshold=threshold)

@@ -37,14 +37,23 @@ transaction and drop at close).
 The temp tables are **(as_of_date × entity)-keyed feature tables** — the same
 shape the triage feature-group contract uses. `MaterializationPlanner.build()`
 computes as-of dependency bottom-up (a CTE is as-of-keyed when its body references
-`aod.as_of_date`, or any materialized upstream is). `as_of_date` is introduced
-**once** via `cross join as_of_dates aod` where `aod` is first needed — an agg's
-causal `where`, or a synth joining an as-of child agg — and **carried** downstream
-(a transform projects it straight from its as-of synth shards; never
-double-introduced). Shards re-join on `(as_of_date, key)`; an as-of agg join
-correlates on `<shard>.as_of_date = aod.as_of_date`; and the consuming target-level
-agg gets `<cte>.as_of_date = aod.as_of_date` injected so it reads only the current
-as-of date's rows.
+`aod.as_of_date`, or any materialized upstream is). Such a CTE is built **one
+as-of date at a time**, in the single query's own shape —
+`select aod.as_of_date, _m.* from as_of_dates aod cross join lateral (<the CTE's
+select>) _m` — so `aod` is in scope for every inline upstream and every window
+sees one date's rows. A materialized upstream it reads by name is put back under
+that name inside the lateral, cut to `as_of_date = aod.as_of_date`. Shards
+re-join on `(as_of_date, key)`; a synth's join to an as-of agg shard correlates
+on `<shard>.as_of_date = aod.as_of_date`; and the consuming target-level agg
+reads the shards through a source already cut to the current as-of date.
+
+*Amended 2026-09-19 (issue #27).* The first form introduced `as_of_date` with a
+flat `cross join as_of_dates aod`. That equals the single query only while
+nothing windows: a transform over `(as_of_date × row)` shards partitions by the
+entity id alone, so with two as-of dates `cum_sum` summed both copies of every
+row. It also spliced the consumer's as-of cut after the first `where` in its
+text, which in an aggregation with an interval belongs to a `filter (where …)`.
+Both were invisible to the equality tests, which used one as-of date.
 
 Each oversized CTE is already a `ShardableCTE` keyed on a single join key, so the
 only new planner metadata is `materialization_keys` (cte → join key + the
