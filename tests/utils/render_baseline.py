@@ -3,8 +3,17 @@
 ``as_of_dates: {id_column: …}`` is additive under ADR-0015: a config without
 the block must render exactly the SQL it rendered before the key existed. "Exactly"
 is checked, not asserted — ``tests/fixtures/render_baseline_pre_cohort.json``
-holds SHA-256 digests captured from master at ``3dbbfd8``, the commit before the
-change, and ``tests/test_cohort_pairs.py`` compares against them byte for byte.
+holds SHA-256 digests and ``tests/test_cohort_pairs.py`` compares against them
+byte for byte.
+
+Lineage of the digests, because a digest cannot show what moved it. They were
+captured from master at ``3dbbfd8``, the commit before the change. Master at
+``de03142`` still reproduced every one of them. Issue #29 then quoted the column
+each aggregation wraps, which moves the rendered bytes of every config that
+aggregates a declared column, so they were captured again from ``de03142`` plus
+that fix (``requoted_by`` in the file). The move is quoting only: with every
+double quote stripped, ``de03142`` and the fix render identical text for every
+part of every case, and ``n_groups`` did not change.
 
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
