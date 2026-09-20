@@ -862,3 +862,64 @@ def test_a_row_after_the_as_of_date_moves_nothing_when_materialized(pg_conn):
     for key in knowable:
         for col, value in knowable[key].items():
             assert _null_eq(value, with_future[key][col]), f"{col} moved for {key}"
+
+
+def test_a_chunk_that_reads_too_wide_is_halved(pg_conn):
+    """A shard's own width is bounded by its chunk, but what it READS from a
+    materialized upstream is not: a chunk of two-input aggregations can name
+    twice its width. With the read limit lowered to 8, chunks of the depth-3
+    chain read too wide and are split, and the materialized chain holds the same
+    data as with the real limit (issue #37)."""
+    from featurizer.sharding import MaterializationPlanner
+
+    config = {**_depth3_config(), "transformations": WINDOWED}
+    plan = _featurizer(config)._plan
+
+    def materialized(**kwargs) -> tuple[int, dict]:
+        planner = MaterializationPlanner(plan, materialize_threshold=1, **kwargs)
+        mplan = planner.build()
+        shards = mplan.shards_by_cte["orders_transform"]
+        everything = " ".join(
+            f'"{name.strip(chr(34))}"' for shard in shards for name in shard.columns
+        )
+        with pg_conn.transaction(force_rollback=True):
+            _seed_two_dates(pg_conn)
+            with pg_conn.cursor() as cur:
+                for statement in mplan.ddl:
+                    cur.execute(statement)
+            rows = _run(
+                pg_conn,
+                f"select * from {planner._rejoin_subquery(shards, everything)} s",
+            )
+        n_shards = sum(len(v) for v in mplan.shards_by_cte.values())
+        return n_shards, {(r["as_of_date"], r["order_id"]): r for r in rows}
+
+    default_shards, expected = materialized()
+    split_shards, actual = materialized(max_read_columns=8)
+    assert split_shards > default_shards
+    assert expected, "the materialized chain is empty"
+    assert actual == expected
+
+
+def test_an_oversized_transform_over_an_inline_synth(pg_conn):
+    """The shape the curated defaults produce: a child's synth is narrow, its
+    transform (synth x 17 transformers) is over the limit, so ONLY the transform
+    is materialized. The preamble used to read ``from <child>_synth _ego`` with
+    no definition of it — ``relation "orders_synth" does not exist`` — and did
+    not notice the transform depends on the as-of date, because the causal
+    ``where`` sits in the inline synth, not in the transform's own text."""
+    _seed_two_dates(pg_conn)
+    config = {
+        **_depth3_config(),
+        "max_depth": 2,
+        "transformations": ["identity", "lag_1", "cum_sum", "abs", "percent_rank"],
+    }
+    config["entities"] = config["entities"][:2]
+    config["relationships"] = config["relationships"][:1]
+    widths = {
+        name: len(spec.key_columns) + len(spec.columns)
+        for name, spec in _featurizer(config)._plan.cte_specs.items()
+    }
+    threshold = widths["orders_synth"]
+    assert widths["orders_synth"] <= threshold < widths["orders_transform"], widths
+    _assert_materialized_equals_single(pg_conn, config, threshold=threshold)

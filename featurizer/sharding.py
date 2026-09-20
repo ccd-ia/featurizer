@@ -873,6 +873,9 @@ class MaterializedShard:
     columns: List[str]
     create_sql: str
     asof: bool = False
+    # The identifier columns this shard projects, as SQL reads them and without
+    # their qualifier. Shard 0 carries all of them, the others the join key.
+    key_columns: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -910,6 +913,7 @@ class MaterializationPlanner:
         *,
         materialize_threshold: int = PG_MAX_TARGET_LIST,
         max_columns_per_shard: int = MATERIALIZE_MAX_COLUMNS,
+        max_read_columns: int = PG_MAX_TARGET_LIST,
     ) -> None:
         if materialize_threshold < 1 or max_columns_per_shard < 1:
             raise ValueError(
@@ -918,6 +922,12 @@ class MaterializationPlanner:
         self.plan = plan
         self.materialize_threshold = materialize_threshold
         self.max_columns_per_shard = max_columns_per_shard
+        # The widest select list a statement may carry: PostgreSQL's limit.
+        # A parameter so a test can reach the halving path on a small config.
+        self.max_read_columns = max_read_columns
+        # Widest re-join select list emitted while the current shard's statement
+        # was being built; ``_shards_for`` halves a chunk that reads too wide.
+        self._widest_read = 0
 
         self.target_alias = plan.target.alias
         self.transform_name = f"{self.target_alias}_transform"
@@ -1021,7 +1031,21 @@ class MaterializationPlanner:
         materialized: Set[str] = set()
         asof_ctes: Set[str] = set()
         for cte_name in order:
-            body = self._body(cte_name) or ""
+            # What the statement will contain: the CTE's own text plus every
+            # non-materialized upstream it pulls inline. The as-of dependency
+            # has to be looked for in all of it. With the curated defaults a
+            # child's synth is narrow and only its transform is oversized, so
+            # the causal ``where`` sits in an INLINE synth and the transform's
+            # own text never mentions ``aod`` (issue #37).
+            spec = self.plan.cte_specs.get(cte_name)
+            inline = self._inline_upstreams(
+                cte_name,
+                shards_by_cte,
+                skip_joins=spec is not None and spec.kind == "synth",
+            )
+            body = (self._body(cte_name) or "") + "".join(
+                self._body(name) or "" for name in inline
+            )
             upstream_asof = bool(self._scan(body) & asof_ctes)
             is_asof = ("aod.as_of_date" in body) or upstream_asof
             shards = self._shards_for(cte_name, shards_by_cte, is_asof)
@@ -1060,11 +1084,21 @@ class MaterializationPlanner:
                 "this entity's primitive/interval breadth instead."
             )
         join_key = mkey.join_key
-        column_chunks = self._partition(spec.columns)
+        pending = self._partition(spec, asof)
         shards: List[MaterializedShard] = []
-        for idx, chunk in enumerate(column_chunks):
+        while pending:
+            chunk = pending.pop(0)
+            idx = len(shards)
             table_name = self._temp_name(cte_name, idx)
+            self._widest_read = 0
             select_body = self._select_body(spec, chunk, idx, join_key, done, asof)
+            if self._widest_read > self.max_read_columns and len(chunk) > 1:
+                # What this chunk READS from a materialized upstream is itself
+                # over the target-list limit (a chunk of two-input aggregations
+                # can name twice its own width). Halve it and try again.
+                half = len(chunk) // 2
+                pending[:0] = [chunk[:half], chunk[half:]]
+                continue
             create_sql = (
                 f"create temp table {table_name} on commit drop as\n{select_body}"
             )
@@ -1076,6 +1110,10 @@ class MaterializationPlanner:
                     columns=[c.name for c in chunk],
                     create_sql=create_sql,
                     asof=asof,
+                    key_columns=[
+                        self._unqualified(key)
+                        for key in self._shard_keys(spec, idx, join_key)
+                    ],
                 )
             )
         return shards
@@ -1168,9 +1206,10 @@ class MaterializationPlanner:
         # Materialized CTEs read BY NAME, by this select or by an inline
         # upstream. A synth's joins are not among them: ``tail`` already names
         # the shard tables there.
-        by_name = self._scan("".join([select] + inline_bodies)) & set(done)
+        reader = "".join([select] + inline_bodies)
+        by_name = self._scan(reader) & set(done)
         reexposed = [
-            self._asof_reexposed(name, done[name])
+            self._asof_reexposed(name, done[name], reader)
             for name in self.plan.cte_order
             if name in by_name and name != spec.name
         ]
@@ -1184,15 +1223,16 @@ class MaterializationPlanner:
             f"        ) {_ASOF_LATERAL_ALIAS}"
         )
 
-    def _asof_reexposed(self, name: str, shards: List[MaterializedShard]) -> str:
+    def _asof_reexposed(
+        self, name: str, shards: List[MaterializedShard], reader: str
+    ) -> str:
         """``<name> as (…)``: a materialized CTE under its own name again, cut to
-        the as-of date ``aod`` is on when its shards are as-of-keyed."""
-        return (
-            f"\n        {name} as (\n"
-            f"        select * from {self._current_date_source(shards)}\n        )\n        "
-        )
+        the as-of date ``aod`` is on when its shards are as-of-keyed, and pruned
+        to the columns ``reader`` names."""
+        source = self._current_date_source(shards, reader)
+        return f"\n        {name} as (\n        select * from {source}\n        )\n        "
 
-    def _current_date_source(self, shards: List[MaterializedShard]) -> str:
+    def _current_date_source(self, shards: List[MaterializedShard], reader: str) -> str:
         """The re-joined shards as a FROM item, cut to the as-of date ``aod`` is on
         when they are as-of-keyed. ``aod`` must be in scope where this lands.
 
@@ -1201,7 +1241,7 @@ class MaterializationPlanner:
         aggregation with an interval the first ``where`` belongs to a
         ``filter (where …)``, so every other aggregate read every date's rows.
         """
-        rejoin = self._rejoin_subquery(shards)
+        rejoin = self._rejoin_subquery(shards, reader)
         if not (shards and shards[0].asof):
             return f"{rejoin} {_ASOF_SHARD_ALIAS}"
         return (
@@ -1299,12 +1339,13 @@ class MaterializationPlanner:
         """
         keys = self._shard_keys(spec, idx, join_key)
         synth_name = f"{self._entity_of(spec)}_synth"
-        source = self._from_source(synth_name, _TRANSFORM_EGO_ALIAS, done)
+        select_list = ",\n        ".join(keys + [c.projection for c in chunk])
+        source = self._from_source(synth_name, _TRANSFORM_EGO_ALIAS, done, select_list)
+        # A transform can be oversized while its synth is not (transform =
+        # synth x transformers); the synth then has to come along inline.
+        with_clause = self._inline_with(spec.name, done)
         return (
-            "select\n        "
-            + ",\n        ".join(keys + [c.projection for c in chunk])
-            + "\n        from "
-            + source
+            with_clause + "select\n        " + select_list + "\n        from " + source
         )
 
     # ------------------------------------------------------------------ #
@@ -1328,7 +1369,7 @@ class MaterializationPlanner:
             pattern = re.compile(rf"from\s+{re.escape(cte)}(?![A-Za-z0-9_])")
             if not pattern.search(text):
                 continue
-            source = f"(select * from {self._current_date_source(shards)})"
+            source = f"(select * from {self._current_date_source(shards, text)})"
             # A callable, so a backslash in a column name is never read as a
             # group reference.
             text = pattern.sub(
@@ -1373,8 +1414,10 @@ class MaterializationPlanner:
         for cte in done:
             pattern = re.compile(rf"from\s+{re.escape(cte)}(?![A-Za-z0-9_])")
             if pattern.search(text):
-                rejoin = self._rejoin_subquery(done[cte])
-                text = pattern.sub(f"from {rejoin} {cte}", text)
+                rejoin = self._rejoin_subquery(done[cte], text)
+                text = pattern.sub(
+                    lambda _m, rejoin=rejoin, cte=cte: f"from {rejoin} {cte}", text
+                )
         return text
 
     def _from_source(
@@ -1382,26 +1425,59 @@ class MaterializationPlanner:
         cte_name: str,
         alias: str,
         done: "OrderedDict[str, List[MaterializedShard]]",
+        reader: str,
     ) -> str:
         """The FROM source for a CTE read directly (``from <cte> <alias>``):
         the re-joined shards when materialized, else the CTE name."""
         if cte_name in done:
-            return f"{self._rejoin_subquery(done[cte_name])} {alias}"
+            return f"{self._rejoin_subquery(done[cte_name], reader)} {alias}"
         return f"{cte_name} {alias}"
 
-    def _rejoin_subquery(self, shards: List[MaterializedShard]) -> str:
-        """``(select * from s0 left join s1 using(<key>) …)`` — re-joins shards
-        into one logical row per key. Only the first shard carries the non-key
-        identifier columns, so ``select *`` yields each column once. As-of shards
-        re-join on ``(as_of_date, key)`` so each (as-of date, entity) row is one."""
+    def _rejoin_subquery(self, shards: List[MaterializedShard], reader: str) -> str:
+        """``(select <keys>, <columns> from s0 left join s1 using(<key>) …)`` —
+        re-joins shards into one logical row per key, projecting only the columns
+        ``reader`` (the SQL that will read this) names.
+
+        It was ``select *``. A materialized CTE is by definition wider than
+        PostgreSQL's 1664-entry target list, so a ``select *`` over all of its
+        shards always is too, and the limit holds for a FROM subquery, a CTE and
+        a lateral alike (issue #37). Nothing reads a whole materialized CTE: a
+        transform chunk reads the synth columns its projections depend on, an
+        aggregation chunk the transform columns it wraps.
+
+        A column is "named" when its delimited form appears in ``reader``, the
+        literal-name rule ``FeaturePlanner._synth_deps`` uses. A false positive
+        costs width, never correctness; a shard none of whose columns is named
+        is not joined at all. Shard 0 always is: it carries the identifier
+        columns. As-of shards re-join on ``(as_of_date, key)``.
+        """
         if not shards:
             return "(select 1)"
         # The shard projected the key delimited, so that is how it is joined.
         key = quote_if_bare(shards[0].join_key)
-        first = shards[0].table_name
-        using = f"({AS_OF_DATE}, {key})" if shards[0].asof else f"({key})"
-        joins = "".join(f" left join {s.table_name} using {using}" for s in shards[1:])
-        return f"(select * from {first}{joins})"
+        asof = shards[0].asof
+        using = f"({AS_OF_DATE}, {key})" if asof else f"({key})"
+        projected = ([AS_OF_DATE] if asof else []) + list(shards[0].key_columns)
+        source = shards[0].table_name
+        for position, shard in enumerate(shards):
+            named = [
+                column
+                for column in (quote_if_bare(name) for name in shard.columns)
+                if column in reader
+            ]
+            if position and named:
+                source += f" left join {shard.table_name} using {using}"
+            projected += named
+        self._widest_read = max(self._widest_read, len(projected))
+        return f"(select {', '.join(projected)} from {source})"
+
+    @staticmethod
+    def _unqualified(sql_key: str) -> str:
+        """``orders_transform."store_id"`` -> ``"store_id"``. The qualifier is an
+        alias or a (possibly schema-qualified) table and never carries a quote,
+        so the first ``."`` is where the column starts."""
+        at = sql_key.find('."')
+        return sql_key[at + 1 :] if at != -1 else sql_key
 
     def _inline_with(
         self,
@@ -1458,10 +1534,19 @@ class MaterializationPlanner:
     # Small helpers
     # ------------------------------------------------------------------ #
 
-    def _partition(self, columns: List[ColumnSpec]) -> List[List[ColumnSpec]]:
+    def _partition(self, spec: ShardableCTE, asof: bool) -> List[List[ColumnSpec]]:
+        """Chunks of ``spec``'s columns, each small enough to be a TABLE.
+
+        Two limits, and the second is the one that binds a numeric matrix: a
+        shard is a heap table, and a heap tuple has to fit one 8 kB page. 1,400
+        non-null ``float8`` columns are 11,232 bytes (issue #52; ``to_tables``
+        has guarded its group tables the same way since #11).
+        """
+        columns = spec.columns
         if not columns:
             return [[]]
-        per = self.max_columns_per_shard
+        carried = len(spec.key_columns) + (1 if asof else 0)
+        per = max(1, min(self.max_columns_per_shard, max_heap_safe_columns(carried)))
         return [columns[i : i + per] for i in range(0, len(columns), per)]
 
     def _shard_keys(self, spec: ShardableCTE, idx: int, join_key: str) -> List[str]:
