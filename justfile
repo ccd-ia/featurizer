@@ -52,9 +52,11 @@ test:
 test-fast:
     uv run pytest -q -m "not integration"
 
-# All integration tests against the ephemeral database
+# All integration tests against the ephemeral database. JIT is off for the run:
+# a wide generated query spends tens of seconds compiling its target list
+# before it reads a row (#53), and the tier drops from minutes to about one.
 test-integration:
-    DATABASE_URL={{pg_url}} uv run pytest -q -m integration
+    PGOPTIONS="-c jit=off" DATABASE_URL={{pg_url}} uv run pytest -q -m integration
 
 # Realistic-dataset tier only (requires `just seed` first)
 test-realistic:
