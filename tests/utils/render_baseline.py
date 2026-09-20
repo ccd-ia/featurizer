@@ -15,6 +15,15 @@ that fix (``requoted_by`` in the file). The move is quoting only: with every
 double quote stripped, ``de03142`` and the fix render identical text for every
 part of every case, and ``n_groups`` did not change.
 
+Issue #27 then cut every non-target read on the as-of date, so they were
+captured a third time, from ``0f1feb9`` (master with #29 in) plus that fix
+(``bounded_by`` in the file). Read as text against ``0f1feb9``: in eight of the
+nine cases the only difference in ``query`` and ``groups`` is one added
+``where <table>."<temporal_ix>" <= aod.as_of_date`` per temporal child synth,
+and ``ddl`` does not move. ``generated/chain``, the one case that materializes,
+moves in ``ddl`` and ``groups`` by design: its as-of shards are now built one
+as-of date at a time (issue #36). ``n_groups`` did not change anywhere.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """

@@ -13,6 +13,7 @@
         from analytics.care_plans
         
         
+        where analytics.care_plans."effective_at" <= aod.as_of_date
         )
         ,
         -- transform care_plans
@@ -29,6 +30,7 @@
         from analytics.visits
         
         
+        where analytics.visits."visited_at" <= aod.as_of_date
         )
         ,
         -- transform visits
