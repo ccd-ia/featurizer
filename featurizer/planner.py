@@ -1453,8 +1453,18 @@ class FeaturePlanner:
             names=sorted(f.name for f in flattened),
         )
         self._features[target.alias].update(flattened)
-        sorted_flattened = self._sort_features(flattened)
-        self._build_transform_cte(target, sorted_flattened)
+        # The target's transform select list IS the output matrix, so it
+        # projects exactly what the selected transformers produced. Any other
+        # entity's transform is read by a parent — its aggregation CTE, an
+        # as-of pull — through ``_built_features``, which is the entity's whole
+        # feature set. So that is what a non-target transform projects: the
+        # transformers' outputs plus, as helpers, the raw columns they were not
+        # asked to carry. With ``identity`` selected the two sets are the same
+        # and the SQL does not move; without it the aggregation used to read a
+        # column its source did not have (issue #38).
+        is_target = self._target is not None and target.alias == self._target.alias
+        projected = flattened if is_target else self._features[target.alias]
+        self._build_transform_cte(target, self._sort_features(projected))
 
     def _apply_direct_roles(self, target: Entity) -> List[Variable]:
         """Apply per-variable ``role`` to the target's own direct variables.
