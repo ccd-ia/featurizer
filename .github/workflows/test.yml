@@ -50,6 +50,10 @@ jobs:
         # nothing requires.
         if: matrix.python == '3.12'
         run: uv run ruff format --check .
+      - name: ruff check
+        # A step of this job for the same reason as the format check above.
+        if: matrix.python == '3.12'
+        run: uv run ruff check .
       - name: validate shipped example configs
         # 04-custom-primitives is excluded by design: its config references
         # custom primitives (log1p, zscore, bin) that run_example.py registers

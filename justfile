@@ -92,9 +92,8 @@ fmt:
 fmt-check:
     uv run ruff format --check .
 
-# Advisory lint, not yet a CI gate. Two findings remain, both F541 in
-# examples/02-temporal-joins/tutorial.ipynb, and they go away with the rewrite
-# of that notebook (#25); after that this can gate too. Do not blanket `--fix`.
+# Lint. CI gates on it (test.yml, the py 3.12 fast-tests job). Do not blanket
+# `--fix`, for the reason given at `fmt` above.
 lint:
     uv run ruff check .
 
