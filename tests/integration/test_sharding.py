@@ -837,3 +837,28 @@ def test_an_oversized_agg_over_an_inline_child_keeps_the_bound(pg_conn):
     }
     assert widths["items_transform"] <= threshold < widths["items_aggs_for_orders"]
     _assert_materialized_equals_single(pg_conn, config, threshold=threshold)
+
+
+def test_a_row_after_the_as_of_date_moves_nothing_when_materialized(pg_conn):
+    """The leak sweep's question, asked of the materialized path."""
+    config = {**_depth3_config(), "transformations": WINDOWED}
+
+    def matrix(*, future_rows: bool) -> dict:
+        with pg_conn.transaction(force_rollback=True):
+            _seed_depth3(pg_conn)
+            if future_rows:
+                with pg_conn.cursor() as cur:
+                    cur.execute(
+                        "insert into orders values (13, 1, date '2023-09-30', 1.0)"
+                    )
+                    cur.execute(
+                        "insert into items values (104, 10, date '2023-09-30', 2.0)"
+                    )
+            df = _materialized_featurizer(config).to_dataframe(connection=pg_conn)
+            return df.to_dict("index")
+
+    knowable, with_future = matrix(future_rows=False), matrix(future_rows=True)
+    assert set(knowable) == set(with_future)
+    for key in knowable:
+        for col, value in knowable[key].items():
+            assert _null_eq(value, with_future[key][col]), f"{col} moved for {key}"

@@ -806,14 +806,14 @@ class DistributionTransformer(WindowFunctionTransformer):
         return " ".join(pieces)
 
 
-# ``cum_dist`` is not a PostgreSQL function (it is ``cume_dist``), so ``cdf`` has
-# never executed. The name is left alone on purpose: ``cume_dist()`` divides by
-# the size of the whole partition, which counts rows dated after the as-of date
-# — measured in issue #27, where ``percent_rank`` and ``ntile`` share the
-# fault. Spelling it correctly would switch on a third primitive that reads the
-# future. Fix the three together there.
+# These three divide by the size of the WHOLE partition, so they are only
+# point-in-time correct because the planner cuts a child's read on the as-of
+# date (``FeaturePlanner._causal_where``, issue #27). ``cdf`` was spelled
+# ``cum_dist()`` — not a PostgreSQL function — until that cut existed, so that
+# spelling it correctly could not switch on a third transformer that read rows
+# dated after the as-of date.
 cdf = DistributionTransformer(
-    name="cdf", function="cum_dist", order_by=_temporal_ordering
+    name="cdf", function="cume_dist", order_by=_temporal_ordering
 )
 ## relative rank of the current row: (rank - 1) / (total partition rows - 1)
 percent_rank = DistributionTransformer(name="percent_rank", order_by=_temporal_ordering)

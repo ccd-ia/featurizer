@@ -105,12 +105,6 @@ SAMPLE = {
     "text": ["'alpha beta'", "'Gamma!'", "'delta, epsilon.'"],
 }
 
-# Fails identically on a PLAIN column name, so it says nothing about quoting.
-# ``cdf`` renders ``cum_dist()``, which PostgreSQL does not have. It stays
-# broken on purpose: ``cume_dist()`` reads rows dated after the as-of date
-# (issue #27). The other four from issue #23 are fixed; their values are pinned
-# in tests/primitives/test_transformer_defects.py.
-KNOWN_BROKEN = {"cdf"}
 # Not configurable as a bare transformations: entry.
 NOT_STANDALONE = {"identity", "in_array"}
 
@@ -125,16 +119,7 @@ def _sweep_cases():
         vtype = next((t for t in types if t in SQL_TYPE), None)
         if vtype is None:
             continue
-        marks = (
-            [
-                pytest.mark.xfail(
-                    reason="deliberately left broken, see issue #27", strict=True
-                )
-            ]
-            if name in KNOWN_BROKEN
-            else []
-        )
-        yield pytest.param(name, vtype, id=name, marks=marks)
+        yield pytest.param(name, vtype, id=name)
 
 
 @pytest.mark.integration

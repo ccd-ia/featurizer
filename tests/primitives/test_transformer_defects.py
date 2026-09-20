@@ -17,8 +17,9 @@ of these had a second fault behind the first:
   overflows ``float8``; a ``double precision`` or ``real`` column dragged the
   multiplication into floating point.
 
-``cdf`` was the fifth entry on the issue. It is left broken deliberately — see
-the comment at its definition and issue #27.
+``cdf`` was the fifth entry on the issue. It was left broken until a child's read
+was cut on the as-of date (issue #27); its values are pinned in
+``tests/integration/test_asof_bounded_child_read.py``.
 """
 
 from __future__ import annotations

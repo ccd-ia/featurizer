@@ -26,7 +26,7 @@ select aod.as_of_date, t.*
 from as_of_dates as aod
 cross join lateral (
   with
-    <child>_synth      as (…),  -- select the child's columns
+    <child>_synth      as (…),  -- select the child's rows knowable at aod.as_of_date
     <child>_transform  as (…),  -- transformers, row-wise or windowed
     <child>_aggs_for_<target> as (…),  -- aggregations, per join key
     <companion pre-aggregation CTEs>,  -- see below
@@ -39,6 +39,14 @@ cross join lateral (
 The `cross join lateral` evaluates the feature CTEs **once per as-of date**;
 the `where τ ≤ aod.as_of_date` guard and per-interval `FILTER` clauses are
 the [point-in-time semantics](/featurizer/concepts/phi-theory/) made visible.
+
+The guard sits where an entity is **read**, in `<child>_synth`, as well as in
+the aggregation. The aggregation's copy alone is enough for a window that only
+looks backwards, and not for one that spans its partition: `percent_rank()`
+divides by the partition's size, so a row the aggregation was about to drop
+had already shaped the value it kept
+([ADR-0016](/featurizer/engineering/adr/0016-leak-fixes-are-not-breaking/)).
+The target's own read carries no guard — its rows are the cohort.
 
 ## Joins: three kinds, one contract
 

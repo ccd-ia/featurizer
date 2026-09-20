@@ -60,6 +60,9 @@ written commitment with semver semantics behind it.
   (anything prefixed `_`, and imports not re-exported from package roots).
 - The *set* of registered primitives may **grow** in minors; a primitive
   removal or a change to an existing primitive's emitted values is breaking.
+  (One narrow exception, added 2026-09-19: a change whose only effect on
+  values is to stop them depending on rows dated after the as-of date —
+  [[0016-leak-fixes-are-not-breaking]].)
 - Log messages, warning texts, debug payloads, and documentation.
 
 ### Semver + deprecation policy
