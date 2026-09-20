@@ -63,9 +63,12 @@ SQL_TYPE = {
 NOT_STANDALONE = {"identity", "in_array"}
 
 
-def _config(transformer: str, vtype: str, child_id: str) -> dict:
+def _config(
+    transformer: str, vtype: str, child_id: str, boundary: str = "inclusive"
+) -> dict:
     return {
         "target": "series",
+        "as_of_boundary": boundary,
         "max_depth": 2,
         "intervals": [],
         "aggregations": ["max", "min", "nunique", "count"],
@@ -89,14 +92,20 @@ def _config(transformer: str, vtype: str, child_id: str) -> dict:
     }
 
 
-def _seed(conn, vtype: str, *, future_row: bool) -> None:
+# The row that must move nothing. Under the inclusive boundary it is dated after
+# the as-of date; under ``exclusive`` a row dated ON the as-of date is already
+# unknowable, and that is the sharper test of the cut's operator.
+UNKNOWABLE = {"inclusive": "2024-09-01", "exclusive": AS_OF}
+
+
+def _seed(conn, vtype: str, *, future_row: bool, boundary: str = "inclusive") -> None:
     create_temp_table(conn, "series", [("series_id", "int")], [(1,), (2,)])
     rows = []
     for series_id in (1, 2):
         for month, value in enumerate(PAST[vtype], start=1):
             rows.append((len(rows) + 1, series_id, f"2024-{month:02d}-01", value))
     if future_row:
-        rows.append((len(rows) + 1, 1, "2024-09-01", FUTURE[vtype]))
+        rows.append((len(rows) + 1, 1, UNKNOWABLE[boundary], FUTURE[vtype]))
     create_temp_table(
         conn,
         "events",
@@ -113,8 +122,9 @@ def _seed(conn, vtype: str, *, future_row: bool) -> None:
 
 def _matrix(conn, config: dict, vtype: str, *, future_row: bool) -> dict:
     """Run inside a savepoint so the two worlds never share a temp table."""
+    boundary = config.get("as_of_boundary", "inclusive")
     with conn.transaction(force_rollback=True):
-        _seed(conn, vtype, future_row=future_row)
+        _seed(conn, vtype, future_row=future_row, boundary=boundary)
         return {row["series_id"]: row for row in run_featurizer(conn, config)}
 
 
@@ -136,14 +146,22 @@ def _sweep_cases():
         # issue names. ``event_id``: one row per partition, which still leaked
         # through the two ``over ()`` transformers.
         for child_id in ("series_id", "event_id"):
-            yield pytest.param(name, vtype, child_id, id=f"{name}-by-{child_id}")
+            yield pytest.param(
+                name, vtype, child_id, "inclusive", id=f"{name}-by-{child_id}"
+            )
+        # The exclusive boundary on the event-source shape only: the operator
+        # is the same string at every site (``featurizer.boundary``), so one
+        # shape is enough to show it reaches the child's read.
+        yield pytest.param(
+            name, vtype, "series_id", "exclusive", id=f"{name}-by-series_id-exclusive"
+        )
 
 
-@pytest.mark.parametrize("name,vtype,child_id", list(_sweep_cases()))
+@pytest.mark.parametrize("name,vtype,child_id,boundary", list(_sweep_cases()))
 def test_a_row_after_the_as_of_date_moves_nothing(
-    pg_conn, name, vtype, child_id
+    pg_conn, name, vtype, child_id, boundary
 ) -> None:
-    config = _config(name, vtype, child_id)
+    config = _config(name, vtype, child_id, boundary)
     knowable = _matrix(pg_conn, config, vtype, future_row=False)
     with_future = _matrix(pg_conn, config, vtype, future_row=True)
     assert with_future == knowable
