@@ -24,6 +24,13 @@ and ``ddl`` does not move. ``generated/chain``, the one case that materializes,
 moves in ``ddl`` and ``groups`` by design: its as-of shards are now built one
 as-of date at a time (issue #36). ``n_groups`` did not change anywhere.
 
+Issue #46 then quoted every declared identifier that is not a variable — entity
+ids, relationship keys, temporal indexes, the columns the planner passes read —
+so they were captured a fourth time, from ``b72da03`` plus that fix
+(``quoted_identifiers_by``). The move is quoting only, checked as #29's was:
+15 parts moved, and for each of them master's text and the fix's are identical
+once every double quote is stripped; ``n_groups`` did not change.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """
