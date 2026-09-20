@@ -232,6 +232,26 @@ enum is a modeling error to fix upstream. See
 and the [categoricals notebook](/featurizer/notebooks/05-categoricals-output/).
 Imputation of the resulting matrix is **opt-in**, not automatic.
 
+### `column "entityid" does not exist` — but the table has `entityId`
+
+The column was created with quotes, so PostgreSQL stored its capitals.
+`pandas.DataFrame.to_sql` does this for every column; so does any DDL that
+writes `"entityId"`. A config that declares `entityId` is read as PostgreSQL
+reads an unquoted identifier: folded to `entityid`, which is not the stored
+name.
+
+Ask for the exact name by putting the quotes inside the YAML string:
+
+```yaml
+variables:
+  '"entityId"': {type: numeric}
+```
+
+The rule is in the
+[configuration reference](/featurizer/reference/configuration/#entities).
+A column created by unquoted DDL needs none of this: `totalAmount` in the
+config matches the stored `totalamount`.
+
 ### `row is too big: size …, maximum size 8160` — but only with `to_tables`
 
 A PostgreSQL heap *row* must fit one 8 KiB page (~8160 bytes). Fetching a

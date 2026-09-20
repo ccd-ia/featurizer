@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import string
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
@@ -65,22 +66,56 @@ def pg_identifier(raw: str) -> str:
     return f'"{_truncate_identifier(raw)}"'
 
 
+_ASCII_FOLD = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def _is_bare_identifier(raw: str) -> bool:
+    """True when PostgreSQL would accept ``raw`` as an identifier without quotes.
+
+    A letter, an underscore or any non-ASCII character first; then those,
+    digits and ``$``. Reserved words are deliberately not excluded: the caller
+    delimits the result anyway, which is what makes them usable.
+    """
+
+    def starts(ch: str) -> bool:
+        return ch == "_" or not ch.isascii() or ch.isalpha()
+
+    def continues(ch: str) -> bool:
+        return starts(ch) or ch == "$" or ch.isdigit()
+
+    return bool(raw) and starts(raw[0]) and all(continues(ch) for ch in raw[1:])
+
+
 def quote_if_bare(raw: str) -> str:
-    """Quote a *declared* column name, byte for byte, unless already delimited.
+    """Render a *declared* column name as PostgreSQL would read it (issue #44).
 
     Declared variable and identifier names reach the planner exactly as the
     config wrote them, and the database — not featurizer — owns them, so the
-    rendered reference has to match the real column. That rules out
-    :func:`pg_identifier`, which is deliberately lossy for generated names:
-    it hash-caps anything over 63 bytes (PostgreSQL truncates rather than
-    hashes, so the capped form would name no column) and strips embedded
-    quotes (``he"llo`` would silently become ``hello``).
+    rendered reference has to name the real column. Three cases, PostgreSQL's
+    own:
 
-    Generated features arrive already delimited and pass through untouched,
-    so this is safe to apply to a mixed projection (issue #13).
+    - already delimited (``"entityId"``): taken exactly. Generated features
+      arrive this way and pass through untouched, so this is safe to apply to
+      a mixed projection (issue #13); a config asks for a genuinely mixed-case
+      column the same way, by writing the quotes.
+    - a valid bare identifier (``totalAmount``): its ASCII letters fold to
+      lower case, as PostgreSQL folds an unquoted identifier, and the result
+      is delimited — which is also what makes a reserved word usable. Until
+      #13 such a name was interpolated bare and folded by the server; rendering
+      it byte for byte broke every config whose spelling differed in case from
+      the stored column.
+    - anything else (``Amount USD``, ``MEAN(games.goals)``): there is one way
+      to read it, so it is delimited byte for byte.
+
+    Not :func:`pg_identifier`, which is deliberately lossy for generated
+    names: it hash-caps anything over 63 bytes (PostgreSQL truncates rather
+    than hashes, so the capped form would name no column) and strips embedded
+    quotes (``he"llo`` would silently become ``hello``).
     """
     if len(raw) >= 2 and raw.startswith('"') and raw.endswith('"'):
         return raw
+    if _is_bare_identifier(raw):
+        raw = raw.translate(_ASCII_FOLD)
     return '"' + raw.replace('"', '""') + '"'
 
 

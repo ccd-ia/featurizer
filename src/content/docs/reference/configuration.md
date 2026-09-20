@@ -110,6 +110,13 @@ entities:
   consumer's job.
 - **`role: identifier`** excludes a column from the feature output while
   keeping it available as a key.
+- **Column names** are read the way PostgreSQL reads them. A name you could
+  write without quotes in SQL (`totalAmount`) folds to lower case, so it
+  matches a column created by ordinary, unquoted DDL. A name you could not
+  write bare (`Amount USD`, `MEAN(games.goals)`) or a reserved word (`order`)
+  is quoted for you. To name a column whose stored name really has capitals,
+  put the double quotes inside the YAML string: `'"entityId"'`. Feature names
+  keep the spelling you declared, without the quotes.
 
 ### Peer groups (planner pass)
 
