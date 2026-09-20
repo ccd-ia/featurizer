@@ -69,12 +69,14 @@ def test_the_baseline_was_captured_before_the_change() -> None:
     baseline = json.loads(BASELINE.read_text())
     # Captured from 3dbbfd8, reproduced by de03142, captured again when issue
     # #29 quoted the aggregations' inputs, when issue #27 cut every child read
-    # on the as-of date, and when issue #46 quoted every other declared
-    # identifier — see tests/utils/render_baseline.
-    assert baseline["captured_from"] == "b72da03"
+    # on the as-of date, when issue #46 quoted every other declared identifier,
+    # and when issue #37 pruned the shard re-joins — see
+    # tests/utils/render_baseline.
+    assert baseline["captured_from"] == "7cd6326"
     assert baseline["requoted_by"] == "#29"
     assert baseline["bounded_by"] == "#27"
     assert baseline["quoted_identifiers_by"] == "#46"
+    assert baseline["pruned_rejoin_by"] == "#37"
     # One case must exercise the temp-table preamble, the only reader of
     # as_of_dates outside the query itself.
     empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

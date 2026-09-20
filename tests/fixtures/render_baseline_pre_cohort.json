@@ -1,6 +1,6 @@
 {
   "bounded_by": "#27",
-  "captured_from": "b72da03",
+  "captured_from": "7cd6326",
   "cases": {
     "examples/01-basic-aggregations/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -32,8 +32,8 @@
       "n_groups": "5"
     },
     "generated/chain": {
-      "ddl": "3e8c0bbe2197c2c595512f706366554878be325a43828fa97daf892ddcdb39d8",
-      "groups": "74c74be1508f41b14603b0f92957f3cbbd3230f4a3699c9b76f91e7ddea1c2e7",
+      "ddl": "7ace7c7cadd25d9e10dc7ee0f11278723b3138642648fc0ca6e570106927c929",
+      "groups": "17f7e77e367e1c54541b87fca21ba7569956f52e7ced7f5fbb595122fc68d773",
       "n_groups": "1"
     },
     "generated/wide": {
@@ -53,6 +53,7 @@
       "query": "918f8786bf8fbea132c5bf56de8bf9f150c4b2f5e3e129811e6178d584efe95c"
     }
   },
+  "pruned_rejoin_by": "#37",
   "quoted_identifiers_by": "#46",
   "requoted_by": "#29"
 }

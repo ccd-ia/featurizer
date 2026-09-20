@@ -31,6 +31,13 @@ so they were captured a fourth time, from ``b72da03`` plus that fix
 15 parts moved, and for each of them master's text and the fix's are identical
 once every double quote is stripped; ``n_groups`` did not change.
 
+Issue #37 then replaced the ``select *`` with which a materialized CTE's shards
+were re-joined by the columns the reader names, so they were captured a fifth
+time, from ``7cd6326`` plus that fix (``pruned_rejoin_by``). Only
+``generated/chain`` moves, the one case that materializes: four lines in all
+(three in ``ddl``, one in ``groups``), each the same line with an explicit
+select list where ``select *`` was. ``n_groups`` did not change.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """
