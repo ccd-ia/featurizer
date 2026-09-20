@@ -1,55 +1,56 @@
 {
-  "captured_from": "3dbbfd8",
+  "captured_from": "de03142",
   "cases": {
     "examples/01-basic-aggregations/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "028b82cc15f95b1f06322aefe8329fa79413f817e2bcee1edcd93d8309204fef",
+      "groups": "a6ca65a12cccd98ae86d67d46fc191343a02748fc03c1e84efa024db0f129108",
       "n_groups": "1",
-      "query": "f7cca2e28041107f25872ff4bd4ebaeabdb88b3ad1a09facfd2aaf959fe87ec8"
+      "query": "e5d04541e339f6db7d457bb6d7bb54f0162e57bdf96d7f558e08ecd78d2c2e16"
     },
     "examples/03-deep-nesting/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "b698e609371307b848b4d17a25552965c25bcce4b6ceb1c01fd776f4018233cf",
+      "groups": "0f9b3b7b0f66ae28097554d074f84b5cb8ce7e5c13a1a98b2ca57a640694f9f7",
       "n_groups": "1",
-      "query": "dac8f25784c6daea2a499191f2987b38b89a9a10057549e66c53401281e5c62b"
+      "query": "855912dad563d2e4f48a5c8847671b305b9bdd197aea7055bafb95c28343b062"
     },
     "examples/05-categoricals-output/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "ee180f046a810a65b1f650b97a164860fda6436f157ecf3f707867e2b434f87e",
+      "groups": "b5e84d49367410bf8a18a24c2e886c14018ded81b1cfcb50cbad77562f7b2821",
       "n_groups": "1",
-      "query": "a7da18b409ce2230428501daf60e092e72c45836d5f290a19ca04690e06cff14"
+      "query": "8414cc2b4f62d06813005fb976a0c301acf67942745139263cb614d54e8062bb"
     },
     "examples/06-graph-text-bridge/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "2507452e663858b74d2d27c0d794f795cb59b4bbbea82fbb18a1b37e306663c9",
+      "groups": "da56ba99e019b30602bdd8515afb4a6a502ba7a62e6e40fb24467907f5c98b03",
       "n_groups": "1",
-      "query": "17e7c4e70e492ff135ea6c1e0f86407c391d552b213bc5baac315f90d46beb01"
+      "query": "3fdd77c3d9d84a8f9d71af23d91f5239249b2a176e7af20f543eea02b60186c7"
     },
     "featurizer/featurizer.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "5ee4633308f7b1c224d5f6d10c20f67379e579030d57b1bd580cf3b00fd0b004",
+      "groups": "3b2cc0fea6e66375a4b6cfda154650ad75f47006e6f73199b4677c38c7589171",
       "n_groups": "5"
     },
     "generated/chain": {
-      "ddl": "627edac66b801527c824bc5b69c973b7201fb4a00f05b615c18cdf5166335ea7",
-      "groups": "247d721805ac189109a3d946c971dee5fb43a94beda5853a19274013b2cc1492",
+      "ddl": "5e57fe36484df230e09432d6b1aed493a3ad74dadd2e2ff15cd1b6c3d2688b1b",
+      "groups": "7da9959a2542c3d62b8334f1f83a179124939fb25d9a985a89fab7bfce3cf8b4",
       "n_groups": "1"
     },
     "generated/wide": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "da552d7204eaeea41cee5f031d1cb7125b290a133d44a5733b51b6c52e134a25",
+      "groups": "33fedc1522c514eb3a687894a85df63ce963ddd4bcedd6ace9a9de569ab2e0d1",
       "n_groups": "11"
     },
     "tests/fixtures/sample_config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "8a167d28456ce74ed5d8655661f961b709a26ce45bd363082a4a3da82757227b",
+      "groups": "eabb39f31a750f1210e2bd2ab1ebc58d19b83c8138bc78850ade7a6204647552",
       "n_groups": "6"
     },
     "tests/fixtures/sample_config_snapshot.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "f5ffea97a636c2b5aa66061e0677d6bf16425c7a125a096991df68c7aeb05ce3",
+      "groups": "0b223c0459991755961670a5bc16444af1631528cf1cfa5618c4b98b18a9d28f",
       "n_groups": "1",
-      "query": "1feb0cc1d0e5b034e017dc5981ada871500ecd9406eadda5fd1440d8424f69f6"
+      "query": "bd01cf9992fdb15e469de3203761ea35de2ed046f9c2955245c8396436883110"
     }
-  }
+  },
+  "requoted_by": "#29"
 }
