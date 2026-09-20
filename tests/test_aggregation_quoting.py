@@ -126,7 +126,7 @@ def test_the_set_based_prepass_reads_the_quoted_column(tmp_path) -> None:
 
 def test_a_categorical_prepass_groups_by_the_quoted_column(tmp_path) -> None:
     query = Featurizer(_config(tmp_path, WEIRD, ["entropy"], "categorical")).query
-    assert f'group by events_transform.series_id, events_transform."{WEIRD}"' in query
+    assert f'group by events_transform."series_id", events_transform."{WEIRD}"' in query
 
 
 def test_the_temporal_index_is_quoted_where_an_aggregation_wraps_it(tmp_path) -> None:

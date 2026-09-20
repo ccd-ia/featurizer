@@ -116,7 +116,11 @@ entities:
   write bare (`Amount USD`, `MEAN(games.goals)`) or a reserved word (`order`)
   is quoted for you. To name a column whose stored name really has capitals,
   put the double quotes inside the YAML string: `'"entityId"'`. Feature names
-  keep the spelling you declared, without the quotes.
+  keep the spelling you declared, without the quotes. The rule covers every
+  key that names a column: `id`, `temporal_ix`, `spatial_ix`, variables,
+  relationship keys, `peer_groups`, and the `edges` of a graph relationship.
+  `table` is the exception. It is taken as written, because it may carry a
+  schema (`clean.facilities`).
 
 ### Peer groups (planner pass)
 

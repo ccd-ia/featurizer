@@ -102,8 +102,8 @@ def test_transform_cte_references_aggregates_by_name_not_definition():
 
     # The aggregate definition must NOT be re-rendered against the synth CTE
     # (which has no `amount` column). This is the exact invalid SQL of bug #1.
-    assert "avg( amount )" not in transform
-    assert "sum( amount )" not in transform
+    assert 'avg( "amount" )' not in transform
+    assert 'sum( "amount" )' not in transform
 
 
 def _asof_config() -> dict:
@@ -153,9 +153,9 @@ def test_asof_grace_clause_is_dialect_safe():
     """Bug #5: grace bound is `source >= target - interval`, valid for date cols."""
     flat = " ".join(_render(_asof_config()).split())
     assert "- interval 'P14D'" in flat
-    assert "care_plans_transform.effective_at >= patients.registered_at" in flat
+    assert 'care_plans_transform."effective_at" >= patients."registered_at"' in flat
     # The old `date - date <= interval` form (invalid for date columns) is gone.
-    assert "registered_at - care_plans_transform.effective_at" not in flat
+    assert '"registered_at" - care_plans_transform."effective_at"' not in flat
 
 
 def test_identifier_columns_are_not_duplicated():
@@ -225,32 +225,32 @@ def test_peer_group_cte_is_defined_and_joined_by_column():
     """The peer CTE exists and joins to the entity on the ``by`` column."""
     sql = _render(_peer_config())
     assert "peer_facility_type_for_facilities as (" in sql
-    assert "group by e2.facility_type" in sql
-    assert "g on g.grp = e.facility_type" in sql
+    assert 'group by e2."facility_type"' in sql
+    assert 'g on g.grp = e."facility_type"' in sql
     # Joined back to the entity by its id (synth-level join).
-    assert "peer_facility_type_for_facilities.node_id = facilities.license_no" in sql
+    assert 'peer_facility_type_for_facilities.node_id = facilities."license_no"' in sql
 
 
 def test_peer_group_is_causally_bounded():
     """Peer membership and the peer child stream are both cut at the as-of date."""
     flat = " ".join(_render(_peer_config()).split())
     # Membership of the peer set is bounded.
-    assert "where e2.first_seen <= aod.as_of_date" in flat
+    assert 'where e2."first_seen" <= aod.as_of_date' in flat
     # The shared per-peer event-count CTE is bounded on the child temporal_ix.
     assert "peer_evt_inspections_for_facilities as (" in flat
-    assert "where c.inspection_date <= aod.as_of_date" in flat
+    assert 'where c."inspection_date" <= aod.as_of_date' in flat
 
 
 def test_peer_group_is_leave_one_out():
     """Every peer aggregate divides by the leave-one-out count (n - in_grp)."""
     flat = " ".join(_render(_peer_config()).split())
     # Leave-one-out denominator guarded against the singleton group (n-1 == 0).
-    assert "nullif((g.n - (case when e.first_seen <= aod.as_of_date" in flat
+    assert 'nullif((g.n - (case when e."first_seen" <= aod.as_of_date' in flat
     # The pctile correlated subquery excludes the ego itself.
-    assert "p.license_no <> e.license_no" in flat
+    assert 'p."license_no" <> e."license_no"' in flat
     # No token-collision between the measure compare and the causal bound.
-    assert "e.risk_scoreand" not in flat
-    assert "e.risk_score and p.first_seen <= aod.as_of_date" in flat
+    assert 'e."risk_score"and' not in flat
+    assert 'e."risk_score" and p."first_seen" <= aod.as_of_date' in flat
 
 
 def test_peer_group_emits_expected_families():
@@ -317,25 +317,25 @@ def _spatial_config(within_m: int = 1000, same: bool = True) -> dict:
 def test_spatial_cte_is_defined_and_joined_by_id():
     sql = _render(_spatial_config())
     assert "spatial_nearby_for_facilities as (" in sql
-    assert "spatial_nearby_for_facilities.node_id = facilities.license_no" in sql
+    assert 'spatial_nearby_for_facilities.node_id = facilities."license_no"' in sql
 
 
 def test_spatial_is_radius_bounded_and_causal():
     flat = " ".join(_render(_spatial_config(within_m=1500)).split())
     assert "6371000" in flat  # haversine great-circle term
     assert "<= 1500" in flat  # radius filter
-    assert "r.first_seen <= aod.as_of_date" in flat  # as-of bound on the right table
+    assert 'r."first_seen" <= aod.as_of_date' in flat  # as-of bound on the right table
 
 
 def test_spatial_self_join_excludes_ego():
     flat = " ".join(_render(_spatial_config(same=True)).split())
-    assert "r.license_no <> e.license_no" in flat
+    assert 'r."license_no" <> e."license_no"' in flat
 
 
 def test_spatial_second_table_has_no_self_exclusion_or_static_causal():
     """A distinct right entity without a temporal_ix: no self-exclusion, no bound."""
     flat = " ".join(_render(_spatial_config(same=False)).split())
-    assert "r.store_id <> e.license_no" not in flat
+    assert 'r."store_id" <> e."license_no"' not in flat
     assert "aod.as_of_date" not in _segment(
         flat, "spatial_nearby_for_facilities as (", "group by"
     )
@@ -393,7 +393,7 @@ def test_as_of_boundary_exclusive_threads_through_peer_and_subquery_cuts():
     config["as_of_boundary"] = "exclusive"
     flat = " ".join(_render(config).split())
     # Peer membership cut (planner) and the subquery cut (aggregations) both flip.
-    assert "where e2.first_seen < aod.as_of_date" in flat
+    assert 'where e2."first_seen" < aod.as_of_date' in flat
     assert "<= aod.as_of_date" not in flat
 
 

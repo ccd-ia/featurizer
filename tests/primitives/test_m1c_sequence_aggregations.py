@@ -105,7 +105,7 @@ def test_recurrence_interval_partitions_by_state():
     # Set-based (ADR-0010): the same-state LAG partitions by (child key, value).
     full = _full_sql(result).lower()
     assert (
-        'partition by events_transform.customer_id, events_transform."plain_cat"'
+        'partition by events_transform."customer_id", events_transform."plain_cat"'
         in full
     )
     assert 'order by events_transform."ts"' in full
@@ -121,7 +121,7 @@ def test_markov_conditional_entropy_uses_conditional_probability():
     assert "freq::float / total" in full
     assert "LN(freq::float / row_total)" in full
     # row-conditional total is the per-(key, prev) partition in the pre-pass
-    assert "partition by customer_id, prev" in full.lower()
+    assert 'partition by "customer_id", prev' in full.lower()
 
 
 def test_max_transition_prob_reduces_conditional_matrix():

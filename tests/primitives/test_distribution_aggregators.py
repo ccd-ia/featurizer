@@ -80,4 +80,4 @@ def test_mean_deviation_is_set_based_two_pass():
     result = agg(parent, child, num, relationship=rel)
     assert result.preagg is not None
     assert "AVG(ABS(val - mean_val))" in result.definition
-    assert "over (partition by c_transform.cid)" in result.preagg.prepass_sql
+    assert 'over (partition by c_transform."cid")' in result.preagg.prepass_sql

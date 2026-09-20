@@ -122,7 +122,7 @@ def test_lag_transformer_builds_temporal_window():
 
     assert result is not None
     assert f'lag("{feature.name}", 3)' in result.definition
-    assert "order by visited_at" in result.definition.lower()
+    assert 'order by "visited_at"' in result.definition.lower()
 
 
 def test_rolling_mean_transformer_uses_frame():

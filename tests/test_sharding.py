@@ -204,7 +204,7 @@ def test_groups_lead_with_join_keys():
         assert "select aod.as_of_date, t.*" in sql
         transform = _cte_select_lists(sql)["customers_transform"]
         first_col = transform.strip().split(",")[0].strip()
-        assert first_col == "customer_id"
+        assert first_col == '"customer_id"'
 
 
 # ------------------------------------------------------------------ #
@@ -592,7 +592,7 @@ def test_orders_transform_ddl_rejoins_synth_shards():
     _, _, plan = _materialization_plan()
     tf_ddl = "\n".join(s.create_sql for s in plan.shards_by_cte["orders_transform"])
     assert "__fz_orders_synth__s000" in tf_ddl
-    assert "using (as_of_date, order_id)" in tf_ddl
+    assert 'using (as_of_date, "order_id")' in tf_ddl
 
 
 def test_materialization_threshold_knob_forces_small_config():
