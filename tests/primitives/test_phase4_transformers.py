@@ -44,7 +44,7 @@ def test_diff2_definition():
     assert 'lag("value", 1)' in result.definition
     assert 'lag("value", 2)' in result.definition
     assert "- 2*(" in result.definition
-    assert "partition by sensor_id order by ts" in result.definition
+    assert 'partition by "sensor_id" order by "ts"' in result.definition
 
 
 def test_diff3_definition():

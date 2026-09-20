@@ -59,6 +59,15 @@ def _col(feature: Feature) -> str:
     return quote_if_bare(feature.name)
 
 
+def _partition(parent: Entity) -> Optional[str]:
+    """The SQL reference to the entity id a window partitions by, or None.
+
+    Declared in the config like any other column, so it is delimited where SQL
+    reads it (issue #46): ``partition by Event Id`` does not parse.
+    """
+    return quote_if_bare(parent.id.name) if parent.id else None
+
+
 def _parent_token(feature: Feature, *, use_label: bool) -> str:
     """``alias.identifier`` for one parent feature inside a transformer name.
 
@@ -464,7 +473,7 @@ class WindowFunctionTransformer:
 
     def _build_window_function_call(self, parent, feature):
         expression = _col(feature)
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         if not partition:
             return None
         window_args = [expression] + list(self._resolve_args(feature))
@@ -525,7 +534,8 @@ def _temporal_ordering(
     temporal_ix = getattr(entity, "temporal_ix", None)
     if temporal_ix is None:
         return None
-    return temporal_ix.name
+    # A declared column: delimited where SQL reads it (issue #46).
+    return quote_if_bare(temporal_ix.name)
 
 
 def _build_temporal_window(
@@ -536,7 +546,7 @@ def _build_temporal_window(
     args: Iterable[str] = (),
     frame: Optional[Tuple[str, str]] = None,
 ) -> Optional[str]:
-    partition = parent.id.name if parent.id else None
+    partition = _partition(parent)
     if partition is None:
         return None
     order_by = _temporal_ordering(feature, parent)
@@ -578,7 +588,7 @@ def _build_rolling_percentile(
     over them. Transformers are only ever applied to ``_synth`` columns, so
     ``feature.name`` is guaranteed to be a column of ``<alias>_synth``.
     """
-    partition = parent.id.name if parent.id else None
+    partition = _partition(parent)
     if partition is None:
         return None
     order_by = _temporal_ordering(feature, parent)
@@ -733,7 +743,7 @@ class CumProd:
     def __call__(self, parent, feature):
         if feature.type not in self.input_types:
             return feature
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         if partition is None:
             return None
         order_by = _temporal_ordering(feature, parent)
@@ -783,7 +793,7 @@ class DistributionTransformer(WindowFunctionTransformer):
         )
 
     def _build_window_function_call(self, parent, feature):
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         if not partition:
             return None
         pieces = []
@@ -990,7 +1000,7 @@ class ExponentialMovingAverageTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None
@@ -1428,7 +1438,7 @@ class MeanShiftRatioTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None
@@ -1464,7 +1474,7 @@ class CusumTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        partition = parent.id.name if parent.id else None
+        partition = _partition(parent)
         order_by = _temporal_ordering(feature, parent)
         if not partition or not order_by:
             return None

@@ -163,7 +163,7 @@ def test_preagg_group_by_carries_child_key(stub_agg):
     block = _cte_block(
         _featurizer([]).query, "orders_stubfam_all_preaggs_for_customers"
     )
-    assert "group by customer_id" in block
+    assert 'group by "customer_id"' in block
     # the pre-pass is a subquery in FROM, reduced by a plain aggregate
     assert "from (select customer_id" in block
     assert "avg(v)" in block

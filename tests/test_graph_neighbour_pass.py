@@ -79,15 +79,15 @@ CTE = "graph_rel_contacts_for_facilities"
 def test_cte_is_defined_and_joined_by_id():
     sql = _render(_graph_config())
     assert f"{CTE} as (" in sql
-    assert f"{CTE}.node_id = facilities.facility_id" in sql
+    assert f'{CTE}.node_id = facilities."facility_id"' in sql
 
 
 def test_both_causal_bounds_are_present():
     """The leakage guard: pre-t₀ edges AND pre-t₀ neighbour states."""
     sql = _render(_graph_config())
     cte = _segment(sql, f"{CTE} as (", "facilities_synth as (")
-    assert "e.contacted_at <= aod.as_of_date" in cte  # edge bound
-    assert "n.valid_at <= aod.as_of_date" in cte  # neighbour-state bound
+    assert 'e."contacted_at" <= aod.as_of_date' in cte  # edge bound
+    assert 'n."valid_at" <= aod.as_of_date' in cte  # neighbour-state bound
 
 
 def test_stays_one_hop_only():
@@ -98,7 +98,7 @@ def test_stays_one_hop_only():
     # neighbour subquery — exactly two scans, both plain FROMs.
     assert sql.count("from contact_edges e") == 2
     # The neighbour join targets the state table on the 1-hop neighbour id.
-    assert "inner join facilities n on n.facility_id = inc.nbr" in sql
+    assert 'inner join facilities n on n."facility_id" = inc.nbr' in sql
 
 
 def test_undirected_unions_both_incidence_directions():
@@ -110,7 +110,7 @@ def test_undirected_unions_both_incidence_directions():
         _render(_graph_config(directed=False)), f"{CTE} as (", "facilities_synth as ("
     )
     assert "union all" in undirected
-    assert "e.dst_id as node_id" in undirected  # the reversed arm
+    assert 'e."dst_id" as node_id' in undirected  # the reversed arm
 
 
 def test_degree_windowed_per_configured_interval():
@@ -128,8 +128,8 @@ def test_neighbour_columns_default_to_declared_variable_types():
     sql = _render(_graph_config())
     assert '"NEIGHBOUR_MEAN(contacts.risk_score)"' in sql
     assert '"NEIGHBOUR_SHARE(contacts.flagged)"' in sql
-    assert "avg(n.risk_score)" in sql
-    assert "avg((n.flagged)::int)" in sql
+    assert 'avg(n."risk_score")' in sql
+    assert 'avg((n."flagged")::int)' in sql
 
 
 def test_degree_only_selection_skips_the_neighbour_join():

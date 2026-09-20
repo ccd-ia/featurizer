@@ -742,7 +742,7 @@ def _gap_prepass(feature, child, relationship, interval):
     exactly the correlated form's boundary semantics. Byte-identical across all
     six gap aggregators, so they reduce together in one companion CTE.
     """
-    ck = relationship.child_key
+    ck = relationship.child_key_sql
     ct = f"{child.alias}_transform"
     ecol = _col(feature)
     lag = f"LAG({ct}.{ecol}) OVER (PARTITION BY {ct}.{ck} ORDER BY {ct}.{ecol})"
@@ -783,7 +783,7 @@ class GapStatAggregator(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -815,7 +815,7 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
         super().__init__(name="mean_deviation")  # input_types defaults to numeric
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
@@ -832,7 +832,7 @@ class MeanAbsoluteDeviation(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         outer = self._causal_filter(feature, interval)  # alias 'sub'
@@ -873,7 +873,7 @@ class GapCV(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -914,7 +914,7 @@ class Burstiness(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _col(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -940,7 +940,7 @@ def _catfreq_prepass(feature, child, relationship, interval):
     the correlated form. Byte-identical for entropy and hhi on the same column,
     so they reduce together in one companion CTE.
     """
-    ck = relationship.child_key
+    ck = relationship.child_key_sql
     ct = f"{child.alias}_transform"
     col = _col(feature)
     tix = feature.entity.temporal_ix if feature.entity else None
@@ -968,7 +968,7 @@ class Entropy(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         interval_filter = self._causal_filter(feature, interval)
         return (
@@ -998,7 +998,7 @@ class HHI(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         interval_filter = self._causal_filter(feature, interval)
         return (
@@ -1034,7 +1034,7 @@ class Gini(SubqueryAggregator):
         super().__init__(name="gini", input_types=["numeric"])
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
@@ -1054,7 +1054,7 @@ class Gini(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         interval_filter = self._causal_filter(feature, interval)
         return (
@@ -1074,7 +1074,7 @@ gini = Gini()
 def _transitions_inner(feature, child, relationship, interval):
     """Inner ``(child_key, curr, prev)`` transition rows for a categorical
     sequence, ordered within each child key (ADR-0010 set-based pre-pass)."""
-    ck = relationship.child_key
+    ck = relationship.child_key_sql
     ct = f"{child.alias}_transform"
     col = _col(feature)
     ts = _tix(feature)
@@ -1090,7 +1090,7 @@ def _transmatrix_prepass(feature, child, relationship, interval):
     """Grouped (prev, curr) transition-frequency matrix per child key, with the
     joint total and the row-conditional total — shared by the joint/conditional
     entropy and max-transition-probability reductions."""
-    ck = relationship.child_key
+    ck = relationship.child_key_sql
     inner = _transitions_inner(feature, child, relationship, interval)
     return (
         f"select {ck}, prev, curr, count(*) as freq, "
@@ -1119,7 +1119,7 @@ class NgramFrequency(SubqueryAggregator):
         )
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1143,7 +1143,7 @@ class NgramFrequency(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -1193,7 +1193,7 @@ class SequenceEntropy(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -1226,7 +1226,7 @@ class LongestStreak(SubqueryAggregator):
         )
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1253,7 +1253,7 @@ class LongestStreak(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
@@ -1282,7 +1282,7 @@ class Theil(SubqueryAggregator):
         super().__init__(name="theil", input_types=["numeric"])
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
@@ -1302,7 +1302,7 @@ class Theil(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         col = _col(feature)
@@ -1330,7 +1330,7 @@ class TrimmedMean(SubqueryAggregator):
         # Percentiles are ordered-set aggregates (no OVER), so this is the
         # grouped-join variant (ADR-0010): per-key bounds via GROUP BY joined
         # back to the value rows — two set-based scans, not a per-target rescan.
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
@@ -1351,7 +1351,7 @@ class TrimmedMean(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         col = _col(feature)
@@ -1380,7 +1380,7 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
         # Grouped-join variant: per-key median via GROUP BY joined to the value
         # rows to form the per-row deviation; the median-of-deviations is a plain
         # ordered-set aggregate in the reduction.
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
@@ -1399,7 +1399,7 @@ class MedianAbsoluteDeviation(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         col = _col(feature)
@@ -1434,7 +1434,7 @@ class _SequenceReduction(SubqueryAggregator):
         )
 
     def _transitions(self, feature, child, relationship, interval):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1533,7 +1533,7 @@ class TimeInCurrentState(_SequenceReduction):
         super().__init__(name="time_in_current_state")
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1558,7 +1558,7 @@ class TimeInCurrentState(_SequenceReduction):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval, alias="s")
         ts = _tix(feature)
@@ -1589,7 +1589,7 @@ class RecurrenceInterval(_SequenceReduction):
         super().__init__(name="recurrence_interval")
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1610,7 +1610,7 @@ class RecurrenceInterval(_SequenceReduction):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1724,7 +1724,7 @@ class FirstPassageTime(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1763,7 +1763,7 @@ class AutoCorrelation(_NumericStreamReduction):
         self.k = k
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1783,7 +1783,7 @@ class AutoCorrelation(_NumericStreamReduction):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1808,7 +1808,7 @@ class VarianceRatio(_NumericStreamReduction):
         super().__init__(name="variance_ratio")
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1827,7 +1827,7 @@ class VarianceRatio(_NumericStreamReduction):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1859,7 +1859,7 @@ class CosinorAmplitude(_NumericStreamReduction):
         self.period_seconds = period_seconds
 
     def _build_preagg(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         ts = _tix(feature)
@@ -1877,7 +1877,7 @@ class CosinorAmplitude(_NumericStreamReduction):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key
+        child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         ts = _tix(feature)
@@ -1949,7 +1949,7 @@ class KLDrift(TwoWindowDriftAggregator):
         # the per-window shares (``count / SUM(count) OVER (PARTITION BY key)``),
         # and the ``FILTER (rp>0 AND bp>0)`` reproduces the INNER JOIN's shared
         # support exactly.
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         recent, baseline = self._windows(feature, interval)
@@ -1974,7 +1974,7 @@ class KLDrift(TwoWindowDriftAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         recent, baseline = self._windows(feature, interval)
@@ -2010,7 +2010,7 @@ class WassersteinDrift(TwoWindowDriftAggregator):
         # recent/baseline, and the per-window quantiles taken with ordered-set
         # ``percentile_cont … FILTER``. An empty window → NULL percentile → NULL
         # term, matching the correlated form's NULL-on-empty behaviour exactly.
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         recent, baseline = self._windows(feature, interval)
@@ -2035,7 +2035,7 @@ class WassersteinDrift(TwoWindowDriftAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
         recent, baseline = self._windows(feature, interval)
@@ -2078,7 +2078,7 @@ class RightCensoringIndicator(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         col = _col(feature)
@@ -2112,7 +2112,7 @@ class CrossTypeLatency(SubqueryAggregator):
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         ts = _tix(feature)
         col = _col(feature)
@@ -2187,7 +2187,7 @@ class DistanceTravelled(SpatialAggregator):
         super().__init__(name="distance_travelled")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         lat, lon = self._latlon(feature)
@@ -2210,7 +2210,7 @@ class RadiusOfGyration(SpatialAggregator):
         super().__init__(name="radius_of_gyration")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         lat, lon = self._latlon(feature)
@@ -2231,7 +2231,7 @@ class SpatialStd(SpatialAggregator):
         super().__init__(name="spatial_std")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         lat, lon = self._latlon(feature)
@@ -2248,7 +2248,7 @@ class BoundingBoxArea(SpatialAggregator):
         super().__init__(name="bbox_area")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        ck = relationship.child_key
+        ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         lat, lon = self._latlon(feature)

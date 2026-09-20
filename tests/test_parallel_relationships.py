@@ -109,8 +109,10 @@ class TestParallelRelationshipsSynthesis:
         sql = _render(_parallel_config(named=True))
         assert "purchases_aggs_for_customers as (" in sql
         assert "sales_aggs_for_customers as (" in sql
-        assert "purchases_aggs_for_customers.buyer_id = customers.customer_id" in sql
-        assert "sales_aggs_for_customers.seller_id = customers.customer_id" in sql
+        assert (
+            'purchases_aggs_for_customers."buyer_id" = customers."customer_id"' in sql
+        )
+        assert 'sales_aggs_for_customers."seller_id" = customers."customer_id"' in sql
 
     def test_each_cte_groups_by_its_own_key(self):
         sql = _render(_parallel_config(named=True))
@@ -119,7 +121,7 @@ class TestParallelRelationshipsSynthesis:
                 "sales_aggs_for_customers as ("
             )
         ]
-        assert "group by buyer_id" in purchases
+        assert 'group by "buyer_id"' in purchases
         assert "seller_id" not in purchases
 
 

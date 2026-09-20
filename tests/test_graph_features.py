@@ -53,7 +53,7 @@ def test_graph_cte_and_degree_features_rendered():
     for metric in ("OUT_DEGREE", "IN_DEGREE", "DEGREE"):
         assert f'"{metric}(users.follows)"' in sql
     # Causal bound present when the edge has a timestamp.
-    assert "created_at <= aod.as_of_date" in sql
+    assert '"created_at" <= aod.as_of_date' in sql
 
 
 def test_graph_without_timestamp_is_static_no_causal_bound():
@@ -127,11 +127,11 @@ def test_recursive_families_carry_the_causal_bound():
     sql = _render(_config(features=ALL_FAMILIES))
     nbrs = sql[sql.index("follows_nbrs_for_users as (") :]
     nbrs = nbrs[: nbrs.index(") u where")]
-    assert nbrs.count("created_at <= aod.as_of_date") == 2  # both union arms
+    assert nbrs.count('"created_at" <= aod.as_of_date') == 2  # both union arms
     recip = sql[sql.index("follows_recip_for_users as (") :]
     recip = recip[: recip.index("group by")]
-    assert "e.created_at <= aod.as_of_date" in recip
-    assert "r.created_at <= aod.as_of_date" in recip
+    assert 'e."created_at" <= aod.as_of_date' in recip
+    assert 'r."created_at" <= aod.as_of_date' in recip
 
 
 def test_static_graph_families_have_no_causal_bound():

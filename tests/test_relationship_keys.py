@@ -68,15 +68,15 @@ class TestAggregationDirection:
     def test_aggs_cte_projects_and_groups_by_child_key(self):
         sql = _render(_differing_keys_aggregation_config())
         cte = _segment(sql, "orders_aggs_for_customers as (", "customers_synth as (")
-        assert "orders_transform.buyer_id" in cte
-        assert "group by buyer_id" in cte
+        assert 'orders_transform."buyer_id"' in cte
+        assert 'group by "buyer_id"' in cte
         # The parent-side key name must not be referenced on the child stream.
-        assert "orders_transform.customer_id" not in cte
-        assert "group by customer_id" not in cte
+        assert 'orders_transform."customer_id"' not in cte
+        assert 'group by "customer_id"' not in cte
 
     def test_synth_join_compares_columns_both_sides_output(self):
         sql = _render(_differing_keys_aggregation_config())
-        assert "orders_aggs_for_customers.buyer_id = customers.customer_id" in sql
+        assert 'orders_aggs_for_customers."buyer_id" = customers."customer_id"' in sql
 
     def test_child_key_is_carried_through_child_transform(self):
         sql = _render(_differing_keys_aggregation_config())
@@ -130,7 +130,7 @@ class TestDirectTransferDirection:
     def test_direct_join_pairs_parent_key_with_child_key(self):
         sql = _render(self._config())
         assert (
-            "customers_direct_transfers_for_orders.customer_ref = orders.buyer_id"
+            'customers_direct_transfers_for_orders."customer_ref" = orders."buyer_id"'
             in sql
         )
 
@@ -179,7 +179,7 @@ class TestAsOfDirection:
 
     def test_lateral_correlates_parent_key_to_child_key(self):
         sql = _render(self._config())
-        assert "care_plans_transform.patient_ref = patients.patient_id" in sql
+        assert 'care_plans_transform."patient_ref" = patients."patient_id"' in sql
 
     def test_parent_key_projected_in_parent_synth(self):
         sql = _render(self._config())
@@ -196,6 +196,8 @@ class TestEqualKeysUnchanged:
         config["relationships"][0]["child"]["key"] = "customer_id"
         sql = _render(config)
         cte = _segment(sql, "orders_aggs_for_customers as (", "customers_synth as (")
-        assert "orders_transform.customer_id" in cte
-        assert "group by customer_id" in cte
-        assert "orders_aggs_for_customers.customer_id = customers.customer_id" in sql
+        assert 'orders_transform."customer_id"' in cte
+        assert 'group by "customer_id"' in cte
+        assert (
+            'orders_aggs_for_customers."customer_id" = customers."customer_id"' in sql
+        )

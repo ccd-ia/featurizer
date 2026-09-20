@@ -116,6 +116,17 @@ class ShardableCTE:
     columns: List[ColumnSpec]
     rendered: str = ""
     where: str = ""
+    # ``key_columns`` is METADATA: the sharder unqualifies it into
+    # ``GroupedQueries.key_columns`` and the group tables' leading columns,
+    # which ADR-0015 freezes, so it keeps the declared names exactly. This is
+    # the same list as SQL reads it, delimited (issue #46). Empty means "the
+    # two are the same", which is every spec built before the distinction.
+    key_projections: List[str] = field(default_factory=list)
+
+    @property
+    def sql_keys(self) -> List[str]:
+        """The key columns as they are written into a select list."""
+        return list(self.key_projections or self.key_columns)
 
 
 @dataclass(frozen=True)
@@ -471,7 +482,7 @@ class FeaturePlanner:
             )
             return
 
-        node_id_col = node.id.name
+        node_id_col = quote_if_bare(node.id.name)
         families = list(edge.features)
         registered: list[str] = []
 
@@ -533,17 +544,18 @@ class FeaturePlanner:
         """Causal bound on the edge timestamp; empty for static graphs."""
         if not edge.timestamp:
             return ""
-        col = f"{alias}.{edge.timestamp}" if alias else edge.timestamp
+        timestamp = quote_if_bare(edge.timestamp)
+        col = f"{alias}.{timestamp}" if alias else timestamp
         return causal_predicate(col, prefix=prefix)
 
     def _graph_degree_cte(self, node: Entity, edge: EdgeSpec, attach: AttachFn) -> None:
         causal = self._graph_causal(edge, prefix="where")
-        weight_expr = edge.weight if edge.weight else "null"
+        weight_expr = quote_if_bare(edge.weight) if edge.weight else "null"
         union = (
-            f"select {edge.source} as node_id, 'out' as direction, "
+            f"select {quote_if_bare(edge.source)} as node_id, 'out' as direction, "
             f"{weight_expr} as weight from {edge.table}{causal} "
             "union all "
-            f"select {edge.target} as node_id, 'in' as direction, "
+            f"select {quote_if_bare(edge.target)} as node_id, 'in' as direction, "
             f"{weight_expr} as weight from {edge.table}{causal}"
         )
 
@@ -602,14 +614,14 @@ class FeaturePlanner:
         cte_query = f"""
         -- graph (reciprocity) for {node.alias} over edge {edge.alias}
         {cte_name} as (
-        select e.{edge.source} as node_id,
+        select e.{quote_if_bare(edge.source)} as node_id,
         (count(*) filter (where exists (
             select 1 from {edge.table} r
-            where r.{edge.source} = e.{edge.target}
-              and r.{edge.target} = e.{edge.source}{causal_inner}
+            where r.{quote_if_bare(edge.source)} = e.{quote_if_bare(edge.target)}
+              and r.{quote_if_bare(edge.target)} = e.{quote_if_bare(edge.source)}{causal_inner}
         )))::float / count(*) as {name}
         from {edge.table} e{causal_outer}
-        group by e.{edge.source}
+        group by e.{quote_if_bare(edge.source)}
         )
         """
         attach(cte_name, cte_query, [name])
@@ -622,10 +634,10 @@ class FeaturePlanner:
         -- shared undirected neighbour list for {node.alias} over edge {edge.alias}
         {cte_name} as (
         select distinct node_id, nbr from (
-            select {edge.source} as node_id, {edge.target} as nbr
+            select {quote_if_bare(edge.source)} as node_id, {quote_if_bare(edge.target)} as nbr
             from {edge.table}{causal}
             union all
-            select {edge.target} as node_id, {edge.source} as nbr
+            select {quote_if_bare(edge.target)} as node_id, {quote_if_bare(edge.source)} as nbr
             from {edge.table}{causal}
         ) u where node_id is not null and nbr is not null
         )
@@ -822,7 +834,9 @@ class FeaturePlanner:
         )
         for rel in relationships:
             child = rel.child
-            child_temporal = child.temporal_ix.name if child.temporal_ix else None
+            child_temporal = (
+                quote_if_bare(child.temporal_ix.name) if child.temporal_ix else None
+            )
             causal = (
                 causal_predicate(f"c.{child_temporal}", prefix="where").strip()
                 if child_temporal
@@ -832,10 +846,10 @@ class FeaturePlanner:
             cte_query = f"""
         -- per-peer event counts ({child.alias}) for {entity.alias} peer groups
         {cte_name} as (
-        select c.{rel.child_key} as pid, count(*) as cnt
+        select c.{rel.child_key_sql} as pid, count(*) as cnt
         from {child.table} c
         {causal}
-        group by c.{rel.child_key}
+        group by c.{rel.child_key_sql}
         )
         """
             # Internal helper CTE consumed by the peer CTE's subquery FROM;
@@ -844,6 +858,17 @@ class FeaturePlanner:
             results.append((rel, cte_name))
         return results
 
+    @staticmethod
+    def _alias_token(name: str, position: int) -> str:
+        """A declared column's name as a fragment of a bare SQL alias or CTE name.
+
+        The name itself while it is a plain word, which keeps every config
+        written so far rendering the same text; otherwise ``c<position>``,
+        because ``sum_Amount USD`` is not an alias (issue #46). Internal to one
+        CTE, so it touches no output name.
+        """
+        return name if re.fullmatch(r"\w+", name) else f"c{position}"
+
     def _build_peer_group_cte(
         self,
         entity: Entity,
@@ -851,10 +876,16 @@ class FeaturePlanner:
         child_count_ctes: List[tuple[Relationship, str]],
     ) -> None:
         assert entity.id is not None  # guarded by _build_peer_group_features
-        by = spec.by
-        id_col = entity.id.name
+        # ``spec.by`` and the measures name declared columns; names and CTE
+        # names are built from the declared spelling, SQL reads the delimited
+        # form (issue #46).
+        by_name = spec.by
+        by = quote_if_bare(by_name)
+        id_col = quote_if_bare(entity.id.name)
         table = entity.table
-        temporal = entity.temporal_ix.name if entity.temporal_ix else None
+        temporal = (
+            quote_if_bare(entity.temporal_ix.name) if entity.temporal_ix else None
+        )
 
         # 1 when the ego itself is a peer (a member knowable as-of the cutoff),
         # so leave-one-out subtracts the ego only when it belongs to the set.
@@ -877,18 +908,22 @@ class FeaturePlanner:
 
         # Peer-set size (leave-one-out), always emitted.
         select_cols.append(
-            (self._peer_feature_name("PEER_GROUP_SIZE", entity, by), n_excl)
+            (self._peer_feature_name("PEER_GROUP_SIZE", entity, by_name), n_excl)
         )
 
         # Per-measure attribute statistics (mean / delta / z-score / percentile).
         measures = spec.measures
         if measures is None:
             measures = self._numeric_variable_names(entity)
-        for measure in measures:
-            grp_cols.append(f"sum(e2.{measure}) as sum_{measure}")
-            grp_cols.append(f"sum(e2.{measure} * e2.{measure}) as ss_{measure}")
-            sum_excl = f"(g.sum_{measure} - {in_grp} * e.{measure})"
-            ss_excl = f"(g.ss_{measure} - {in_grp} * e.{measure} * e.{measure})"
+        for position, measure_name in enumerate(measures):
+            measure = quote_if_bare(measure_name)
+            # The helper aliases inside the CTE carry the measure's name only
+            # while it is a plain word; otherwise its position.
+            token = self._alias_token(measure_name, position)
+            grp_cols.append(f"sum(e2.{measure}) as sum_{token}")
+            grp_cols.append(f"sum(e2.{measure} * e2.{measure}) as ss_{token}")
+            sum_excl = f"(g.sum_{token} - {in_grp} * e.{measure})"
+            ss_excl = f"(g.ss_{token} - {in_grp} * e.{measure} * e.{measure})"
             mean_excl = f"({sum_excl} / nullif({n_excl}, 0))"
             var_excl = (
                 f"(({ss_excl} - {sum_excl} * {sum_excl} / nullif({n_excl}, 0)) "
@@ -906,21 +941,27 @@ class FeaturePlanner:
             select_cols.extend(
                 [
                     (
-                        self._peer_feature_name("PEER_MEAN", entity, by, measure),
+                        self._peer_feature_name(
+                            "PEER_MEAN", entity, by_name, measure_name
+                        ),
                         mean_excl,
                     ),
                     (
                         self._peer_feature_name(
-                            "EGO_MINUS_PEER_MEAN", entity, by, measure
+                            "EGO_MINUS_PEER_MEAN", entity, by_name, measure_name
                         ),
                         f"(e.{measure} - {mean_excl})",
                     ),
                     (
-                        self._peer_feature_name("PEER_ZSCORE", entity, by, measure),
+                        self._peer_feature_name(
+                            "PEER_ZSCORE", entity, by_name, measure_name
+                        ),
                         f"((e.{measure} - {mean_excl}) / nullif({std_excl}, 0))",
                     ),
                     (
-                        self._peer_feature_name("PEER_PCTILE", entity, by, measure),
+                        self._peer_feature_name(
+                            "PEER_PCTILE", entity, by_name, measure_name
+                        ),
                         pctile,
                     ),
                 ]
@@ -942,7 +983,9 @@ class FeaturePlanner:
             )
             select_cols.append(
                 (
-                    self._peer_feature_name("PEER_EVENT_RATE", entity, by, child=child),
+                    self._peer_feature_name(
+                        "PEER_EVENT_RATE", entity, by_name, child=child
+                    ),
                     rate,
                 )
             )
@@ -953,9 +996,9 @@ class FeaturePlanner:
             f"group by e2.{by}"
         )
         rendered = ",\n        ".join(f"{expr} as {name}" for name, expr in select_cols)
-        cte_name = f"peer_{by}_for_{entity.alias}"
+        cte_name = f"peer_{self._alias_token(by_name, 0)}_for_{entity.alias}"
         cte_query = f"""
-        -- peer-group features for {entity.alias} grouped by {by}
+        -- peer-group features for {entity.alias} grouped by {by_name}
         {cte_name} as (
         select e.{id_col} as node_id,
         {rendered}
@@ -1029,21 +1072,22 @@ class FeaturePlanner:
             )
             return
 
-        llat, llon = left_coords
-        rlat, rlon = right_coords
+        # Declared columns, delimited for the SQL below (issue #46).
+        llat, llon = (quote_if_bare(c) for c in left_coords)
+        rlat, rlon = (quote_if_bare(c) for c in right_coords)
+        left_id = quote_if_bare(left.id.name)
+        right_id = quote_if_bare(right.id.name)
         dist = haversine_m(f"e.{llat}", f"e.{llon}", f"r.{rlat}", f"r.{rlon}")
         bandwidth = spec.bandwidth_m
         # Neighbour scan bounded as-of when the right table is time-varying.
         right_causal = (
-            causal_predicate(f"r.{right.temporal_ix.name}", prefix="and")
+            causal_predicate(f"r.{quote_if_bare(right.temporal_ix.name)}", prefix="and")
             if right.temporal_ix
             else ""
         )
         # Exclude the ego from its own neighbourhood when scanning the same table.
         self_exclude = (
-            f" and r.{right.id.name} <> e.{left.id.name}"
-            if spec.left == spec.right
-            else ""
+            f" and r.{right_id} <> e.{left_id}" if spec.left == spec.right else ""
         )
 
         families = spec.features
@@ -1052,7 +1096,7 @@ class FeaturePlanner:
             select_cols.append(
                 (
                     self._spatial_feature_name("COLOCATION_COUNT", spec),
-                    f"count(r.{right.id.name})",
+                    f"count(r.{right_id})",
                 )
             )
         if "distance_to_nearest" in families:
@@ -1077,15 +1121,15 @@ class FeaturePlanner:
         cte_query = f"""
         -- spatial relationship {spec.name}: {left.alias} near {right.alias} (<= {spec.within_m} m)
         {cte_name} as (
-        select e.{left.id.name} as node_id,
+        select e.{left_id} as node_id,
         {rendered}
         from {left.table} e
         left join {right.table} r
           on {dist} <= {spec.within_m}{right_causal}{self_exclude}
-        group by e.{left.id.name}
+        group by e.{left_id}
         )
         """
-        join = f" {cte_name} on {cte_name}.node_id = {left.table}.{left.id.name} "
+        join = f" {cte_name} on {cte_name}.node_id = {left.table}.{left_id} "
         self._joins[left.alias].append(join)
         self._emit_verbatim(cte_name, cte_query)
         self._features[left.alias].update(
@@ -1165,17 +1209,20 @@ class FeaturePlanner:
             )
             return
 
-        id_col = left.id.name
-        edge_causal = causal_predicate(f"e.{spec.timestamp}", prefix="where")
+        # Declared columns, delimited for the SQL below (issue #46).
+        id_col = quote_if_bare(left.id.name)
+        source, target = quote_if_bare(spec.source), quote_if_bare(spec.target)
+        timestamp = quote_if_bare(spec.timestamp)
+        edge_causal = causal_predicate(f"e.{timestamp}", prefix="where")
         incidence = (
-            f"select e.{spec.source} as node_id, e.{spec.target} as nbr, "
-            f"e.{spec.timestamp} as ts from {spec.edge_table} e{edge_causal}"
+            f"select e.{source} as node_id, e.{target} as nbr, "
+            f"e.{timestamp} as ts from {spec.edge_table} e{edge_causal}"
         )
         if not spec.directed:
             incidence += (
                 " union all "
-                f"select e.{spec.target} as node_id, e.{spec.source} as nbr, "
-                f"e.{spec.timestamp} as ts from {spec.edge_table} e{edge_causal}"
+                f"select e.{target} as node_id, e.{source} as nbr, "
+                f"e.{timestamp} as ts from {spec.edge_table} e{edge_causal}"
             )
 
         degree_cols: List[tuple[str, str]] = []
@@ -1200,7 +1247,7 @@ class FeaturePlanner:
             nbr_cols.extend(
                 (
                     self._graph_rel_feature_name("NEIGHBOUR_MEAN", spec, m),
-                    f"avg(n.{m})",
+                    f"avg(n.{quote_if_bare(m)})",
                 )
                 for m in measures
             )
@@ -1211,7 +1258,7 @@ class FeaturePlanner:
             nbr_cols.extend(
                 (
                     self._graph_rel_feature_name("NEIGHBOUR_SHARE", spec, s),
-                    f"avg((n.{s})::int)",
+                    f"avg((n.{quote_if_bare(s)})::int)",
                 )
                 for s in shares
             )
@@ -1248,7 +1295,9 @@ class FeaturePlanner:
         if nbr_cols:
             assert right.id is not None  # narrowed above
             right_causal = (
-                causal_predicate(f"n.{right.temporal_ix.name}", prefix="and")
+                causal_predicate(
+                    f"n.{quote_if_bare(right.temporal_ix.name)}", prefix="and"
+                )
                 if right.temporal_ix
                 else ""
             )
@@ -1260,7 +1309,7 @@ class FeaturePlanner:
                 f"        select inc.node_id,\n        {nbr_rendered}\n"
                 f"        from ( {incidence} ) inc\n"
                 f"        inner join {right.table} n "
-                f"on n.{right.id.name} = inc.nbr{right_causal}\n"
+                f"on n.{quote_if_bare(right.id.name)} = inc.nbr{right_causal}\n"
                 "        group by inc.node_id\n"
                 "        ) s on s.node_id = d.node_id"
             )
@@ -1540,9 +1589,13 @@ class FeaturePlanner:
         # Named by the relationship's naming alias (default: the child alias),
         # so parallel relationships between one entity pair emit distinct CTEs.
         cte_name = f"{relationship.naming_alias}_aggs_for_{target.alias}"
+        # The keys are declared columns: delimited wherever SQL reads them
+        # (issue #46). ``MaterializationKey.join_key`` and ``key_columns`` below
+        # stay the declared names; they are metadata.
+        child_key_sql = relationship.child_key_sql
         join_statement = (
-            f" {cte_name} on {cte_name}.{relationship.child_key} = "
-            f"{relationship.parent.table}.{relationship.parent_key} "
+            f" {cte_name} on {cte_name}.{child_key_sql} = "
+            f"{relationship.parent.table}.{relationship.parent_key_sql} "
         )
 
         agg_features = [feature for feature in features if feature.type not in ["key"]]
@@ -1575,11 +1628,11 @@ class FeaturePlanner:
         -- Aggregate for {target.alias}
         {cte_name} as (
         select
-        {source.alias}_transform.{relationship.child_key},
+        {source.alias}_transform.{child_key_sql},
         {",".join(rendered_features)}
         from {source.alias}_transform
         {where_clause}
-        group by {relationship.child_key}
+        group by {child_key_sql}
         )
         """
         self._joins[target.alias].append(join_statement)
@@ -1596,7 +1649,7 @@ class FeaturePlanner:
         suffix = (
             f"\n        from {source.alias}_transform\n"
             f"        {where_clause}\n"
-            f"        group by {relationship.child_key}\n        )\n        "
+            f"        group by {child_key_sql}\n        )\n        "
         )
         columns = [ColumnSpec(name=f.name, projection=f.query) for f in agg_features]
         spec = ShardableCTE(
@@ -1605,6 +1658,7 @@ class FeaturePlanner:
             prefix=prefix,
             suffix=suffix,
             key_columns=[f"{source.alias}_transform.{relationship.child_key}"],
+            key_projections=[f"{source.alias}_transform.{child_key_sql}"],
             columns=columns,
             rendered=cte_query,
         )
@@ -1686,9 +1740,10 @@ class FeaturePlanner:
             .strip('"')
             .replace("~", "_")
         )
+        child_key_sql = relationship.child_key_sql
         join_statement = (
-            f" {cte_name} on {cte_name}.{child_key} = "
-            f"{relationship.parent.table}.{relationship.parent_key} "
+            f" {cte_name} on {cte_name}.{child_key_sql} = "
+            f"{relationship.parent.table}.{relationship.parent_key_sql} "
         )
         rendered_features = [feature.query for feature in agg_features]
         where_line = f"        where {reduction_where}\n" if reduction_where else ""
@@ -1697,10 +1752,10 @@ class FeaturePlanner:
         -- Pre-aggregation for {target.alias} ({family_key}{f", {interval}" if interval else ""})
         {cte_name} as (
         select
-        {child_key},
+        {child_key_sql},
         {",".join(rendered_features)}
         from ({prepass}) g
-{where_line}        group by {child_key}
+{where_line}        group by {child_key_sql}
         )
         """
         self._joins[target.alias].append(join_statement)
@@ -1714,7 +1769,7 @@ class FeaturePlanner:
         )
         suffix = (
             f"\n        from ({prepass}) g\n{where_line}"
-            f"        group by {child_key}\n        )\n        "
+            f"        group by {child_key_sql}\n        )\n        "
         )
         columns = [ColumnSpec(name=f.name, projection=f.query) for f in agg_features]
         shard_spec = ShardableCTE(
@@ -1723,6 +1778,7 @@ class FeaturePlanner:
             prefix=prefix,
             suffix=suffix,
             key_columns=[child_key],
+            key_projections=[child_key_sql],
             columns=columns,
             rendered=cte_query,
         )
@@ -1761,11 +1817,14 @@ class FeaturePlanner:
         # Qualified features (named relationship) render as
         # ``<source column> as "<name>.<column>"``; unqualified ones project
         # their own name, exactly as before.
+        # A transferred feature may be a declared variable, whose name arrives
+        # as the config wrote it; a generated one is already delimited and
+        # passes through ``quote_if_bare`` untouched (issue #46).
         projections = [
             (
-                f"{source_col} as {feature.name}"
+                f"{quote_if_bare(source_col)} as {quote_if_bare(feature.name)}"
                 if (source_col := getattr(feature, "direct_source", None))
-                else feature.name
+                else quote_if_bare(feature.name)
             )
             for feature in projected
         ]
@@ -1779,14 +1838,14 @@ class FeaturePlanner:
         -- direct features for {target.alias}
         {cte_name} as (
         select
-        {relationship.parent_key},
+        {relationship.parent_key_sql},
         {",".join(projections)}
         from {source.alias}_transform
         )
         """
         join_statement = (
-            f" {cte_name} on {cte_name}.{relationship.parent_key} = "
-            f"{relationship.child.table}.{relationship.child_key} "
+            f" {cte_name} on {cte_name}.{relationship.parent_key_sql} = "
+            f"{relationship.child.table}.{relationship.child_key_sql} "
         )
         self._joins[target.alias].append(join_statement)
         self._emit_verbatim(cte_name, cte_query)
@@ -1802,9 +1861,15 @@ class FeaturePlanner:
         relationship: Relationship,
         features: Iterable[Feature],
     ) -> None:
-        target_temporal = target.temporal_ix.name if target.temporal_ix else None
-        source_temporal = relationship.temporal_child_field or (
+        # Declared columns, delimited for the SQL below (issue #46).
+        target_temporal = (
+            quote_if_bare(target.temporal_ix.name) if target.temporal_ix else None
+        )
+        source_temporal_name = relationship.temporal_child_field or (
             source.temporal_ix.name if source.temporal_ix else None
+        )
+        source_temporal = (
+            quote_if_bare(source_temporal_name) if source_temporal_name else None
         )
         if not target_temporal or not source_temporal:
             logger.warning(
@@ -1816,15 +1881,16 @@ class FeaturePlanner:
             return
 
         # feature.name is already a quoted identifier for aggregate/transform
-        # features (e.g. "ABS(care_plans.risk_score)"); wrapping it in another
-        # pair of quotes yields an empty delimited identifier. It is also the
-        # column name projected by <source>_transform, so reference it as-is.
+        # features (e.g. "ABS(care_plans.risk_score)"), and ``quote_if_bare``
+        # leaves it alone; a declared variable arrives as the config wrote it
+        # and gets delimited (issue #46). Either way it is the column name
+        # projected by <source>_transform.
         # Qualified features (named relationship) read their original source
         # column (``direct_source``) and re-alias it to the qualified name.
         projected = [
             f"{source.alias}_transform."
-            f"{getattr(feature, 'direct_source', None) or feature.name}"
-            f" as {feature.name}"
+            f"{quote_if_bare(getattr(feature, 'direct_source', None) or feature.name)}"
+            f" as {quote_if_bare(feature.name)}"
             for feature in features
             if feature.type not in {"index", "key"}
         ]
@@ -1834,7 +1900,8 @@ class FeaturePlanner:
         projected_sql = ",\n        ".join(projected)
 
         where_clauses = [
-            f"{source.alias}_transform.{relationship.parent_key} = {target.table}.{relationship.child_key}",
+            f"{source.alias}_transform.{relationship.parent_key_sql} = "
+            f"{target.table}.{relationship.child_key_sql}",
             f"{source.alias}_transform.{source_temporal} <= {target.table}.{target_temporal}",
         ]
         if relationship.temporal_grace:
@@ -2033,6 +2100,7 @@ class FeaturePlanner:
             prefix=prefix,
             suffix=suffix,
             key_columns=list(id_columns),
+            key_projections=list(projected_ids),
             columns=columns,
             rendered=cte_query,
             where=where,
@@ -2116,6 +2184,7 @@ class FeaturePlanner:
             prefix=prefix,
             suffix=suffix,
             key_columns=list(id_columns),
+            key_projections=[quote_if_bare(name) for name in id_columns],
             columns=column_specs,
             rendered=cte_query,
         )

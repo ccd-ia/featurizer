@@ -41,6 +41,7 @@ from loguru import logger
 
 from .boundary import as_of_dates_source
 from .planner import ColumnSpec, PlannerResult, ShardableCTE
+from .primitives.abstractions import quote_if_bare
 
 # PostgreSQL's hard limit on entries in a result/CTE target list. A table is
 # capped slightly lower at 1600 columns; we budget against the stricter table
@@ -662,13 +663,13 @@ class ColumnGroupSharder:
 
     def _render_transform(self, group_columns: List[ColumnSpec]) -> str:
         spec = self.transform_spec
-        projections = list(spec.key_columns) + [c.projection for c in group_columns]
+        projections = spec.sql_keys + [c.projection for c in group_columns]
         return spec.prefix + ",\n        ".join(projections) + spec.suffix
 
     def _render_synth(self, needed_synth: Set[str], kept_joins: List[str]) -> str:
         spec = self.synth_spec
         surviving = [c.projection for c in spec.columns if c.name in needed_synth]
-        projections = list(spec.key_columns) + surviving
+        projections = spec.sql_keys + surviving
         select_list = ",\n        ".join(projections)
         joins_sql = ""
         if kept_joins:
@@ -689,7 +690,7 @@ class ColumnGroupSharder:
         surviving = [c.projection for c in spec.columns if c.name in needed_synth]
         # The group only reaches this agg CTE because it keeps ≥1 of its
         # columns, so ``surviving`` is non-empty here.
-        projections = list(spec.key_columns) + surviving
+        projections = spec.sql_keys + surviving
         return spec.prefix + ",\n        ".join(projections) + spec.suffix
 
     def _wrap(self, rendered_ctes: List[str], group_columns: List[ColumnSpec]) -> str:
@@ -1139,7 +1140,7 @@ class MaterializationPlanner:
         ``select *`` over every shard does.
         """
         if spec.kind == "aggs":
-            keys = list(spec.key_columns)
+            keys = spec.sql_keys
             tail = self._strip_cte_close(spec.suffix)
         elif spec.kind == "synth":
             keys = self._shard_keys(spec, idx, join_key)
@@ -1236,7 +1237,7 @@ class MaterializationPlanner:
         as-of boundary goes through :meth:`_asof_select` instead.
         """
         with_clause = self._inline_with(spec.name, done)
-        feature_projections = list(spec.key_columns) + [c.projection for c in chunk]
+        feature_projections = spec.sql_keys + [c.projection for c in chunk]
         tail = self._rewrite_from_sources(self._strip_cte_close(spec.suffix), done)
         return (
             with_clause
@@ -1395,7 +1396,8 @@ class MaterializationPlanner:
         re-join on ``(as_of_date, key)`` so each (as-of date, entity) row is one."""
         if not shards:
             return "(select 1)"
-        key = shards[0].join_key
+        # The shard projected the key delimited, so that is how it is joined.
+        key = quote_if_bare(shards[0].join_key)
         first = shards[0].table_name
         using = f"({AS_OF_DATE}, {key})" if shards[0].asof else f"({key})"
         joins = "".join(f" left join {s.table_name} using {using}" for s in shards[1:])
@@ -1467,10 +1469,16 @@ class MaterializationPlanner:
         columns; later shards carry only the join key (so a ``using(<key>)``
         re-join keeps each non-key identifier column unambiguous)."""
         if idx == 0:
-            return list(spec.key_columns)
+            return spec.sql_keys
+        # ``join_key`` and ``key_columns`` are the declared names (metadata);
+        # what is projected is the delimited form of the one that matches.
         qualified = next(
-            (k for k in spec.key_columns if self._bare(k) == join_key),
-            join_key,
+            (
+                sql
+                for declared, sql in zip(spec.key_columns, spec.sql_keys)
+                if self._bare(declared) == join_key
+            ),
+            quote_if_bare(join_key),
         )
         return [qualified]
 

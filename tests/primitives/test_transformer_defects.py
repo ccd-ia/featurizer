@@ -115,7 +115,7 @@ def test_cumprod_guards_inside_the_aggregate(tmp_path) -> None:
 def test_ema_keeps_the_weight_out_of_floating_point(tmp_path) -> None:
     query = _query(tmp_path, "ema_7", "numeric")
     assert 'sum("x"::numeric * exp(' in query
-    assert "extract(epoch from as_of)::numeric" in query
+    assert 'extract(epoch from "as_of")::numeric' in query
 
 
 # ------------------------------------------------------------- execution

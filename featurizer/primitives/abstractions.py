@@ -372,6 +372,18 @@ class Relationship:
         self.name: Optional[str] = name
 
     @property
+    def parent_key_sql(self) -> str:
+        """``parent_key`` as SQL reads it. The key is a declared column, so it
+        is delimited wherever it is emitted (issue #46); ``parent_key`` itself
+        stays the declared name, for metadata and names."""
+        return quote_if_bare(self.parent_key)
+
+    @property
+    def child_key_sql(self) -> str:
+        """``child_key`` as SQL reads it; see :attr:`parent_key_sql`."""
+        return quote_if_bare(self.child_key)
+
+    @property
     def naming_alias(self) -> str:
         """Alias used in aggregation feature names and the aggs CTE name."""
         return self.name or self.child.alias
