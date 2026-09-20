@@ -287,6 +287,13 @@ PostgreSQL's 1664-column row limit, which featurizer handles by sharding the
 output into column groups automatically (and warns when a config predicts a
 pathological query plan).
 
+`identity` is the transformer that keeps a column as it is. Leave it out of
+`transformations` and the output holds only what the listed transformers
+produce: `transformations: [abs]` emits `ABS(...)` columns and no raw ones.
+Aggregations are not affected. A parent still aggregates its children's raw
+variables, so `ABS(customers.SUM(orders.amount))` is computed whether or not
+`identity` is listed; `SUM(orders.amount)` itself is output only when it is.
+
 ## Column budget
 
 ### Each aggregation yields `I + 1` columns, not `I`

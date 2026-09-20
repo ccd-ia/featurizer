@@ -16,6 +16,7 @@ They cover:
 import re
 import tempfile
 
+import pytest
 import yaml
 
 from featurizer import Featurizer
@@ -394,3 +395,74 @@ def test_as_of_boundary_exclusive_threads_through_peer_and_subquery_cuts():
     # Peer membership cut (planner) and the subquery cut (aggregations) both flip.
     assert "where e2.first_seen < aod.as_of_date" in flat
     assert "<= aod.as_of_date" not in flat
+
+
+# --------------------------------------------------------------------------- #
+# Bug #38: a parent reads a child through the child's feature set, so the
+# child's transform has to project all of it — also the raw columns no selected
+# transformer hands through. DB-free, so the class is caught at plan time.
+# --------------------------------------------------------------------------- #
+
+
+def _planner(config: dict):
+    """The planner a Featurizer builds for ``config``, planned, so its private
+    ``_built_features`` — the per-entity snapshot a parent reads — is visible."""
+    from featurizer.planner import FeaturePlanner
+
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as handle:
+        yaml.safe_dump(config, handle)
+    f = Featurizer(handle.name)
+    planner = FeaturePlanner(
+        graph=f.graph,
+        target_alias=f.target.alias,
+        max_depth=f.max_depth,
+        intervals=f.intervals,
+        aggregations=f.aggregations,
+        transformations=f.transformations,
+        boundary=f.as_of_boundary,
+    )
+    return planner, planner.plan()
+
+
+def _closure_config(transformations) -> dict:
+    config = _parent_child_config(max_depth=3)
+    config["aggregations"] = ["sum", "mean", "count"]
+    if transformations is None:
+        del config["transformations"]
+    else:
+        config["transformations"] = transformations
+    return config
+
+
+@pytest.mark.parametrize(
+    "transformations",
+    [["identity"], [], None, ["abs"], ["lag_1"], ["abs", "rolling_median_7"]],
+    ids=["identity", "empty", "curated-default", "abs", "lag_1", "abs+rolling_median"],
+)
+def test_a_non_target_transform_projects_everything_its_parent_reads(
+    transformations,
+) -> None:
+    planner, plan = _planner(_closure_config(transformations))
+    checked = 0
+    for alias, features in planner._built_features.items():
+        if alias == plan.target.alias:
+            continue
+        projected = {c.name for c in plan.cte_specs[f"{alias}_transform"].columns}
+        for feature in features:
+            if feature.type in ("index", "key"):
+                continue
+            assert feature.name in projected, (
+                f"{alias}_transform does not project {feature.name!r}, which "
+                f"{alias}'s parent reads"
+            )
+            checked += 1
+    assert checked, "the config reached no non-target entity"
+
+
+def test_the_target_projects_only_what_was_selected() -> None:
+    """The helpers stop at the target: its select list is the output matrix."""
+    _, plan = _planner(_closure_config(["abs"]))
+    target = plan.target.alias
+    names = {c.name for c in plan.cte_specs[f"{target}_transform"].columns}
+    assert names, "the target transform projects nothing"
+    assert all(name.startswith('"ABS(') for name in names), sorted(names)
