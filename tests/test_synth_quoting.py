@@ -61,11 +61,17 @@ def _config(tmp_path: Path, variable: str) -> Path:
         "MEAN(x.y|interval=P30D)",
         "a b",
         "select",
-        "Mixed_Case",
     ],
 )
 def test_bare_names_are_delimited(raw: str) -> None:
     assert quote_if_bare(raw) == f'"{raw}"'
+
+
+def test_a_mixed_case_bare_name_folds_before_it_is_delimited() -> None:
+    """As PostgreSQL folds it. This row pinned ``"Mixed_Case"`` until issue
+    #44 measured what that cost: a config that ran on v1.2.0 stopped running.
+    The whole rule is in tests/test_declared_name_rule.py."""
+    assert quote_if_bare("Mixed_Case") == '"mixed_case"'
 
 
 def test_already_delimited_names_pass_through(raw: str = '"ABS(care.risk)"') -> None:
