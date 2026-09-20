@@ -1899,6 +1899,33 @@ class FeaturePlanner:
             prefix="where",
         ).strip()
 
+    def _causal_where(self, entity: Entity) -> str:
+        """``where <table>.<temporal_ix> <= aod.as_of_date`` for a non-target read.
+
+        The aggregation that reads ``<child>_transform`` has always carried this
+        cut, and for a window that only looks backwards that was enough: a row
+        kept by the cut never read a row the cut dropped. A window over its
+        WHOLE partition does — ``percent_rank()`` divides by the partition's
+        size, ``avg(x) over ()`` averages every row — so the rows the
+        aggregation was about to drop had already shaped the value it kept
+        (issue #27). Cutting where the entity is *read* closes that for every
+        window there is or will be, and costs a backward-only one nothing.
+
+        Not the target: its rows are the cohort, and which of them a date emits
+        is the caller's decision (``as_of_dates.id_column``), not a causal cut.
+        Not an entity without a temporal index: there is no column to cut on.
+        """
+        if (
+            self._target is None
+            or entity.alias == self._target.alias
+            or entity.temporal_ix is None
+        ):
+            return ""
+        return causal_predicate(
+            f"{entity.table}.{quote_if_bare(entity.temporal_ix.name)}",
+            prefix="where",
+        ).strip()
+
     def _cohort_post_filter(self) -> str:
         """The same cut, applied to the final ``select * from <target>_transform``.
 
@@ -1957,7 +1984,9 @@ class FeaturePlanner:
         # else. Filtering the lateral's output instead would return the same
         # rows and still compute every discarded one. ``where_block`` is empty
         # for the default dense cohort, which keeps that SQL byte-identical.
-        where = self._cohort_where(target)
+        # Every OTHER entity is cut on the as-of date instead (issue #27); the
+        # two never meet, one is the target's and one is everybody else's.
+        where = self._cohort_where(target) or self._causal_where(target)
         where_block = f"        {where}\n" if where else ""
 
         cte_query = f"""
