@@ -63,8 +63,8 @@ ul li{margin:.25rem 0}
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-07-09T03:38 America/Mexico_City</dd>
-        <dt>modified</dt>     <dd>2026-07-09T03:38, 2026-07-09T11:45, 2026-07-09T15:35</dd>
-        <dt>commits</dt>      <dd>—</dd>
+        <dt>modified</dt>     <dd>2026-07-09T03:38, 2026-07-09T11:45, 2026-07-09T15:35, 2026-09-20T03:40-06:00</dd>
+        <dt>commits</dt>      <dd>a8c5472, 85714d3, 87aa03b</dd>
         <dt>agent name</dt>   <dd>claude-opus-4-8[1m]</dd>
         <dt>session id</dt>   <dd>41bc70d5-fdfa-4e98-9697-a637fad3401d</dd>
         <dt>back refs</dt>    <dd>specs/feature-materialization-performance.html, specs/live-db-revalidation-v060.html, docs/adr/0010-set-based-preaggregation.md, docs/adr/0009-correlated-subquery-aggregator-scaling.md, specs/correlated-subquery-aggregator-scaling.html</dd>
@@ -335,7 +335,7 @@ ul li{margin:.25rem 0}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Composable pre-passes &amp; signature merge (Option B — the structural fix)</h3>
+      <h3><code class="status">[x]</code> Phase 3: Composable pre-passes &amp; signature merge (Option B — the structural fix) — RETIRED 2026-07-09, not built</h3>
       <p>The main event. Refactor the pre-agg contract so pre-passes are composable, then merge families that share a window signature into one pre-pass + one <code>GROUP BY</code> per (signature, interval). Opt-in per family and golden-gated after <em>each</em> family, exactly like ADR-0010's migration — never a big-bang.</p>
       <h4>1. Extend the pre-agg contract to be composable</h4>
       <ul class="checklist">
@@ -367,7 +367,7 @@ ul li{margin:.25rem 0}
     </div>
 
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 4: Acceptance re-baseline, ADR &amp; docs</h3>
+      <h3><code class="status">[x]</code> Phase 4: Acceptance re-baseline, ADR &amp; docs — RETIRED 2026-07-09, not built</h3>
       <p>Lock in the result and record the decision. Folds in P5 (re-state ADR-0010 acceptance against real DBs, not synthetic 10k).</p>
       <h4>1. Re-baseline &amp; document</h4>
       <ul class="checklist">
@@ -493,6 +493,17 @@ ul li{margin:.25rem 0}
       <code>GROUP BY</code> pivot, sidestepping the 100-way join entirely. Potentially the real win, but
       a larger rearchitecture than this plan scoped. Recommend prototyping (b) on dirtyduck before
       committing either.</p>
+    </details>
+      <details open>
+      <summary>2026-09-20 — Phases 3 and 4 closed as RETIRED; the plan reads as landed</summary>
+      <p>The plan index listed this plan as in progress (2 of 4 phases) for 72 days. Nothing was left
+      to do: the "SOLVED" note of 2026-07-09 records that the fan-out premise was wrong and that the
+      real causes were fixed elsewhere, in <code>a8c5472</code> (ADR-0012, set-based two-window drift)
+      and <code>85714d3</code> (ADR-0013, <code>ANALYZE as_of_dates</code>), written up in
+      <code>87aa03b</code>. Phases 3 and 4 scoped the fan-out rearchitecture and were never built, on
+      purpose. Their markers are set to <code>[x]</code> with RETIRED in the heading, because the
+      marker set has no "will not do", and the three commits are recorded in the metadata. The task
+      checkboxes inside the two phases are left as they were: they describe work that was not done.</p>
     </details>
   </section>
 

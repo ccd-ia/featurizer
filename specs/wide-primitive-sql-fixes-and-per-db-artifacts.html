@@ -111,8 +111,8 @@
       <summary>Metadata</summary>
       <dl>
         <dt>created</dt>      <dd>2026-07-06T16:45-06:00</dd>
-        <dt>modified</dt>     <dd>2026-07-06T16:45-06:00, 2026-07-06T17:00-06:00</dd>
-        <dt>commits</dt>      <dd>064dd01 (HEAD, pre-change baseline)</dd>
+        <dt>modified</dt>     <dd>2026-07-06T16:45-06:00, 2026-07-06T17:00-06:00, 2026-09-20T03:40-06:00</dd>
+        <dt>commits</dt>      <dd>064dd01, f457243</dd>
         <dt>agent name</dt>   <dd>claude-opus-4-8</dd>
         <dt>session id</dt>   <dd>2942532b-8ae5-4abb-aa93-55d950f920cb</dd>
         <dt>back refs</dt>    <dd>CHANGELOG [Unreleased] (transformer-label fix); TODO.org 2026-07-06; ADR-0007/0008</dd>
@@ -375,7 +375,7 @@
 
     <!-- PHASE 1 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 1: Fix the four primitives</h3>
+      <h3><code class="status">[x]</code> Phase 1: Fix the four primitives</h3>
       <p>Apply the four surgical fixes. Each is independent; land them together with tests so the suite proves the
         contract before touching a live DB.</p>
 
@@ -421,7 +421,7 @@
 
     <!-- PHASE 2 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 2: Validate against the three live databases</h3>
+      <h3><code class="status">[x]</code> Phase 2: Validate against the three live databases</h3>
       <p>Prove the previously-failing variants now execute on real PostgreSQL, over both temporal column types, and add
         permanent regression coverage.</p>
 
@@ -486,7 +486,7 @@
 
     <!-- PHASE 3 -->
     <div class="phase">
-      <h3><code class="status">[]</code> Phase 3: Per-database HTML artifacts</h3>
+      <h3><code class="status">[x]</code> Phase 3: Per-database HTML artifacts</h3>
       <p>One self-contained HTML page per database, sharing this plan's visual identity, documenting the config, the
         database structure, and a representative feature sample.</p>
 
@@ -675,6 +675,15 @@
         deliberately out of scope here</strong> and tracked as follow-up. This is the honest boundary of what these
         fixes cover: the detected temporal/geometric/shape bugs are fixed and validated; the broader advanced-aggregator
         runtime hardening is its own project.</p>
+    </details>
+      <details open>
+      <summary>2026-09-20 — phase markers set to complete: the plan landed in f457243 (v0.5.1)</summary>
+      <p>The plan was committed together with its implementation and its markers were never updated,
+      so the plan index listed it as not started for 74 days. <code>f457243</code> carries all three
+      phases: the four primitive fixes (<code>aggregations.py</code>, <code>transformations.py</code>),
+      their execution against the live shapes (<code>tests/integration/test_wide_primitive_execution.py</code>),
+      and the three per-database pages under <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts/</code>.
+      Only the phase markers move; the task checkboxes inside are left as written.</p>
     </details>
   </section>
 
