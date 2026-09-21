@@ -374,11 +374,13 @@ PAIR_ID_COLUMN = "cohort_entity_id"
 def _pairing(config: Dict[str, Any]) -> Dict[str, str]:
     """What the multi-date case needs to build a diagonal from the config.
 
-    The events entity is the one :func:`latest_knowledge_date` uses; an entity
-    is in a date's cohort when it has an event in the month before that date.
-    Only the plain shape is handled — the events' relationship to the target
-    must join on the target's own id — because that is the shape of all three
-    live datasets and a wrong pairing would measure the wrong thing.
+    The events entity is the one :func:`latest_knowledge_date` uses; a target
+    row is in a date's cohort when its key had an event in the month before that
+    date. When the relationship joins on the target's own id, the key is the id
+    (dirtyduck, donorschoose). When it joins on another column of the target
+    (chicago311: a request's community area), the cohort goes through the target
+    table, and it is close to the whole population: a worst case for narrowing,
+    which is what it is measured for.
     """
     target = next(e for e in config["entities"] if e["alias"] == config["target"])
     events = next(
@@ -392,15 +394,10 @@ def _pairing(config: Dict[str, Any]) -> Dict[str, str]:
         if r["parent"]["entity"] == target["alias"]
         and r["child"]["entity"] == events["alias"]
     )
-    if rel["parent"]["key"] != target["id"]:
-        raise ValueError(
-            f"multi-date case: relationship {target['alias']} <- {events['alias']} "
-            f"joins on {rel['parent']['key']!r}, not on the target id "
-            f"{target['id']!r}; the diagonal cannot be derived from the events. "
-            "Extend _pairing() for this shape before benchmarking it."
-        )
     return {
         "target_id": target["id"],
+        "target_table": target["table"],
+        "target_key": rel["parent"]["key"],
         "events_table": events["table"],
         "events_ts": events["temporal_ix"],
         "events_key": rel["child"]["key"],
@@ -417,19 +414,61 @@ def _create_pairs(cur, pairing: Dict[str, str], table: str, last: str, n: int) -
     cur.execute(
         f"""
         insert into {table}
-        select d::date, ev.{pairing["events_key"]}
+        select distinct d::date, tgt.{pairing["target_id"]}
         from generate_series(%s::date - (%s - 1) * interval '1 month',
                              %s::date, interval '1 month') as d
         join lateral (
-            select distinct {pairing["events_key"]}
+            select distinct {pairing["events_key"]} as event_key
             from {pairing["events_table"]}
             where {pairing["events_ts"]} < d::date
               and {pairing["events_ts"]} >= d::date - interval '1 month'
         ) ev on true
+        join {pairing["target_table"]} tgt
+          on tgt.{pairing["target_key"]} = ev.event_key
         """,
         (last, n, last),
     )
     cur.execute(f"analyze {table}")
+
+
+def _tied_values(cur, config: Dict[str, Any], last: str) -> Dict[str, set]:
+    """Per join column of the target: the values with two child rows on one
+    timestamp, over every child the target aggregates.
+
+    An order-dependent primitive over such rows returns a value that depends on
+    the physical order they are read in (issue #66), so the dense run is not an
+    oracle for them: narrowing a read changes that order and nothing else.
+    """
+    entities = {e["alias"]: e for e in config["entities"]}
+    tied: Dict[str, set] = {}
+    for rel in config["relationships"]:
+        child = entities[rel["child"]["entity"]]
+        if rel["parent"]["entity"] != config["target"] or not child.get("temporal_ix"):
+            continue
+        child_column = rel["child"]["key"]
+        cur.execute(
+            f"select distinct {child_column} from {child['table']} "
+            f"where {child['temporal_ix']} <= %s "
+            f"group by {child_column}, {child['temporal_ix']} "
+            "having count(*) > 1",
+            (last,),
+        )
+        tied.setdefault(rel["parent"]["key"], set()).update(
+            row[0] for row in cur.fetchall()
+        )
+    return tied
+
+
+def _differs(dense, paired):
+    """Row mask: the two columns differ by more than the last bits of a float.
+    A narrowed read feeds an aggregate the same rows in another order, and a
+    float sum depends on the order."""
+    both_null = dense.isna() & paired.isna()
+    try:
+        a, b = dense.astype(float), paired.astype(float)
+    except (TypeError, ValueError):
+        return ~((dense == paired) | both_null)
+    return ~(((a - b).abs() <= 1e-9 * (1 + a.abs())) | both_null)
 
 
 def run_multi_date_cell(
@@ -491,20 +530,29 @@ def run_multi_date_cell(
         on_pairs = (
             dense.merge(paired[keys], on=keys).sort_values(keys).reset_index(drop=True)
         )
-        differing = [
-            col
-            for col in on_pairs.columns
-            if len(on_pairs) != len(paired)
-            or not (
-                (on_pairs[col] == paired[col])
-                | (on_pairs[col].isna() & paired[col].isna())
-            ).all()
-        ]
-        same = (
+        same_shape = (
             len(paired) == len(wanted)
+            and len(on_pairs) == len(paired)
             and list(on_pairs.columns) == list(paired.columns)
-            and not differing
         )
+        differing: List[str] = []
+        rows_differing = on_pairs.index[:0]
+        if same_shape:
+            for col in on_pairs.columns:
+                mask = _differs(on_pairs[col], paired[col])
+                if mask.any():
+                    differing.append(col)
+                    rows_differing = rows_differing.union(on_pairs.index[mask])
+        with conn.cursor() as cur:
+            tied = _tied_values(cur, config, last)
+        unexplained = [
+            i
+            for i in rows_differing
+            if not any(
+                on_pairs.loc[i, column] in values for column, values in tied.items()
+            )
+        ]
+        same = same_shape and not unexplained
         record.update(
             {
                 "last_as_of_date": last,
@@ -515,8 +563,13 @@ def run_multi_date_cell(
                 "rows_paired": int(len(paired)),
                 "dense_exec_seconds": round(dense_s, 1),
                 "paired_exec_seconds": round(paired_s, 1),
+                # Equal wherever the dense value is defined. A row that differs
+                # and whose entity has tied child timestamps is issue #66, which
+                # the dense run has too; one without a tie would be a defect.
                 "paired_equals_dense_on_pairs": bool(same),
                 "columns_differing": len(differing),
+                "rows_differing": int(len(rows_differing)),
+                "rows_differing_without_a_tied_timestamp": len(unexplained),
                 "status": "materialized",
             }
         )
