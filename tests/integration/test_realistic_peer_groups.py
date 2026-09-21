@@ -274,7 +274,10 @@ def test_peer_measure_statistics_exact(pg_conn):
     """
     _seed_synthetic(pg_conn)
     rows = run_featurizer(pg_conn, PEER_CONFIG)
-    assert len(rows) == 5  # one as-of x five entities
+    # One as-of x the four entities that exist at it. Id 4 is born in 2021, and
+    # a target row dated after the as-of date is not emitted under it (ADR-0017;
+    # until then it was, and this read 5). Every value below is what it was.
+    assert len(rows) == 4
 
     # Exact column names (PEER_MEAN( is also a substring of EGO_MINUS_PEER_MEAN().
     mean = "PEER_MEAN(ent.m by grp)"
@@ -305,10 +308,10 @@ def test_peer_measure_statistics_exact(pg_conn):
 
 def test_peer_membership_excludes_future_born(pg_conn):
     """Id 4 (born 2021) is not a peer at the 2020 as-of, so group A size is 2
-    for its members and id 4's own peer set is {1,2,3}."""
+    for its members. It is not an ego at that date either: a target row dated
+    after the as-of date is not emitted under it (ADR-0017). Until then it was
+    emitted, with the three members as its peers."""
     _seed_synthetic(pg_conn)
     rows = run_featurizer(pg_conn, PEER_CONFIG)
-    # Members 1..3 see each other (size 2 each); id 4 sees all three (size 3,
-    # since it is itself not counted as knowable).
     assert int(_syn_value(rows, 2, "PEER_GROUP_SIZE(")) == 2
-    assert int(_syn_value(rows, 4, "PEER_GROUP_SIZE(")) == 3
+    assert [row for row in rows if row["ent_id"] == 4] == []

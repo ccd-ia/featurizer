@@ -79,13 +79,29 @@ def test_the_bound_follows_the_boundary_mode() -> None:
     assert 'where events."ts" < aod.as_of_date' in synth
 
 
-def test_the_target_synth_is_not_bounded() -> None:
-    """The target's rows are the cohort; which of them a date emits is the
-    caller's choice (``as_of_dates.id_column``), not a causal cut."""
+def test_a_target_with_a_temporal_index_is_bounded_too() -> None:
+    """Issue #49 / ADR-0017. #27 left the target's read alone because its rows
+    are the cohort; an event-like target then emitted rows dated after the as-of
+    date, and they shaped the whole-partition values of the rows before them."""
     config = _config()
     config["entities"][0]["temporal_ix"] = "opened_at"
-    synth = _cte(_featurizer(config).query, "series_synth")
+    synth = " ".join(_cte(_featurizer(config).query, "series_synth").split())
+    assert 'where series."opened_at" <= aod.as_of_date' in synth
+
+
+def test_a_target_without_a_temporal_index_is_not_bounded() -> None:
+    """One row per entity and no timeline: nothing to cut on. Every triage-pg
+    config is this shape, and its SQL does not move."""
+    synth = _cte(_featurizer(_config()).query, "series_synth")
     assert "aod.as_of_date" not in synth
+
+
+def test_a_paired_target_carries_both_predicates() -> None:
+    config = _config(as_of_dates={"id_column": "cohort_id"})
+    config["entities"][0]["temporal_ix"] = "opened_at"
+    synth = " ".join(_cte(_featurizer(config).query, "series_synth").split())
+    assert "_cohort.as_of_date = aod.as_of_date)" in synth
+    assert 'and series."opened_at" <= aod.as_of_date' in synth
 
 
 def test_a_child_without_a_temporal_index_is_not_bounded() -> None:
@@ -121,3 +137,25 @@ def test_output_names_do_not_move() -> None:
         "MAX(events.x)",
         "MAX(events.PERCENT_RANK(events.x))",
     } <= labels
+
+
+def test_the_target_cut_is_announced_once(monkeypatch) -> None:
+    """ADR-0017 changes which rows a date returns; it must not arrive silently."""
+    from loguru import logger
+
+    import featurizer.planner as planner
+
+    monkeypatch.setattr(planner, "_ANNOUNCED_TARGET_CUTS", set())
+    messages: list[str] = []
+    sink = logger.add(lambda message: messages.append(str(message)), level="WARNING")
+    try:
+        config = _config()
+        config["entities"][0]["temporal_ix"] = "opened_at"
+        _featurizer(config)
+        _featurizer(config)
+        _featurizer(_config())  # no temporal index on the target: nothing to say
+    finally:
+        logger.remove(sink)
+    announced = [m for m in messages if "ADR-0017" in m]
+    assert len(announced) == 1
+    assert "'series'" in announced[0] and "'opened_at'" in announced[0]
