@@ -4,6 +4,218 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
+## [1.3.0] - 2026-09-21
+
+A correctness release. Between 2026-09-06, when the tracker opened, and this
+tag, one consumer and the project's own sweeps filed 30 issues that are now
+closed. Eighteen were defects, and most of them sat in a combination of two
+features that no test executed: a primitive over a column whose name is not a
+bare identifier, a whole-partition window over a child with a row after the
+as-of date, the TEMP-table path with two as-of dates. The suite had rendered
+that SQL many times and never run it that way. The structural answer is the
+sweep matrix (below), which runs every registered primitive against PostgreSQL
+for six invariants.
+
+Nothing on ADR-0015's freeze list changes meaning: the config schema keeps its
+keys, the `Featurizer` surface keeps its signatures and return shapes, output
+names do not move. **Two things do change what a matrix contains, by ruling
+(ADR-0016, ADR-0017). Read them first.**
+
+### Read this first: which rows and values change
+
+- **A target that declares a `temporal_ix` no longer emits a row dated after the
+  as-of date** (#49, [ADR-0017](docs/adr/0017-an-unknowable-row-is-not-emitted.md)).
+  It is read with the same cut as every other entity, and a row appears from the
+  first as-of date on or after its own. Row counts change: example 01
+  (`customers.signup_date`) returns 844 rows where it returned 1,200, example 02
+  273 of 400 with the first as-of date empty, example 03 129 of 160. The rows
+  that go are the customer who signs up in August, listed under an as-of date in
+  January. Their aggregates were already NULL or zero; emitting the row told a
+  model trained as of January that the customer would exist. The peer-group
+  family had pinned the opposite, a future-born ego given the knowable members
+  as peers; it is no longer emitted, and every value of the rows that remain is
+  unchanged. The planner warns once per process for a target that declares a
+  temporal index. **A target without a `temporal_ix` is not cut**, which is how
+  you ask for every target row under every date, and is what every `triage-pg`
+  config does. The other way to a dense grid is a left join onto your own
+  entities × dates spine. FAQ: "My matrix has fewer rows than entities × dates".
+- **Six transformers change value on an entity that has rows after an as-of
+  date, and `cdf` executes for the first time** (#27,
+  [ADR-0016](docs/adr/0016-leak-fixes-are-not-breaking.md)): `percent_rank`,
+  `ntile`, `last`, `cusum`, `cross_entity_zscore`, `cross_entity_percentile`.
+  The aggregation cut the child on the as-of date only after the transformers
+  had windowed over the whole child table, and a window over its whole partition
+  carries what it saw: `percent_rank()` divided by a partition size that counted
+  later rows. Every non-target entity is now cut where it is *read*, so no
+  window can see an unknowable row whatever its frame. Backward-only windows
+  (`lag_*`, `cum_*`, `rolling_*`, `ema_*`) cannot move, and a sweep of all 83
+  transformers shows it. None of the six is in the curated defaults and no
+  `triage-pg` config names one. **A model trained on one of them has to be
+  retrained.**
+
+ADR-0016 is the rule both ship under: a value, or a row, that depended on data
+after the as-of date was never part of the ADR-0015 contract, so removing that
+dependence is a minor release. The exemption is narrow by construction: the
+qualifying test adds an unknowable row and shows the value moved before the
+change and does not after it.
+
+### Added
+
+- **Paired cohorts: `as_of_dates: {id_column: <name>}`** (#10). Declares that
+  your `as_of_dates` table holds `(as_of_date, <target id>)` pairs. The matrix
+  then has one row per pair instead of every target row under every date, for
+  cohorts that are defined by the date (a day's arrivals, the games played on a
+  date). `aod` ranges over the distinct dates, the target's read keeps the ids
+  paired with the current date, and a child that only the target aggregates is
+  read for that cohort too, as whole window partitions. A child that a second
+  parent aggregates, an entity that another one looks up, a grandchild, and
+  every entity under a population-level transformer keep their full read; the
+  decision is taken from the plan, not from the config. Values equal the dense
+  run's on the pairs. Dense against paired on the live databases, PostgreSQL
+  16.14: dirtyduck 272 features × 2 dates 6.8 s / 1.7 s, × 6 dates 21.3 s /
+  5.0 s, 147 features × 6 dates 5.1 s / 0.4 s, 1,252 features × 2 dates 12.7 s /
+  2.0 s; donorschoose 1,063 features × 2 dates 14.0 s / 3.5 s; chicago311, where
+  the derived cohort is the whole population, 5.1 s / 5.0 s. Without the block
+  the rendered SQL is byte-identical to before (SHA-256 digests of the single
+  query, the column groups and the TEMP-table statements). New concept page:
+  *Paired cohorts*.
+- **`population_level = True` on a transformer** says it compares a row with
+  the other rows of its entity (`cross_entity_zscore`, `cross_entity_percentile`:
+  `avg(x) over ()`). A paired cohort then narrows nothing and filters the final
+  select instead. Set it on a custom transformer that windows across entities.
+- **The sweep matrix** (#50). Six invariants, each checked by a sweep that
+  executes against PostgreSQL over the whole registry: a primitive executes; it
+  executes when a declared identifier is not a bare name, whatever the
+  identifier's role; a row dated after the as-of date moves nothing; the three
+  render paths agree; a config that validates runs; a paired cohort gives the
+  dense values on its pairs. `tests/test_sweep_matrix_coverage.py` fails the
+  fast tier when a sweep skips a registered primitive (it found one the day it
+  was written: the quoting sweep had skipped `cum_count` since #24) or when a
+  config parameter is not classified as naming a column or not. CONTRIBUTING,
+  "The sweep matrix", has the rule for contributors. 2,468 tests: 915 DB-free,
+  1,553 integration.
+- **Validation: a key nothing reads is an error** (#7, #12), at the top level,
+  on a relationship and on a variable, with the valid keys as the suggestion.
+  `whitelist:`, a relationship's `parent_key:`, a variable's `intervals:` were
+  accepted in silence and changed nothing. **A config that validated on 1.2.0
+  with such a key now fails validation**; the run it described was never the run
+  it got. The packaged `featurizer/featurizer.yaml` was itself invalid under the
+  rule (per-variable `intervals:` on three variables) and is corrected.
+- **Validation: a warning for a `temporal:` block on an aggregation
+  relationship** (#9). The block is read only where a child pulls a parent's
+  value; on a relationship whose child is rolled up it was discarded, and with
+  it `grace`. Nothing leaked, since the aggregation bounds its child rows
+  either way. `is_valid` stays true. Example 02 shipped that orientation; it
+  now has both directions side by side (`care_plans` aggregated, a new
+  `risk_assessments` table looked up as-of with `grace: P30D`), and its
+  notebook is rewritten.
+- **`benchmarks/final_matrix.py`**: `--dates N` (dense against paired over N
+  monthly as-of dates, on a join through the target's id or through another of
+  its columns, with the differing rows split by whether the entity has tied
+  child timestamps) and `--jit-compare` (the single-date cell under `jit` off,
+  on, on, off, with a digest of the returned frame). Artifacts:
+  `specs/jit-on-off/raw/`.
+- **ADR-0016** and **ADR-0017**, and `just revendor-skill` (#33).
+- **Docs**: a *Column budget* section (an aggregation yields `intervals + 1`
+  columns per child column, because the whole-history column is always emitted)
+  and the 8 kB heap-row ceiling, which binds near 1,000 numeric columns, before
+  the 1664-entry limit (#11, #12); the cockpit page's screenshots, read from the
+  committed test snapshots (#16); a *JIT compilation* section; FAQ entries for a
+  matrix with fewer rows than entities × dates, a mixed-case column that "does
+  not exist", and a query that takes tens of seconds on a small table.
+
+### Changed
+
+- **Generated queries run with `jit = off`, on your connection too** (#53).
+  PostgreSQL compiles every expression of a query over `jit_above_cost` before
+  it reads a row, and a generated query is a target list of hundreds of
+  aggregate expressions. On the three live databases, nine cells, `jit = on`
+  was faster in none: equal on the narrow configs, 1.05× to 1.26× slower on
+  all-agg, 1.37× to 7.9× slower on wide (dirtyduck, 1,252 features: 59.4 s
+  against 7.5 s), and no value moved. `to_dataframe`, `to_arrow`, `to_parquet`
+  and `to_tables` read your `jit`, turn it off around their own statements
+  (the TEMP-table preamble included) and put your value back: `SET LOCAL` in a
+  transaction, a session `SET` on an autocommit connection. It is the only
+  setting a caller's `connection=` sees changed. If you execute `query` /
+  `query_groups` yourself, run `set local jit = off`. **Every wall-clock
+  published before this release was taken with `jit = on`**, the
+  `specs/live-db-revalidation-*` matrices included.
+- **A declared name means what it means in PostgreSQL** (#44). A name that is a
+  valid bare identifier folds to lower case and is then delimited, so
+  `totalAmount` against a column created by unquoted DDL runs (as it did on
+  1.2.0) and a reserved word such as `order` runs (it did not); a name already
+  in double quotes is taken exactly; anything else (`Amount USD`,
+  `MEAN(games.goals)`) is delimited byte for byte. Output names are built from
+  the declared spelling and do not move.
+- **A derived feature's `definition` in the manifest carries the quoted input**:
+  `abs("age")` where it was `abs(age)`. Column names, labels and a declared
+  variable's own `definition` do not move.
+- **`ema_7` / `ema_14` return `numeric` for every input type.** They already
+  did for `numeric` and `integer` inputs; `double precision` and `real` inputs
+  overflowed instead of returning.
+- **The `tui` extra pins lynkeus v1.1.0** (from v0.3.2, through v1.0.0, the API
+  freeze). No line of `featurizer/tui/` changed for either hop, and the headless
+  `status --json` / `actions list` output is byte-identical across the pins.
+  From here a lynkeus gap is a pull request against `nanounanue/lynkeus`.
+- `featurizer status --json`: the materialization gauge is labelled by its stem,
+  with the schema in the note (#14). The cockpit is not on the freeze list.
+- `master` is protected, and CONTRIBUTING says how a change lands from a
+  consumer or another session (six rules). CI gates on `ruff format --check` and
+  `ruff check` (#31, #41), and runs the integration tier with `jit = off`
+  (#54): 6 to 7 minutes became about one. `just db-up` reuses a container
+  another session left running (#4).
+
+### Fixed
+
+- **Declared identifiers are delimited wherever SQL reads them** (#13, #18,
+  #29, #46). A column named like an aggregate call (`MEAN(games.goals)`), with a
+  space, or like a reserved word failed in the synth projection, inside 76 of
+  83 transformers, inside every aggregation that reads a declared column (51 of
+  51) or a temporal index (16 of 16), and in every other role a name can have:
+  an entity id in a `partition by`, a relationship key in a `group by` and a
+  join, the columns the peer, spatial, graph and as-of passes read (91 of 100
+  swept cases).
+- **`hourly_bin`, `daily_bin`, `cumprod`, `ema_7`, `ema_14` execute** (#23).
+  `hourly_bin` and `daily_bin` had never run (`case` without `end`; `daily_bin`
+  labelled both branches `weekday` and left Sunday unmatched); `cumprod` raised
+  on a zero or a negative; `ema_*` overflowed on floating-point columns.
+- **A window transformer over a transferred value orders by the receiving
+  entity's timeline** (#21). Any direct transfer plus any window transformer
+  failed with `column "<the source's temporal index>" does not exist`.
+- **A `transformations:` list may leave `identity` out** (#38). It failed on any
+  child variable its parent aggregates, because the child's transform projected
+  only the transformers' outputs: 54 of 83 transformers selected alone. Every
+  documented example lists `identity` first, so nothing had run without it.
+- **The TEMP-table path equals the single query, at the width it exists for**
+  (#36, #37, #52). With several as-of dates its windows ran across dates
+  (`cum_sum` doubled); with an interval the as-of cut landed inside an
+  aggregate's `filter`; a rolling percentile could not find a materialized
+  synth; at a real width the shard re-join was itself over 1664 entries; and
+  1,400 non-null `float8` columns are an 11,232-byte heap row. Every earlier
+  test forced the path with a threshold of 1 on a narrow config, one as-of date
+  and NULL data. Shards are now sized by the heap row, built one as-of date at a
+  time in the single query's own shape, and re-joined with only the columns
+  their reader names. **The curated defaults at depth 3 run**; before the fix
+  they failed with `relation "events_synth" does not exist`.
+- **A child that receives an as-of lookup can be aggregated** (#48), under an
+  interval and under `count`, and `child_timestamp` need not be a declared
+  variable. The lookup's `index` and `key` columns were promised to the parent
+  and never transferred, and an interval read the lookup's timeline.
+
+### Known issues
+
+Both predate this release, are in 1.2.0 as well, and wait for a ruling on
+whether the fix is a value change under ADR-0015:
+
+- **#66**: an order-dependent primitive over tied timestamps returns a value
+  that depends on the physical order of the rows (11 of 67 aggregations, at
+  least 14 of 83 transformers). On donorschoose, where a project's resources
+  share its date, the same dense query over the same rows in another physical
+  order moves 36 columns on 1,437 of 3,000 entities. Make the temporal index
+  unique within a key if you use the sequence, autocorrelation or lag families.
+- **#67**: `cosinor_amplitude_weekly` divides by rounding noise when all the
+  timestamps of a series share a weekly phase, and returns values around 1e15.
+
 ## [1.2.0] - 2026-09-04
 
 A terminal cockpit, as an optional extra. Nothing on ADR-0015's freeze list
@@ -59,7 +271,6 @@ and the headless twins of the screens.
   3.10 and 3.11, which is the compatibility claim being tested.
 - **Docs**: a *Terminal cockpit* page under Reference, and a README section.
 
-- **Featurizer is archived on Zenodo and has a DOI.** The concept DOI
 - **Featurizer is archived on Zenodo and has a DOI.** The concept DOI
   [10.5281/zenodo.22287185](https://doi.org/10.5281/zenodo.22287185) always
   resolves to the latest archived version; v1.1.1 is

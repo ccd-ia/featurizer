@@ -34,7 +34,7 @@ The cockpit is an extra. lynkeus needs Python 3.12, and featurizer's floor is
 exit 2 there:
 
 ```bash
-uv add "featurizer[tui] @ git+https://github.com/ccd-ia/featurizer@v1.2.0"
+uv add "featurizer[tui] @ git+https://github.com/ccd-ia/featurizer@v1.3.0"
 # in a checkout:
 uv sync --extra tui
 ```
