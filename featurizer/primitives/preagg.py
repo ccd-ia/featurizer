@@ -68,9 +68,7 @@ def causal_where(
     # Every caller in aggregations.py passes an already-quoted ``column``; the
     # fallback reads the declared temporal index by name, so it quotes (#29).
     col = (
-        column
-        if column is not None
-        else current_timeline() or quote_if_bare(tix.name)
+        column if column is not None else current_timeline() or quote_if_bare(tix.name)
     )
     if interval:
         return f"where {daterange_window(interval, column=col)}"
