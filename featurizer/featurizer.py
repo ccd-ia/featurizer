@@ -18,7 +18,12 @@ from loguru import logger
 
 from .boundary import DEFAULT_BOUNDARY, AsOfBoundary
 from .categoricals import ROLE_CATEGORICAL, resolve_vocabulary
-from .executor import QueryExecutor, analyze_as_of_dates, apply_planner_tuning
+from .executor import (
+    QueryExecutor,
+    analyze_as_of_dates,
+    apply_planner_tuning,
+    jit_disabled,
+)
 from .planner import FeaturePlanner, PlannerResult
 from .primitives import Entity, ERGraph, Feature, Variable
 from .primitives.utils import (
@@ -769,23 +774,28 @@ class Featurizer:
         conn = connection if connection is not None else default_connection()
         tables: List["FeatureGroupTable"] = []
         try:
-            with conn.cursor() as cur:
-                if create_schema:
-                    cur.execute(f'create schema if not exists "{schema}"')
-                for ddl in preamble:
-                    cur.execute(ddl)
-            analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
-            if own_connection:  # never SET LOCAL inside a caller's transaction
-                apply_planner_tuning(conn)
-            with conn.cursor() as cur:
-                for gid, sql in grouped.queries.items():
-                    name = f'"{schema}"."{stem}_{gid}"'
-                    cur.execute(f"drop table if exists {name}")
-                    cur.execute(f"create table {name} as\n{sql}")
-                    tables.append(
-                        FeatureGroupTable(name=name, group=gid, key_columns=list(keys))
-                    )
-                self._write_manifest_table(cur, schema, stem, column_groups)
+            # jit off from the preamble on (issue #53); a caller's value is put
+            # back before their transaction goes on.
+            with jit_disabled(conn):
+                with conn.cursor() as cur:
+                    if create_schema:
+                        cur.execute(f'create schema if not exists "{schema}"')
+                    for ddl in preamble:
+                        cur.execute(ddl)
+                analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
+                if own_connection:  # PLANNER_TUNING never reaches a caller's
+                    apply_planner_tuning(conn)
+                with conn.cursor() as cur:
+                    for gid, sql in grouped.queries.items():
+                        name = f'"{schema}"."{stem}_{gid}"'
+                        cur.execute(f"drop table if exists {name}")
+                        cur.execute(f"create table {name} as\n{sql}")
+                        tables.append(
+                            FeatureGroupTable(
+                                name=name, group=gid, key_columns=list(keys)
+                            )
+                        )
+                    self._write_manifest_table(cur, schema, stem, column_groups)
             if own_connection:
                 conn.commit()
         finally:
@@ -934,22 +944,25 @@ class Featurizer:
             # so the group queries' shard references resolve. The connection is
             # non-autocommit (default_connection / the harness), so ON COMMIT DROP
             # shards live for the whole transaction and drop when it closes.
-            if preamble:
-                with conn.cursor() as cur:
-                    for ddl in preamble:
-                        cur.execute(ddl)
-            analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
-            if own_connection:  # never SET LOCAL inside a caller's transaction
-                apply_planner_tuning(conn)
-
             tables: "OrderedDict[str, Any]" = _OrderedDict()
-            for gid, sql in grouped.queries.items():
-                table = exporter.to_arrow(
-                    sql, connection=conn, numeric_as_float=numeric_as_float
-                )
-                if impute:
-                    table = self._impute_group(table, **impute_kwargs)
-                tables[gid] = table
+            # jit off from the preamble on (issue #53); a caller's value is put
+            # back before their transaction goes on.
+            with jit_disabled(conn):
+                if preamble:
+                    with conn.cursor() as cur:
+                        for ddl in preamble:
+                            cur.execute(ddl)
+                analyze_as_of_dates(conn)  # planner-stats optimization (see executor)
+                if own_connection:  # PLANNER_TUNING never reaches a caller's
+                    apply_planner_tuning(conn)
+
+                for gid, sql in grouped.queries.items():
+                    table = exporter.to_arrow(
+                        sql, connection=conn, numeric_as_float=numeric_as_float
+                    )
+                    if impute:
+                        table = self._impute_group(table, **impute_kwargs)
+                    tables[gid] = table
             return tables
         finally:
             if own_connection:
