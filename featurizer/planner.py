@@ -27,6 +27,7 @@ from .boundary import (
     DEFAULT_BOUNDARY,
     AsOfBoundary,
     causal_predicate,
+    cohort_ids,
     cohort_predicate,
     daterange_window,
     use_boundary,
@@ -256,6 +257,14 @@ class FeaturePlanner:
         self._synth_column_source: Dict[str, Dict[str, Tuple[str, str]]] = {}
         # CTE name -> join geometry for temp-table materialization (issue #7).
         self._materialization_keys: Dict[str, MaterializationKey] = {}
+        # Entity alias -> who read its ``_transform`` during the traversal, as
+        # ``(reader alias, "aggregate" | "direct", relationship)``. What a paired
+        # cohort may narrow is decided from this, never from the graph: whether
+        # a relationship is consumed depends on depth and on traversal order.
+        self._reads: Dict[str, List[Tuple[str, str, Relationship]]] = {}
+        # Child alias -> the target's relationships it is narrowed through
+        # (the #10 follow-up). Empty during the first traversal of ``plan``.
+        self._narrowed: Dict[str, List[Relationship]] = {}
 
     def plan(self) -> PlannerResult:
         """Drive the DFS traversal and return the synthesized artifacts.
@@ -272,26 +281,15 @@ class FeaturePlanner:
                 f"Target entity '{self.target_alias}' not found in config."
             ) from exc
 
-        self._features = {
-            entity.alias: set(entity.features)
-            for entity in self.graph.entities.values()
-        }
-        self._joins = {entity.alias: [] for entity in self.graph.entities.values()}
-        self._ctes = []
-        self._path = []
-        self._built_features = {}
-        self._synth_columns = {}
-        self._output_features = []
-        self._cte_specs = {}
-        self._cte_order = []
-        self._verbatim_ctes = {}
-        self._synth_column_source = {}
-        self._materialization_keys = {}
-
-        logger.debug("Starting feature build for target {}", self._target.alias)
-        self._announce_target_cut(self._target)
-        with use_boundary(self.boundary):
-            self._build_features(self._target)
+        self._narrowed = {}
+        self._traverse(self._target)
+        narrowed = self._narrowable_children(self._target)
+        if narrowed:
+            # A synth CTE is rendered while the traversal runs, and who reads an
+            # entity is only known once it has finished. So the first traversal
+            # answers the question and the second one renders the answer.
+            self._narrowed = narrowed
+            self._traverse(self._target)
 
         return PlannerResult(
             target=self._target,
@@ -311,6 +309,30 @@ class FeaturePlanner:
             cohort_id_column=self.cohort_id_column,
             cohort_post_filter=self._cohort_post_filter(),
         )
+
+    def _traverse(self, target: Entity) -> None:
+        """One full traversal from a clean state."""
+        self._features = {
+            entity.alias: set(entity.features)
+            for entity in self.graph.entities.values()
+        }
+        self._joins = {entity.alias: [] for entity in self.graph.entities.values()}
+        self._ctes = []
+        self._path = []
+        self._built_features = {}
+        self._synth_columns = {}
+        self._output_features = []
+        self._cte_specs = {}
+        self._cte_order = []
+        self._verbatim_ctes = {}
+        self._synth_column_source = {}
+        self._materialization_keys = {}
+        self._reads = {}
+
+        logger.debug("Starting feature build for target {}", target.alias)
+        self._announce_target_cut(target)
+        with use_boundary(self.boundary):
+            self._build_features(target)
 
     # ------------------------------------------------------------------ #
     # Feature traversal helpers (ported from the original Featurizer)
@@ -1360,6 +1382,9 @@ class FeaturePlanner:
         self, target: Entity, source: Entity, relationship: Relationship
     ) -> None:
         logger.debug("Processing backward relationship {}", relationship)
+        self._reads.setdefault(source.alias, []).append(
+            (target.alias, "aggregate", relationship)
+        )
         aggregations: List[Feature] = []
 
         for feature in self._built_features[source.alias]:
@@ -1449,6 +1474,9 @@ class FeaturePlanner:
         self, target: Entity, source: Entity, relationship: Relationship
     ) -> None:
         logger.debug("Processing forward relationship {}", relationship)
+        self._reads.setdefault(source.alias, []).append(
+            (target.alias, "direct", relationship)
+        )
         directs = list(self._built_features[source.alias])
         if relationship.name:
             directs = [
@@ -1979,15 +2007,108 @@ class FeaturePlanner:
             for transformer in self.transformations.values()
         )
 
+    def _narrowable_children(self, target: Entity) -> Dict[str, List[Relationship]]:
+        """The entities whose base read a paired cohort may cut, with the
+        target's relationships each is read through (the #10 follow-up).
+
+        #30 narrowed the target's read only: every child was still aggregated
+        for every entity, each date, and the join then dropped the rows of the
+        entities outside the date's cohort. Measured on dirtyduck all-agg, two
+        dates, jit off: 6.5 of 8 s, for a cohort of 2,184 rows out of 44,338.
+
+        An entity qualifies when the target's aggregations are the ONLY readers
+        of its ``_transform``. A second parent that aggregates it, or an entity
+        that looks it up, needs rows the cohort does not name. The readers are
+        the ones the traversal recorded, so a relationship that depth or a cycle
+        left unconsumed does not count against it. The planner passes (peer
+        groups, spatial, graph) read base tables in CTEs of their own and are
+        not readers of anybody's synth.
+
+        Nothing qualifies when a selected transformer reads the population:
+        the target itself is not narrowed then (:meth:`_cohort_where`).
+        """
+        if (
+            self.cohort_id_column is None
+            or target.id is None
+            or self._cohort_reads_population()
+        ):
+            return {}
+        narrowed: Dict[str, List[Relationship]] = {}
+        for alias, reads in self._reads.items():
+            if alias != target.alias and all(
+                reader == target.alias and kind == "aggregate"
+                for reader, kind, _ in reads
+            ):
+                narrowed[alias] = [relationship for _, _, relationship in reads]
+        return narrowed
+
+    def _cohort_keys(self, relationship: Relationship) -> str:
+        """The values of ``relationship``'s child key that belong to the rows
+        paired with the current date."""
+        target = relationship.parent
+        assert target.id is not None and self.cohort_id_column is not None
+        ids = cohort_ids(self.cohort_id_column)
+        if relationship.parent_key == target.id.name:
+            return ids
+        # Joined on another column of the target: the keys to keep are that
+        # column's values over the cohort's rows. A target row the as-of cut
+        # would drop only adds keys, and more rows is always safe here.
+        return (
+            f"(select _target.{relationship.parent_key_sql} from {target.table} "
+            f"_target where _target.{quote_if_bare(target.id.name)} in {ids})"
+        )
+
+    @staticmethod
+    def _partition_is_the_key(
+        entity: Entity, relationships: List[Relationship]
+    ) -> bool:
+        """True when keeping a key keeps every window partition whole.
+
+        A window transformer partitions by the entity's ``id``. Without an id
+        there is no window. With one relationship whose child key IS the id, a
+        partition is a key group. Otherwise an id may span keys, or be read
+        through two keys, and the cut has to follow the id instead.
+        """
+        if entity.id is None:
+            return True
+        return len(relationships) == 1 and (
+            relationships[0].child_key == entity.id.name
+        )
+
+    def _child_cohort_where(
+        self, entity: Entity, relationships: List[Relationship]
+    ) -> str:
+        """``where`` for a narrowed child: the rows of the date's cohort, as
+        whole window partitions."""
+
+        def rows(table: str) -> str:
+            keys = [
+                f"{table}.{relationship.child_key_sql} in "
+                f"{self._cohort_keys(relationship)}"
+                for relationship in sorted(relationships, key=self._relationship_order)
+            ]
+            return keys[0] if len(keys) == 1 else f"({' or '.join(keys)})"
+
+        if self._partition_is_the_key(entity, relationships):
+            return f"where {rows(entity.table)}"
+        assert entity.id is not None
+        entity_id = quote_if_bare(entity.id.name)
+        return (
+            f"where {entity.table}.{entity_id} in (select _rows.{entity_id} "
+            f"from {entity.table} _rows where {rows('_rows')})"
+        )
+
     def _cohort_where(self, target: Entity) -> str:
         """The paired-cohort predicate for ``target``'s base read, or ``""``.
 
-        Only the plan's target is paired, and only when the config names the
-        column (issue #10); every other entity, and every config without the
-        block, gets the empty string and renders exactly as before. So does a
-        plan that reads the population: it is filtered after the transform
-        instead (:meth:`_cohort_post_filter`).
+        The plan's target is paired when the config names the column (issue
+        #10), and so is every child in :attr:`_narrowed`. Every other entity,
+        and every config without the block, gets the empty string and renders
+        exactly as before. So does a plan that reads the population: it is
+        filtered after the transform instead (:meth:`_cohort_post_filter`).
         """
+        if target.alias in self._narrowed:
+            return self._child_cohort_where(target, self._narrowed[target.alias])
         if (
             self.cohort_id_column is None
             or self._target is None

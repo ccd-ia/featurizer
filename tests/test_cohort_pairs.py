@@ -186,11 +186,13 @@ def test_the_predicate_sits_in_the_targets_base_read(tmp_path) -> None:
     # After the base table and after its joins: a WHERE cannot precede them.
     assert synth.index("from customers") < synth.index("left join")
     assert synth.index("left join") < synth.index(predicate)
-    assert query.count("_cohort.as_of_date = aod.as_of_date") == 1
     assert "select * from customers_transform\n" in query
-    # The child is not paired: it keeps its causal cut and gains nothing.
+    # Once in the target's read and once in the child's: the target is the only
+    # reader of ``orders``, so its read is cut to the cohort's rows as well
+    # (the #10 follow-up, ``tests/test_cohort_child_reads.py``).
+    assert query.count("_cohort.as_of_date = aod.as_of_date") == 2
     child = query[: query.index("customers_synth as (")]
-    assert "_cohort" not in child
+    assert child.count("_cohort.as_of_date = aod.as_of_date") == 1
 
 
 def test_the_id_column_is_quoted_byte_for_byte(tmp_path) -> None:
