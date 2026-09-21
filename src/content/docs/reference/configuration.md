@@ -193,7 +193,16 @@ relationship if an as-of lookup is what you meant.
 
 `child_timestamp` names the column on the **lookup (parent)** entity to order
 and bound by, for when that differs from the entity's declared `temporal_ix`.
-The name is historical; the key is frozen under the 1.0 API.
+The name is historical; the key is frozen under the 1.0 API. The column does
+not have to be declared as a variable of the lookup entity; featurizer carries
+it for the join.
+
+**What a lookup transfers.** The looked-up row's variables, and nothing else:
+its id, keys and temporal index stay behind. A parent of the receiving entity
+can aggregate the transferred values, and an interval on such an aggregation
+is cut on the *receiving* entity's `temporal_ix` — `MAX(events.level|interval=P90D)`
+is the maximum over the events of the last 90 days of the level in force at
+each event.
 
 **Windows over a transferred value walk the target's timeline.** A window
 transformer (`lag_*`, `rolling_*`, `cum_*`, `ema_*`, …) applied to a feature

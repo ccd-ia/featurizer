@@ -8,9 +8,9 @@ reads: the target itself (a later peer), the right table of a spatial
 relationship, the edge table, the neighbour-state entity, and the lookup's
 source.
 
-Two configs, because a child that receives an as-of lookup cannot be aggregated
-under an interval yet (issue #48): the passes run with an interval, the lookup
-without.
+Two configs: the three passes hang off the target, the lookup off a child that
+the target then aggregates (under an interval and ``count`` too, since issue
+#48).
 """
 
 from __future__ import annotations
@@ -107,8 +107,8 @@ def _lookup_config() -> dict:
     return {
         "target": "series",
         "max_depth": 3,
-        "intervals": [],
-        "aggregations": ["max"],
+        "intervals": ["P90D"],
+        "aggregations": ["max", "count"],
         "transformations": ["identity"],
         "entities": [
             {"alias": "series", "table": "series", "id": "series_id"},
@@ -248,3 +248,23 @@ def test_a_row_after_the_as_of_date_moves_no_planner_pass(
         if with_future[key][column] != value
     ]
     assert not moved, f"{len(moved)} cells moved, e.g. {moved[:3]}"
+
+
+def test_an_interval_over_a_looked_up_value_is_cut_on_the_receiving_rows(pg_conn):
+    """Issue #48. ``MAX(events.level|interval=P90D)`` is the maximum, over the
+    EVENTS of the last 90 days, of the rate in force at each event. The filter
+    used to read the rate's own date (``rate_ts``), a column the events never
+    carried; had it existed, it would also have been the wrong window.
+
+    Series 1, zone 7: events on 03-10 (rate 0.5 in force) and 05-20 (rate 0.7).
+    As-of 06-01 both are inside 90 days; as-of 08-01 only the second is.
+    """
+    matrix = _matrix(pg_conn, _lookup_config(), future_rows=True)
+    june = matrix[(AS_OF[0], 1)]
+    august = matrix[(AS_OF[1], 1)]
+    assert june["MAX(events.level)"] == 0.7
+    assert june["MAX(events.level|interval=P90D)"] == 0.7
+    assert june["COUNT(events.event_id|interval=P90D)"] == 2
+    assert august["COUNT(events.event_id|interval=P90D)"] == 1
+    assert august["MAX(events.level|interval=P90D)"] == 0.7
+    assert august["MAX(events.x|interval=P90D)"] == 4.0

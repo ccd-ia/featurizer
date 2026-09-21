@@ -18,7 +18,10 @@ This module defines the boundary *once*:
   interval windows,
 * :func:`cohort_predicate` — the optional cut that pairs each as-of date with
   its own entities, and :func:`as_of_dates_source`, the relation ``aod``
-  ranges over (issue #10).
+  ranges over (issue #10),
+* :func:`use_timeline` / :func:`current_timeline` — which entity's temporal
+  index an aggregation's interval filter and causal bound are written on
+  (issue #48).
 
 Mode plumbing without circular imports
 --------------------------------------
@@ -39,7 +42,7 @@ from __future__ import annotations
 
 import contextlib
 from contextvars import ContextVar
-from typing import Iterator, Literal
+from typing import Iterator, Literal, Optional
 
 # ``inclusive`` keeps the pre-existing behaviour: an event dated exactly on the
 # as_of_date is knowable. ``exclusive`` treats such an event as not-yet-knowable
@@ -61,6 +64,36 @@ _RANGE_BOUND: dict[AsOfBoundary, str] = {"inclusive": "[]", "exclusive": "[)"}
 _active_boundary: ContextVar[AsOfBoundary] = ContextVar(
     "featurizer_as_of_boundary", default=DEFAULT_BOUNDARY
 )
+
+
+# The temporal index of the entity being AGGREGATED, already delimited for SQL.
+# An aggregation cuts its rows on a timeline, and that is the timeline of the
+# rows it reads. For a native feature the feature's own entity has it. For a
+# feature a direct or as-of transfer brought in it does not: the feature still
+# belongs to the lookup's source, whose temporal index the receiving entity's
+# transform never carried, and whose dates are not the rows' dates anyway. The
+# transfer collapsed the source's history to one value per receiving row, so
+# the only timeline left to cut on is the receiver's (the same reasoning as
+# issue #21 for a window's ORDER BY). None outside a planner pass, where the
+# primitives fall back to the feature's own entity, as they always did.
+_active_timeline: ContextVar[Optional[str]] = ContextVar(
+    "featurizer_aggregation_timeline", default=None
+)
+
+
+def current_timeline() -> Optional[str]:
+    """The delimited temporal index of the entity being aggregated, or None."""
+    return _active_timeline.get()
+
+
+@contextlib.contextmanager
+def use_timeline(temporal_ix: Optional[str]) -> Iterator[None]:
+    """Bind the aggregated entity's temporal index for the duration of the block."""
+    token = _active_timeline.set(temporal_ix)
+    try:
+        yield
+    finally:
+        _active_timeline.reset(token)
 
 
 def current_boundary() -> AsOfBoundary:
