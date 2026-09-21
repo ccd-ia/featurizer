@@ -26,7 +26,7 @@ user-invocable: true
      snapshots of the BODY (from the H1 down) live in ~/.claude/skills/ and in
      the claude-tips skills catalog; they keep their own frontmatter. -->
 
-# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.2.0
+# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.3.0
 
 Featurizer implements Deep Feature Synthesis for relational PostgreSQL data with
 first-class temporal semantics. You declare an entity graph once; it traverses
@@ -107,9 +107,13 @@ entities:
     table: semantic.measurements_view
     temporal_ix: measured_at
     variables:
-      peso:
-        type: numeric
-        intervals: [P1D, P3D, P1W]   # per-variable windows override the global
+      peso: { type: numeric }
+  - alias: care_plans
+    id: care_plan
+    table: semantic.care_plans
+    temporal_ix: started_at
+    variables:
+      risk: { type: numeric }
 
 relationships:
   - parent: { entity: patients,   key: patient }   # one side
@@ -144,7 +148,13 @@ relationships:
    NULL/out-of-vocabulary → all-zero row); `identifier` → loudly excluded from
    the output (names, license numbers). One-hot columns are named
    `"<entity>.<col>=<value>"`. See `examples/05-categoricals-output/config.yaml`.
-6. **Per-variable `intervals`** override the global `intervals` for that column.
+6. **A key nothing reads is an error** (1.3.0), at the top level, on a
+   relationship and on a variable, with the valid keys as the suggestion. A
+   variable accepts `type`, `predicates`, `role`, `vocabulary` and nothing else:
+   per-variable `intervals:` was documented before 1.3.0 and never implemented,
+   and `whitelist:` / `blacklist:` never existed. Windows are the top-level
+   `intervals`; every aggregation also emits its whole-history column, so an
+   aggregation yields `intervals + 1` columns per child column.
 7. **Parallel relationships need `name:`** (v0.5.0). Two relationships between
    the same entity pair (orders as buyer AND as seller) must each declare a
    distinct `name:` — validation errors otherwise (before v0.5.0 the second leg
@@ -155,6 +165,16 @@ relationships:
    the engine references each side's own column.
 8. **`as_of_boundary`** (top-level, optional): `inclusive` (default — an event
    dated exactly on the as-of date is knowable, `<=`) or `exclusive` (`<`).
+   **`as_of_dates: {id_column: <name>}`** (top-level, optional, 1.3.0) declares
+   that YOUR `as_of_dates` table holds `(as_of_date, <target id>)` pairs: the
+   matrix then has one row per pair instead of every target row under every
+   date, and a child that only the target aggregates is read for the date's
+   cohort too. Use it when each date has its own entities (a day's arrivals, the
+   games played on a date); leave it out for the standard shape, where every
+   entity is scored at every date. Values equal the dense run's on the pairs.
+   **A `temporal_ix` on the TARGET is a cut, not a label** (1.3.0, ADR-0017): a
+   target row dated after an as-of date is not emitted under it. For every
+   target row under every date, leave `temporal_ix` off the target.
 9. **Column names longer than 63 bytes are hash-truncated** to
    `<head 54>~<8 hex>` (PostgreSQL's identifier limit; ADR-0007, frozen). Nested
    features truncate routinely — on the sample config 1,217 of 2,104 columns
@@ -271,8 +291,13 @@ cardiac = f.columns_matching("*frecuencia_cardiaca*")
 - **Performance is handled for you** (v0.6–0.8): set-based pre-aggregation
   replaced correlated subqueries, the executor `ANALYZE`s `as_of_dates` and
   applies planner tuning automatically, and wide configs shard by lineage
-  with a window-function budget. If a run is slow, `EXPLAIN` first — do not
-  hand-shard.
+  with a window-function budget. Since 1.3.0 `to_dataframe` / `to_arrow` /
+  `to_parquet` / `to_tables` also run their statements with `jit = off` and
+  restore your value afterwards, on your `connection=` too: PostgreSQL's JIT
+  compiles every expression of a wide target list before it reads a row
+  (measured 59 s against 7.5 s on a 1,252-feature config). If you execute
+  `f.query` / `f.query_groups` yourself, run `set local jit = off` in the same
+  transaction. If a run is slow, `EXPLAIN` first — do not hand-shard.
 
 - **Validate → read SQL → execute.** Never run `.to_dataframe()` against a large
   DB before reading `.query` once — depth/interval mistakes are obvious in the SQL
@@ -290,6 +315,12 @@ Point-in-time correctness is *why* Featurizer exists over a naive join. Guard it
   (nearest, within `grace`) parent row — verify, don't assume.
 - The matrix is `(as_of_date, <entity_id>)`-indexed. **NULLs are signal**
   (no events in window), not errors — do not blanket-impute upstream.
+- Since 1.3.0 every entity with a `temporal_ix` is cut on the as-of date where
+  it is READ, the target included (ADR-0016, ADR-0017), so no window can see an
+  unknowable row whatever its frame. Before that, `percent_rank`, `ntile`,
+  `last`, `cusum`, `cross_entity_zscore` and `cross_entity_percentile` read the
+  child's later rows: a model trained on one of them with an engine older than
+  1.3.0 has to be retrained.
 
 ## Stability & support (v1.0+)
 
@@ -299,6 +330,10 @@ Point-in-time correctness is *why* Featurizer exists over a naive join. Guard it
   contract (including 63-byte capping), the opt-in imputation contract, and
   the φ-bridge contract. Breaking any of these needs a major version and a
   ≥-one-minor deprecation cycle (loguru warning first).
+- **A point-in-time leak fix is not a breaking change** (ADR-0016, ADR-0017):
+  a value, or a row, that depended on data after the as-of date was never part
+  of the contract, so its fix ships in a minor and the CHANGELOG names every
+  primitive that moves.
 - **Not frozen:** planner/renderer internals, CTE names, SQL text, module
   layout. Consumer code that asserts on CTE names or SQL fragments is
   asserting on internals — key off the manifest and the output columns.
@@ -342,6 +377,11 @@ high-redundancy, low-importance features before training.
   `f.columns_matching(...)`.
 - ❌ Writing `aggregations: []` on an engine older than 1.0.1 expecting "none" —
   it applied the defaults. Pin ≥ 1.0.1 or spell the layer explicitly.
+- ❌ Declaring `temporal_ix` on the target and expecting every row under every
+  date — since 1.3.0 a row appears from the first as-of date on or after its
+  own. No `temporal_ix` on the target = the dense grid.
+- ❌ Filtering a dense matrix down to each date's own entities after the fact —
+  declare `as_of_dates: {id_column}` and the rows are never computed.
 - ❌ Rebuilding cohorts/labels/splits here — that's `pg-ml-pipeline`'s job.
 - ❌ Imputing NULLs at synthesis time — they carry "no activity" signal.
 
@@ -373,7 +413,7 @@ Docs hub: https://ccd-ia.github.io/featurizer/ (configuration reference,
 primitives explorer, bridge cookbook, FAQ, ADRs). Distribution is GitHub
 releases on `ccd-ia/featurizer` (no PyPI, deliberate); each release also
 attaches a `docs-site-vX.Y.Z.tar.gz` snapshot. Pin
-`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.2.0`
+`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.3.0`
 (extras: `parquet` for Arrow/Parquet output, `bridge` for φ-bridges, `viz` for
 `FeaturizerViz`, `tui` for the terminal cockpit — Python 3.12+ only, empty on
 3.10/3.11).

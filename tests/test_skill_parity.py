@@ -128,3 +128,26 @@ def test_skill_documents_the_post_0_9_surface(skill_text):
         "ADR-0015",
     ):
         assert needle in skill_text, f"skill does not mention {needle!r}"
+
+
+def test_the_skills_example_config_validates(skill_text, tmp_path):
+    """The skill's job is to get a config right, so its own example has to be one.
+
+    It was not, from the day #20 made a key nothing reads an error until the
+    1.3.0 release commit: the example carried a per-variable ``intervals:``, which
+    was documented and never implemented. An agent that copied it got a
+    validation error from the first line it was told to trust.
+    """
+    from featurizer.validation import validate_config
+
+    configs = [
+        block
+        for block in re.findall(r"```yaml\n(.*?)```", skill_text, flags=re.DOTALL)
+        if "target:" in block and "entities:" in block
+    ]
+    assert configs, "the skill no longer carries a complete example config"
+    for index, config in enumerate(configs):
+        path = tmp_path / f"skill_example_{index}.yaml"
+        path.write_text(config, encoding="utf-8")
+        result = validate_config(str(path))
+        assert result.is_valid, [str(error) for error in result.errors]
