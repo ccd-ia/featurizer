@@ -159,6 +159,15 @@ class ERGraph:
             self.entities[r.parent.alias].add_key(
                 Key(name=r.parent_key, entity=r.parent)
             )
+            # ``child_timestamp`` names a column of the LOOKUP (parent) side for
+            # the as-of comparison to read, so the parent's transform has to
+            # project it, declared as a variable or not. Registered as a key,
+            # which is how an entity carries a column that is not a feature
+            # (issue #48: it validated and did not run).
+            if r.temporal_child_field:
+                self.entities[r.parent.alias].add_key(
+                    Key(name=r.temporal_child_field, entity=r.parent)
+                )
 
         # Edge-table entities contribute graph features to their node entity.
         self.edges: List[EdgeSpec] = [

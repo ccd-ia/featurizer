@@ -27,7 +27,7 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 (e.g., "sum of orders in the last 7 days").
 """
 
-from ..boundary import causal_predicate, daterange_window
+from ..boundary import causal_predicate, current_timeline, daterange_window
 from .abstractions import Feature, SpatialIx, pg_identifier, quote_if_bare
 from .preagg import PreAggSpec, causal_where
 from .utils import register_aggregation
@@ -61,8 +61,12 @@ def _tix(feature: Feature) -> str:
     and wrapped directly by the ``index``-typed aggregations (``recency``,
     ``gap_mean``, …). Declared in the config like any other column, so it gets
     the same treatment as :func:`_col`.
+
+    The timeline is the AGGREGATED entity's when the planner has bound one
+    (``boundary.use_timeline``), which differs from ``feature.entity`` for a
+    feature a transfer brought in (issue #48).
     """
-    return quote_if_bare(feature.entity.temporal_ix.name)
+    return current_timeline() or quote_if_bare(feature.entity.temporal_ix.name)
 
 
 def _epoch_day_span(hi: str, lo: str) -> str:

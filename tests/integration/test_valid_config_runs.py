@@ -124,14 +124,17 @@ def _without_temporal_index(alias: str) -> dict:
     return config
 
 
-def _with_lookup(*, on: str, **changes) -> dict:
+def _with_lookup(*, on: str, child_timestamp: str | None = None, **changes) -> dict:
     """``rates`` looked up as-of. ``on`` is the entity that receives it."""
     config = _shape(**changes)
+    temporal = {"mode": "as_of"}
+    if child_timestamp:
+        temporal["child_timestamp"] = child_timestamp
     config["relationships"].append(
         {
             "parent": {"entity": "rates", "key": "zone_id"},
             "child": {"entity": on, "key": "zone_id"},
-            "temporal": {"mode": "as_of"},
+            "temporal": temporal,
         }
     )
     return config
@@ -142,12 +145,6 @@ def _target_is_the_child() -> dict:
     config = _shape(target="events")
     return config
 
-
-LOOKUP_ON_AN_AGGREGATED_CHILD = pytest.mark.xfail(
-    reason="issue #48: a child that receives an as-of lookup cannot be aggregated "
-    "under an interval or an index-typed aggregation",
-    strict=True,
-)
 
 SHAPES = [
     pytest.param(_shape(), id="the-base-shape"),
@@ -179,10 +176,22 @@ SHAPES = [
         _with_lookup(on="events", intervals=[], aggregations=["max"]),
         id="lookup-on-a-child-whole-history-max",
     ),
+    # Issue #48: these three did not run. The lookup's index columns were
+    # listed among the child's features and never transferred (``count``), the
+    # interval filter read the SOURCE's temporal index, and a child_timestamp
+    # the lookup entity does not declare was not carried.
+    pytest.param(_with_lookup(on="events"), id="lookup-on-a-child-interval-and-count"),
     pytest.param(
-        _with_lookup(on="events"),
-        id="lookup-on-a-child-interval-and-count",
-        marks=LOOKUP_ON_AN_AGGREGATED_CHILD,
+        {
+            k: v
+            for k, v in _with_lookup(on="events", max_depth=3).items()
+            if k != "aggregations"
+        },
+        id="lookup-on-a-child-curated-default-aggregations",
+    ),
+    pytest.param(
+        _with_lookup(on="events", child_timestamp="published"),
+        id="lookup-with-an-undeclared-child_timestamp",
     ),
     pytest.param(
         _with_lookup(on="events", target="events"),
@@ -233,9 +242,13 @@ def _seed(conn) -> None:
             ("rate_id", "int"),
             ("zone_id", "int"),
             ("rate_ts", "date"),
+            ("published", "date"),
             ("level", "double precision"),
         ],
-        [(1, 7, "2024-01-01", 0.5), (2, 8, "2024-02-01", 0.9)],
+        [
+            (1, 7, "2024-01-01", "2024-01-03", 0.5),
+            (2, 8, "2024-02-01", "2024-02-03", 0.9),
+        ],
     )
     create_temp_table(
         conn,

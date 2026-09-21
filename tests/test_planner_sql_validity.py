@@ -466,3 +466,40 @@ def test_the_target_projects_only_what_was_selected() -> None:
     names = {c.name for c in plan.cte_specs[f"{target}_transform"].columns}
     assert names, "the target transform projects nothing"
     assert all(name.startswith('"ABS(') for name in names), sorted(names)
+
+
+def test_a_child_that_receives_a_lookup_projects_everything_its_parent_reads() -> None:
+    """Issue #48: the lookup's index columns (``rate_id``) were listed among the
+    receiving entity's features and never transferred, so ``count`` at the
+    grandparent wrapped a column the child's transform did not have."""
+    config = _closure_config(["identity"])
+    config["aggregations"] = ["max", "count"]
+    config["entities"].append(
+        {
+            "alias": "rates",
+            "table": "rates",
+            "id": "rate_id",
+            "temporal_ix": "rate_ts",
+            "variables": {"level": {"type": "numeric"}},
+        }
+    )
+    config["relationships"].append(
+        {
+            "parent": {"entity": "rates", "key": "zone_id"},
+            "child": {"entity": "orders", "key": "zone_id"},
+            "temporal": {"mode": "as_of"},
+        }
+    )
+    planner, plan = _planner(config)
+    orders = plan.cte_specs["orders_transform"]
+    carried = {c.name for c in orders.columns} | {
+        key.rsplit(".", 1)[-1].strip('"') for key in orders.key_columns
+    }
+    promised = {
+        feature.name.strip('"')
+        for feature in planner._built_features["orders"]
+        if feature.type != "key"
+    }
+    missing = {name for name in promised if name not in {c.strip('"') for c in carried}}
+    assert not missing, f"orders promises {sorted(missing)} and does not carry them"
+    assert "level" in promised

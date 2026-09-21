@@ -30,6 +30,7 @@ from .boundary import (
     cohort_predicate,
     daterange_window,
     use_boundary,
+    use_timeline,
 )
 from .categoricals import (
     ROLE_CATEGORICAL,
@@ -1340,6 +1341,19 @@ class FeaturePlanner:
     def _build_aggregations(
         self, target: Entity, source: Entity, relationship: Relationship
     ) -> None:
+        # Every interval filter, causal bound and ORDER BY the aggregators write
+        # below is on the timeline of the rows they read: ``source``'s. Without
+        # this they took it from each feature's own entity, which for a
+        # transferred feature is the lookup's source (issue #48).
+        timeline = (
+            quote_if_bare(source.temporal_ix.name) if source.temporal_ix else None
+        )
+        with use_timeline(timeline):
+            self._build_aggregations_on(target, source, relationship)
+
+    def _build_aggregations_on(
+        self, target: Entity, source: Entity, relationship: Relationship
+    ) -> None:
         logger.debug("Processing backward relationship {}", relationship)
         aggregations: List[Feature] = []
 
@@ -1448,7 +1462,14 @@ class FeaturePlanner:
             names=[f.name for f in directs],
         )
 
-        self._features[target.alias].update(directs)
+        # The receiving entity gains what the pull TRANSFERS, and both pulls
+        # leave the source's ``index`` / ``key`` columns behind. Listing those
+        # as features of the receiver promised its parent a column the
+        # receiver's transform never had: ``count( "rate_id" )`` (issue #48).
+        # Transferring them is a feature of its own (issue #60).
+        self._features[target.alias].update(
+            feature for feature in directs if feature.type not in {"index", "key"}
+        )
         if getattr(relationship, "temporal_mode", None) == "as_of":
             self._build_direct_asof(target, source, relationship, directs)
         else:
