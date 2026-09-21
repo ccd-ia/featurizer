@@ -65,6 +65,7 @@
         order by care_plans_transform."effective_at" desc
         limit 1
     ) as care_plans_asof_for_patients on true  left join  visits_aggs_for_patients on visits_aggs_for_patients."patient_id" = analytics.patients."patient_id" 
+        where analytics.patients."registered_at" <= aod.as_of_date
         )
         ,
         -- transform patients
