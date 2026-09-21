@@ -40,6 +40,9 @@ Such a change must:
 3. name, in the CHANGELOG entry of the release, every primitive whose values
    move.
 
+[ADR-0017](0017-an-unknowable-row-is-not-emitted.md) later extended this from
+a value to a row: an unknowable *row* is not emitted either.
+
 Everything else in ADR-0015 stands. A value change for any other reason — a
 different definition, a different default, a different NULL rule — is still
 breaking.

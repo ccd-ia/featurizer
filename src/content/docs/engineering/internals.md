@@ -46,7 +46,10 @@ looks backwards, and not for one that spans its partition: `percent_rank()`
 divides by the partition's size, so a row the aggregation was about to drop
 had already shaped the value it kept
 ([ADR-0016](/featurizer/engineering/adr/0016-leak-fixes-are-not-breaking/)).
-The target's own read carries no guard — its rows are the cohort.
+The target's own read carries the guard too when the target declares a
+`temporal_ix`: a row that does not exist yet at a date is not emitted under it
+([ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/)).
+A target without one is read whole.
 
 ## Joins: three kinds, one contract
 

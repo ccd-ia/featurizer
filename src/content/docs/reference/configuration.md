@@ -97,8 +97,15 @@ entities:
 ```
 
 - **`temporal_ix`** is what makes features point-in-time correct: interval
-  aggregations and as-of joins filter on it. An entity without one
-  contributes only static (non-windowed) features.
+  aggregations and as-of joins filter on it, and an entity's rows dated after
+  an as-of date are not read for that date. An entity without one contributes
+  only static (non-windowed) features.
+- **On the target, `temporal_ix` also decides which rows a date returns.** A
+  target row dated after an as-of date is not emitted under it, so a customer
+  who signs up in August has no row for an as-of date in January, and an as-of
+  date earlier than every row returns nothing. Releases up to 1.2 emitted those
+  rows. For every target row under every date, leave `temporal_ix` off the
+  target; to choose among the rows that exist, use `as_of_dates: {id_column}`.
 - **Variable `type`**: `numeric`, `categorical`, `text`, `boolean`, `date`,
   `timestamp`, or `index`. Types decide which aggregations/transformers
   apply.

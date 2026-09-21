@@ -72,6 +72,10 @@ def _bare_word_in(word: str, text: str) -> bool:
     )
 
 
+# Target aliases whose as-of cut has been announced in this process (ADR-0017).
+_ANNOUNCED_TARGET_CUTS: Set[str] = set()
+
+
 @dataclass
 class ColumnSpec:
     """One projected column of a shardable CTE.
@@ -285,6 +289,7 @@ class FeaturePlanner:
         self._materialization_keys = {}
 
         logger.debug("Starting feature build for target {}", self._target.alias)
+        self._announce_target_cut(self._target)
         with use_boundary(self.boundary):
             self._build_features(self._target)
 
@@ -1997,6 +2002,39 @@ class FeaturePlanner:
             prefix="where",
         ).strip()
 
+    @staticmethod
+    def _announce_target_cut(target: Entity) -> None:
+        """Say once per process that a target with a temporal index is cut.
+
+        Until ADR-0017 every target row was emitted under every as-of date. A
+        config whose target declares a temporal index now gets fewer rows for
+        the earlier dates, and a date before the first row gets none. That is
+        the fix, and it must not arrive unannounced.
+        """
+        if target.temporal_ix is None or target.alias in _ANNOUNCED_TARGET_CUTS:
+            return
+        _ANNOUNCED_TARGET_CUTS.add(target.alias)
+        logger.warning(
+            "Target '{}' declares temporal_ix '{}': a row dated after an as-of "
+            "date is not emitted under that date (ADR-0017). Releases up to 1.2 "
+            "emitted it. "
+            "For every target row under every date, do not declare temporal_ix "
+            "on the target.",
+            target.alias,
+            target.temporal_ix.name,
+        )
+
+    def _read_where(self, entity: Entity) -> str:
+        """The ``where`` of ``entity``'s base read: the paired-cohort predicate
+        (the target only), the causal cut (any entity with a temporal index),
+        both joined by ``and``, or ``""``."""
+        predicates = [
+            clause[len("where ") :]
+            for clause in (self._cohort_where(entity), self._causal_where(entity))
+            if clause
+        ]
+        return f"where {' and '.join(predicates)}" if predicates else ""
+
     def _causal_where(self, entity: Entity) -> str:
         """``where <table>.<temporal_ix> <= aod.as_of_date`` for a non-target read.
 
@@ -2009,15 +2047,18 @@ class FeaturePlanner:
         (issue #27). Cutting where the entity is *read* closes that for every
         window there is or will be, and costs a backward-only one nothing.
 
-        Not the target: its rows are the cohort, and which of them a date emits
-        is the caller's decision (``as_of_dates.id_column``), not a causal cut.
+        The target too, when it has a temporal index (issue #49, ADR-0017). #27
+        left it out on the ground that its rows are the cohort. For an
+        event-like target that kept the leak: a visit dated after the as-of
+        date was emitted under it, and it moved ``cross_entity_zscore`` on
+        every knowable row. A row that does not exist yet at a date is not part
+        of that date's matrix; which of the rows that DO exist a date emits is
+        still the caller's decision (``as_of_dates.id_column``).
+
         Not an entity without a temporal index: there is no column to cut on.
+        That is the one-row-per-entity target, which therefore does not move.
         """
-        if (
-            self._target is None
-            or entity.alias == self._target.alias
-            or entity.temporal_ix is None
-        ):
+        if entity.temporal_ix is None:
             return ""
         return causal_predicate(
             f"{entity.table}.{quote_if_bare(entity.temporal_ix.name)}",
@@ -2082,9 +2123,9 @@ class FeaturePlanner:
         # else. Filtering the lateral's output instead would return the same
         # rows and still compute every discarded one. ``where_block`` is empty
         # for the default dense cohort, which keeps that SQL byte-identical.
-        # Every OTHER entity is cut on the as-of date instead (issue #27); the
-        # two never meet, one is the target's and one is everybody else's.
-        where = self._cohort_where(target) or self._causal_where(target)
+        # Every entity with a temporal index is cut on the as-of date (issues
+        # #27 and #49). On a paired target the two predicates meet.
+        where = self._read_where(target)
         where_block = f"        {where}\n" if where else ""
 
         cte_query = f"""

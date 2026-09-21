@@ -252,6 +252,19 @@ The rule is in the
 A column created by unquoted DDL needs none of this: `totalAmount` in the
 config matches the stored `totalamount`.
 
+### My matrix has fewer rows than entities × dates
+
+Your target declares a `temporal_ix`, and some of its rows are dated after
+some of your as-of dates. A row that does not exist yet at a date is not
+emitted under it: a store that opens in October has no row for an as-of date in
+July. Releases up to 1.2 emitted such rows, with empty aggregates. The planner
+logs a warning that names the target when this applies.
+
+If you want every target row under every date, leave `temporal_ix` off the
+target, or left-join the matrix onto your own entities × dates table. The
+reasons are in
+[ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/).
+
 ### `row is too big: size …, maximum size 8160` — but only with `to_tables`
 
 A PostgreSQL heap *row* must fit one 8 KiB page (~8160 bytes). Fetching a
