@@ -38,6 +38,15 @@ time, from ``7cd6326`` plus that fix (``pruned_rejoin_by``). Only
 (three in ``ddl``, one in ``groups``), each the same line with an explicit
 select list where ``select *`` was. ``n_groups`` did not change.
 
+Issue #49 then cut the target's read on the as-of date too, when the target
+declares a temporal index (ADR-0017), so they were captured a sixth time, from
+``da99fd4`` plus that fix (``target_bounded_by``). Six of the nine cases have
+such a target. Read as text against ``da99fd4``: each moved part gains exactly
+one line, ``where <table>."<temporal_ix>" <= aod.as_of_date`` on the target's
+synth, and nothing is removed. ``ddl`` and ``n_groups`` did not change. Unlike
+the earlier moves this one changes what a config returns, which is the point of
+the fix; the baseline only records that nothing ELSE in the SQL moved.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """
