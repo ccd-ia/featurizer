@@ -31,6 +31,7 @@ import pytest
 
 import tests.integration.test_all_aggregators_execution as aggregators_execute
 import tests.integration.test_asof_bounded_child_read as transformer_future_row
+import tests.integration.test_cohort_child_read_sweeps as narrowed_child
 import tests.integration.test_future_row_aggregations as aggregation_future_row
 import tests.integration.test_transformer_selection as transformer_selection
 import tests.test_aggregation_quoting as aggregation_quoting
@@ -64,6 +65,9 @@ TRANSFORMER_SWEEPS = {
     "runs selected alone, without identity": lambda: _first_values(
         transformer_selection._cases()
     ),
+    "a child narrowed by a paired cohort gives the dense value": lambda: _first_values(
+        narrowed_child._sweep_cases()
+    ),
 }
 
 AGGREGATION_SWEEPS = {
@@ -74,6 +78,11 @@ AGGREGATION_SWEEPS = {
     ),
     "a row after the as-of date moves nothing": lambda: _parametrized_over(
         aggregation_future_row.test_a_row_after_the_as_of_date_moves_no_aggregation
+    ),
+    "a child narrowed by a paired cohort gives the dense value": lambda: (
+        _parametrized_over(
+            narrowed_child.test_every_aggregation_over_a_narrowed_child_gives_the_dense_value
+        )
     ),
 }
 

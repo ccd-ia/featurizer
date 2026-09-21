@@ -184,13 +184,22 @@ def cohort_predicate(target_id: str, id_column: str, *, prefix: str = "") -> str
         id_column: The already-quoted column of ``as_of_dates`` holding the id.
         prefix: Optional leading keyword, as in :func:`causal_predicate`.
     """
-    predicate = (
-        f"{target_id} in (select _cohort.{id_column} from {AS_OF_DATES_TABLE} "
-        f"_cohort where _cohort.as_of_date = aod.as_of_date)"
-    )
+    predicate = f"{target_id} in {cohort_ids(id_column)}"
     if prefix:
         return f" {prefix} {predicate}"
     return predicate
+
+
+def cohort_ids(id_column: str) -> str:
+    """The target ids paired with the date ``aod`` is on, as a subquery.
+
+    One spelling for the target's own cut (:func:`cohort_predicate`) and for the
+    cut a narrowed child derives from it.
+    """
+    return (
+        f"(select _cohort.{id_column} from {AS_OF_DATES_TABLE} "
+        f"_cohort where _cohort.as_of_date = aod.as_of_date)"
+    )
 
 
 def as_of_dates_source(*, paired: bool) -> str:

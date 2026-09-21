@@ -70,7 +70,7 @@ connection. A wrong name surfaces when the query runs, as PostgreSQL's
 
 ## What it renders
 
-Two things change, and only when the block is present.
+Three things change, and only when the block is present.
 
 `aod`, the alias featurizer computes every feature against, ranges over the
 *distinct* dates of the table, because a pair table repeats each date:
@@ -96,12 +96,64 @@ customers_synth as (
 The cut is in the read, not on the result, so the target's transform and
 everything after it run on the cohort's rows only.
 
+A child that only the target aggregates is read for the cohort's rows too, so a
+date no longer aggregates the history of every entity to keep a twentieth of
+it:
+
+```sql
+orders_synth as (
+  select …
+  from orders
+  where orders."order_id" in (
+          select _rows."order_id" from orders _rows
+          where _rows."customer_id" in (
+            select _cohort."cohort_id" from as_of_dates _cohort
+            where _cohort.as_of_date = aod.as_of_date))
+    and orders."ordered_at" <= aod.as_of_date
+)
+```
+
+The shape of that predicate follows what the child's rows are used for:
+
+- **Whole window partitions.** A window transformer partitions by the child's
+  `id`. Nothing says an id stays under one customer, so the rows kept are every
+  row whose id has a row in the cohort, as above. When the child's `id` *is* the
+  join key, or the child declares no `id` (then it has no window), the cut is
+  the plain `orders."customer_id" in (…)`.
+- **A join on another column of the target** (a request's `community_area`)
+  goes through the target: the keys kept are that column's values over the
+  cohort's rows.
+- **Two relationships to the target** (a game's home team and its away team)
+  keep the rows of either.
+
+## Which children are narrowed
+
+A child is narrowed only when the target's aggregations are the *only* readers
+of its rows. featurizer decides that from the plan it has just built, not from
+the config, because depth and traversal order decide which relationships are
+consumed. So these keep their full read:
+
+- a child that a second parent also aggregates (a region's order count needs
+  the orders of customers the cohort does not name);
+- an entity that another entity looks up, with or without `temporal: as_of`;
+- a grandchild: its reader is the child, not the target;
+- every entity, when a population-level transformer is selected (below).
+
+Peer groups, spatial relationships and graph relationships read base tables in
+CTEs of their own. Narrowing a synth does not reach them.
+
 ## What it guarantees
 
 - **The values equal the dense run's on the declared pairs.** The
   integration tests run both and compare them: through the single-query path,
   through the temp-table path, with peer groups, with a population-level
-  transformer, and once for every registered transformer.
+  transformer, and once for every registered transformer on the target. For the
+  narrowed children they compare twelve graph shapes (each predicate form, a
+  second parent, a looked-up entity, a grandchild, an as-of lookup on the child,
+  a dated target), every registered transformer on a narrowed child in three id
+  shapes, and every registered aggregation over one. A cut on the join key
+  alone fails 37 of the 81 cases in which an id crosses entities; the
+  whole-partition cut fails none.
 - **Without the block nothing changes.** A config that does not declare
   `as_of_dates` renders SQL byte-identical to the SQL it rendered before the key
   existed. The test suite compares SHA-256 digests of the single query, the
@@ -115,22 +167,41 @@ one of the project's live validation databases (22,169 entities, monthly as-of
 dates, each date paired with the entities that had an event in the month before
 it) and checks the two agree on the pairs.
 
-| config | dates | dense rows | paired rows | dense | paired |
-|---|---|---|---|---|---|
-| 147 features | 6 | 133,014 | 7,070 | 8.3 s | 3.0 s |
-| 272 features, 65 aggregations | 2 | 44,338 | 2,184 | 48.6 s | 52.4 s |
+Measured 2026-09-21 on master plus this change, PostgreSQL 16.14, `jit` off (the
+engine turns it off itself since #53):
 
-Both runs returned the same values on the pairs, with no column differing.
+| database | config | dates | dense rows | paired rows | dense | paired |
+|---|---|---|---|---|---|---|
+| dirtyduck | 147 features | 6 | 133,014 | 7,070 | 5.1 s | 0.4 s |
+| dirtyduck | 272 features, 65 aggregations | 2 | 44,338 | 2,184 | 6.8 s | 1.7 s |
+| dirtyduck | 272 features, 65 aggregations | 6 | 133,014 | 7,070 | 21.3 s | 5.0 s |
+| dirtyduck | 1,252 features | 2 | 44,338 | 2,184 | 12.7 s | 2.0 s |
+| donorschoose | 175 features | 6 | 18,000 | 1,086 | 0.9 s | 0.1 s |
+| donorschoose | 1,063 features | 2 | 6,000 | 308 | 14.0 s | 3.5 s |
+| chicago311 | 28 features | 6 | 183,924 | 183,924 | 1.1 s | 1.3 s |
+| chicago311 | 191 features | 2 | 61,308 | 61,308 | 5.1 s | 5.0 s |
 
-The saving comes from the target's side of the query: its base read, its
-transform, and the rows sent back. **The child aggregations are not narrowed.**
-Each date still aggregates the child rows of every entity, as the dense query
-does. A config whose cost is mostly aggregation therefore gains nothing in
-query time: the second row is 8% slower than dense, and an earlier run of the
-same pair of queries was 4% slower. What that config does gain is a matrix 20
-times smaller to fetch, store and join. Pushing the cohort into the child reads
-is a separate piece of work: it is only valid for features that depend on an
-entity's own rows, and that has to be established primitive by primitive.
+chicago311 is the worst case on purpose. Its children are keyed by community
+area and request type, every area has an event every month, so the cohort the
+harness derives is the whole population and the cut removes nothing: no gain,
+and 0.2 s of overhead on the smallest config.
+
+Before the child reads were narrowed, the second row was 7.8 to 8.4 s dense and
+6.4 to 6.7 s paired: the pairing saved the target's side only, and each date
+still aggregated the child rows of all 22,169 entities to keep about 1,100 of
+them.
+An earlier version of this page reported 48.6 s and 52.4 s for that cell. Most
+of each was PostgreSQL's JIT compiling the target list: the same commit, re-run
+on 2026-09-21, takes 31 s with `jit` on and 7.7 s with it off (#53).
+
+**On the values.** The narrow configs agree with the dense run on every pair.
+The wider ones agree on every row whose child timestamps are distinct. On
+dirtyduck 9 of 2,184 rows differ, all of them entities with two inspections on
+one date: an order-dependent aggregation over tied timestamps returns a value
+that depends on the physical order of the rows, in the dense query as well
+(issue #66), and a narrowed read changes that order. donorschoose adds 2 rows
+where `cosinor_amplitude_weekly` divides by rounding noise (issue #67). The
+harness records both counts in its artifact.
 
 ## Population-level transformers
 
@@ -145,8 +216,8 @@ where "customer_id" in (select _cohort."cohort_id" from as_of_dates _cohort
                         where _cohort.as_of_date = aod.as_of_date)
 ```
 
-The values still equal the dense run's. featurizer narrows nothing upstream, so
-the only saving is in the rows returned. A custom transformer that windows across
+The values still equal the dense run's. featurizer narrows nothing upstream,
+no child either, so the only saving is in the rows returned. A custom transformer that windows across
 entities gets the same treatment by setting `population_level = True`.
 
 ## Why not one evaluation per pair
