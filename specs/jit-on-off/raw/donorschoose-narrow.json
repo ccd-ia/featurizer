@@ -1,0 +1,55 @@
+{
+  "dataset": "donorschoose",
+  "variant": "narrow",
+  "case": "jit-on-off",
+  "features": 175,
+  "shards": 1,
+  "featurizer_version": "1.2.0",
+  "commit": "da99fd4",
+  "as_of_date": "2014-01-01",
+  "server": {
+    "server_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+    "jit": "on",
+    "jit_above_cost": "100000",
+    "jit_inline_above_cost": "500000",
+    "jit_optimize_above_cost": "500000",
+    "max_parallel_workers_per_gather": "2",
+    "shared_buffers": "128MB",
+    "work_mem": "4MB",
+    "pg_jit_available": true
+  },
+  "runs": [
+    {
+      "jit": "off",
+      "exec_seconds": 0.19,
+      "rows": 3000,
+      "cols": 177,
+      "digest": "a9d730201b228eab6868d9c8c520de2cdd68a4a5e1b1fc5a7951d73a67da5e26"
+    },
+    {
+      "jit": "on",
+      "exec_seconds": 0.18,
+      "rows": 3000,
+      "cols": 177,
+      "digest": "a9d730201b228eab6868d9c8c520de2cdd68a4a5e1b1fc5a7951d73a67da5e26"
+    },
+    {
+      "jit": "on",
+      "exec_seconds": 0.18,
+      "rows": 3000,
+      "cols": 177,
+      "digest": "a9d730201b228eab6868d9c8c520de2cdd68a4a5e1b1fc5a7951d73a67da5e26"
+    },
+    {
+      "jit": "off",
+      "exec_seconds": 0.18,
+      "rows": 3000,
+      "cols": 177,
+      "digest": "a9d730201b228eab6868d9c8c520de2cdd68a4a5e1b1fc5a7951d73a67da5e26"
+    }
+  ],
+  "jit_on_seconds": 0.18,
+  "jit_off_seconds": 0.18,
+  "values_identical": true,
+  "status": "materialized"
+}
