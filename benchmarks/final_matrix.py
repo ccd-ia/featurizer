@@ -33,6 +33,12 @@ computes against the rows on that diagonal — then runs the same config with
 one on those pairs. Its artifacts go to their own directory,
 ``specs/paired-cohorts/raw/``, so the v1.0.0 record stays what it was.
 
+``--jit-compare`` runs that same single-date cell four times, under ``jit``
+off, on, on, off (issue #53): PostgreSQL compiles every expression of a wide
+target list before it reads a row, and every figure published before
+2026-09-20 was taken with the server default, ``jit = on``. Its artifacts go to
+``specs/jit-on-off/raw/``.
+
 Usage::
 
     uv run python -m benchmarks.final_matrix --dry-run          # counts only, no DB
@@ -40,12 +46,14 @@ Usage::
     uv run python -m benchmarks.final_matrix --db donorschoose --variant wide
     uv run python -m benchmarks.final_matrix                    # the full matrix
     uv run python -m benchmarks.final_matrix --db dirtyduck --variant narrow --dates 6
+    uv run python -m benchmarks.final_matrix --jit-compare       # the matrix, jit off/on
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -61,6 +69,7 @@ DEFAULT_TRIAGE_DIR = Path.home() / "projects" / "triage-pg"
 MULTI_DATE_ARTIFACT_DIR = (
     Path(__file__).resolve().parent.parent / "specs" / "paired-cohorts"
 )
+JIT_ARTIFACT_DIR = Path(__file__).resolve().parent.parent / "specs" / "jit-on-off"
 
 #: dataset -> the triage experiment file its ``feature_config`` comes from.
 DATASETS: Dict[str, str] = {
@@ -213,6 +222,125 @@ def run_cell(
             conn.close()
 
     out = ARTIFACT_DIR / "raw" / f"{dataset}-{variant}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps(record))
+    return record
+
+
+#: Recorded with every JIT cell: what decides whether PostgreSQL compiles a
+#: query, and what else moves a wall-clock between two servers.
+JIT_SERVER_SETTINGS = (
+    "server_version",
+    "jit",
+    "jit_above_cost",
+    "jit_inline_above_cost",
+    "jit_optimize_above_cost",
+    "max_parallel_workers_per_gather",
+    "shared_buffers",
+    "work_mem",
+)
+
+#: The first run reads a cold cache, and it is a jit-off run on purpose: the
+#: penalty lands on the side issue #53 expects to win. ``off`` run 1 minus run 2
+#: is the size of the cache effect; ``on`` run 1 minus run 2 is what is left of it.
+JIT_ORDER = ("off", "on", "on", "off")
+
+
+def _frame_digest(frame) -> str:
+    """A digest of the frame's values that does not depend on row order."""
+    import hashlib
+
+    import numpy as np
+    import pandas as pd
+
+    frame = frame.reset_index()
+    rows = np.zeros(len(frame), dtype="uint64")
+    for _, column in frame.items():  # by position: names may repeat
+        # psycopg returns arrays as lists and json as dicts; neither hashes
+        values = column.astype(str) if column.dtype == object else column
+        hashed = pd.util.hash_pandas_object(values, index=False).to_numpy()
+        rows = rows * np.uint64(1000003) + hashed
+    return hashlib.sha256(np.sort(rows).tobytes()).hexdigest()
+
+
+def run_jit_cell(triage_dir: Path, dataset: str, variant: str) -> Dict[str, Any]:
+    """The single-date cell under ``jit`` off, on, on, off (issue #53).
+
+    One connection, one rolled-back transaction per run, so ``set local jit``
+    and a run's TEMP tables are gone before the next one starts. The cell is
+    :func:`run_cell`'s, at the same as-of date, so a jit-on time here is
+    comparable with the published figures. Every run is recorded; the two
+    summary figures are the best of each setting's two runs.
+    """
+    config = build_variant(load_feature_config(triage_dir, dataset), variant)
+    f = featurizer_for(config)
+    groups = f.query_groups  # forces plan + render for every shard
+
+    record: Dict[str, Any] = {
+        "dataset": dataset,
+        "variant": variant,
+        "case": "jit-on-off",
+        "features": len(f.feature_manifest),
+        "shards": len(groups),
+        "featurizer_version": _version(),
+        "commit": _commit(),
+    }
+
+    conn = connect(triage_dir, dataset)
+    try:
+        as_of = latest_knowledge_date(conn, config)
+        server: Dict[str, Any] = {}
+        with conn.cursor() as cur:
+            for name in JIT_SERVER_SETTINGS:
+                cur.execute(f"show {name}")
+                server[name] = cur.fetchone()[0]
+            cur.execute("select pg_jit_available()")
+            server["pg_jit_available"] = cur.fetchone()[0]
+        conn.rollback()
+
+        runs: List[Dict[str, Any]] = []
+        for jit in JIT_ORDER:
+            with conn.cursor() as cur:
+                cur.execute(f"set local jit = {jit}")
+                cur.execute(
+                    "create temp table as_of_dates (as_of_date date) on commit drop"
+                )
+                cur.execute("insert into as_of_dates values (%s)", (as_of,))
+            t0 = time.perf_counter()
+            frame = f.to_dataframe(connection=conn)
+            exec_s = time.perf_counter() - t0
+            conn.rollback()
+            runs.append(
+                {
+                    "jit": jit,
+                    "exec_seconds": round(exec_s, 2),
+                    "rows": int(len(frame)),
+                    "cols": int(frame.shape[1]),
+                    "digest": _frame_digest(frame),
+                }
+            )
+            del frame  # donorschoose wide is about 1 GB a frame
+        record.update(
+            {
+                "as_of_date": as_of,
+                "server": server,
+                "runs": runs,
+                "jit_on_seconds": min(
+                    r["exec_seconds"] for r in runs if r["jit"] == "on"
+                ),
+                "jit_off_seconds": min(
+                    r["exec_seconds"] for r in runs if r["jit"] == "off"
+                ),
+                "values_identical": len({r["digest"] for r in runs}) == 1,
+                "status": "materialized",
+            }
+        )
+    finally:
+        conn.rollback()
+        conn.close()
+
+    out = JIT_ARTIFACT_DIR / "raw" / f"{dataset}-{variant}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps(record))
@@ -392,6 +520,17 @@ def _version() -> str:
         return "dev"
 
 
+def _commit() -> str:
+    """The checkout's commit: the package version does not move between tags."""
+    return subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=Path(__file__).resolve().parent,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", choices=sorted(DATASETS), help="one dataset only")
@@ -411,18 +550,28 @@ def main() -> None:
         "instead of the single-date cell (issue #10)",
     )
     parser.add_argument(
+        "--jit-compare",
+        action="store_true",
+        help="run the single-date cell under jit off, on, on, off and record "
+        "every run (issue #53)",
+    )
+    parser.add_argument(
         "--triage-dir",
         type=Path,
         default=DEFAULT_TRIAGE_DIR,
         help="the triage checkout holding experiment + database YAMLs",
     )
     args = parser.parse_args()
+    if args.jit_compare and (args.dates or args.dry_run):
+        parser.error("--jit-compare is its own case; drop --dates / --dry-run")
 
     datasets = [args.db] if args.db else sorted(DATASETS)
     variants = [args.variant] if args.variant else ["narrow", "all-agg", "wide"]
     for dataset in datasets:
         for variant in variants:
-            if args.dates:
+            if args.jit_compare:
+                run_jit_cell(args.triage_dir, dataset, variant)
+            elif args.dates:
                 if args.dry_run:
                     parser.error("--dates needs a database; drop --dry-run")
                 run_multi_date_cell(args.triage_dir, dataset, variant, args.dates)

@@ -1,0 +1,55 @@
+{
+  "dataset": "chicago311",
+  "variant": "wide",
+  "case": "jit-on-off",
+  "features": 907,
+  "shards": 1,
+  "featurizer_version": "1.2.0",
+  "commit": "da99fd4",
+  "as_of_date": "2020-01-01",
+  "server": {
+    "server_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+    "jit": "on",
+    "jit_above_cost": "100000",
+    "jit_inline_above_cost": "500000",
+    "jit_optimize_above_cost": "500000",
+    "max_parallel_workers_per_gather": "2",
+    "shared_buffers": "128MB",
+    "work_mem": "4MB",
+    "pg_jit_available": true
+  },
+  "runs": [
+    {
+      "jit": "off",
+      "exec_seconds": 18.49,
+      "rows": 30654,
+      "cols": 909,
+      "digest": "3c977ddaa2cd47c979cf61bf570d968693e048395b3bd0fd319225dd2a965e73"
+    },
+    {
+      "jit": "on",
+      "exec_seconds": 41.72,
+      "rows": 30654,
+      "cols": 909,
+      "digest": "3c977ddaa2cd47c979cf61bf570d968693e048395b3bd0fd319225dd2a965e73"
+    },
+    {
+      "jit": "on",
+      "exec_seconds": 42.03,
+      "rows": 30654,
+      "cols": 909,
+      "digest": "3c977ddaa2cd47c979cf61bf570d968693e048395b3bd0fd319225dd2a965e73"
+    },
+    {
+      "jit": "off",
+      "exec_seconds": 17.75,
+      "rows": 30654,
+      "cols": 909,
+      "digest": "3c977ddaa2cd47c979cf61bf570d968693e048395b3bd0fd319225dd2a965e73"
+    }
+  ],
+  "jit_on_seconds": 41.72,
+  "jit_off_seconds": 17.75,
+  "values_identical": true,
+  "status": "materialized"
+}
