@@ -46,13 +46,58 @@ Every feature family ships with all three tiers:
    (`expect_sql`), asserting the causal cut directly. See the extension protocol
    in `tests/integration/_realistic.py`.
 
+## The sweep matrix
+
+The three tiers test a feature on the shape its author had in mind. Between
+2026-09-07 and 2026-09-20 one consumer and the maintainers filed thirteen
+defects, and every one sat in a combination no test executed: a primitive over a column whose name is not a
+bare identifier, a whole-partition window over a child with a row after the
+as-of date, the TEMP-table path with two as-of dates. The code involved was
+months old. The suite had rendered it many times and never run it that way.
+
+Five invariants are now checked by sweeps that execute against PostgreSQL and
+run over the **whole registry**:
+
+| invariant | sweep |
+|---|---|
+| a primitive executes | `tests/integration/test_all_aggregators_execution.py`, `tests/test_transformer_quoting.py` |
+| it executes when a declared identifier is not a bare name, whatever the identifier's role | `tests/test_transformer_quoting.py`, `tests/test_aggregation_quoting.py`, `tests/test_identifier_roles_quoting.py` |
+| a row dated after the as-of date moves nothing | `tests/integration/test_asof_bounded_child_read.py`, `test_future_row_aggregations.py`, `test_future_row_planner_passes.py` |
+| the three render paths agree (single query, column groups, TEMP tables) | `tests/integration/test_sharding.py`, `test_path_equivalence_defaults.py`, `test_materialization_real_width.py` |
+| a config that validates runs | `tests/integration/test_valid_config_runs.py`, `test_transformer_selection.py` |
+
+**A new primitive, a new config key that names a column, or a new render path
+lands with its row in the matrix.** `tests/test_sweep_matrix_coverage.py`
+enforces the first two in the fast tier. It fails when a sweep does not cover
+a registered primitive, including the case where the sweep skips it silently
+because it has no sample for the primitive's input type. It also fails when
+the config's spec classes gain a constructor parameter that nobody has
+classified as naming a column or not.
+
+A sweep asserts values, by parity with the same data under plain names or with
+the single query. "It ran" is not enough: two of the defects above returned
+wrong numbers without an error.
+
+When a sweep finds a class of defect nobody knew about, file it with the
+measurement (config, commit, PostgreSQL version, the count that fails, the
+control that runs). If it belongs to the change you are making, fix it there.
+If it does not, land the sweep with a strict `xfail` that names the issue, and
+leave your pull request as it was.
+
+Run the integration tier with `just test-integration`, which turns
+PostgreSQL's JIT off. A wide generated query otherwise spends tens of seconds
+compiling its target list before it reads a row (#53), and the tier takes ten
+times as long.
+
 ## Adding a primitive
 
 Aggregations and transformations register via `register_aggregation` /
 `register_transformer` (see `featurizer/primitives/`). Transformers must return a
 **new** `Feature` (never mutate the input) to preserve hashing/dedup. Long
 generated names go through `pg_identifier` (63-byte cap). Add the three tiers and
-update the counts in `README` / `CLAUDE.md`.
+update the counts in `README` / `CLAUDE.md`. The sweeps pick a registered
+primitive up on their own; if one of them has no sample for its input type,
+`tests/test_sweep_matrix_coverage.py` fails and says which.
 
 ## Adding a non-SQL family
 

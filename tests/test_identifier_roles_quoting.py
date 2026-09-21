@@ -296,6 +296,7 @@ PASS_PLAIN = {
     "lookup parent key": "zone_id",
     "lookup child key": "zone_ref",
     "lookup temporal index": "rate_ts",
+    "lookup child_timestamp": "valid_from",
     "looked-up variable": "level",
 }
 
@@ -341,7 +342,12 @@ def _pass_config(n: dict) -> dict:
                 "table": "rates",
                 "id": "rate_id",
                 "temporal_ix": n["lookup temporal index"],
-                "variables": {n["looked-up variable"]: {"type": "numeric"}},
+                "variables": {
+                    n["looked-up variable"]: {"type": "numeric"},
+                    # Declared, or the lookup's transform does not carry it and
+                    # the as-of join has nothing to read (noted on issue #48).
+                    n["lookup child_timestamp"]: {"type": "index"},
+                },
             },
             {
                 "alias": "sites",
@@ -372,7 +378,12 @@ def _pass_config(n: dict) -> dict:
             {
                 "parent": {"entity": "rates", "key": n["lookup parent key"]},
                 "child": {"entity": "events", "key": n["lookup child key"]},
-                "temporal": {"mode": "as_of"},
+                # ``child_timestamp`` names the column of the LOOKUP side that
+                # the as-of comparison reads, in place of its temporal index.
+                "temporal": {
+                    "mode": "as_of",
+                    "child_timestamp": n["lookup child_timestamp"],
+                },
             },
         ],
         "spatial_relationships": [
@@ -429,12 +440,14 @@ def _pass_seed(cur, n: dict) -> None:
     cur.execute(
         f"create temp table rates (rate_id int, {_q(n['lookup parent key'])} int, "
         f"{_q(n['lookup temporal index'])} date, "
+        f"{_q(n['lookup child_timestamp'])} date, "
         f"{_q(n['looked-up variable'])} double precision)"
     )
     cur.execute(
-        "insert into rates values (1, 7, '2024-01-01', 0.5), "
-        "(2, 7, '2024-04-01', 0.7), (3, 8, '2024-02-01', 0.9), "
-        "(4, 7, '2024-09-01', 9.9)"
+        "insert into rates values (1, 7, '2024-01-01', '2024-01-01', 0.5), "
+        "(2, 7, '2024-04-01', '2024-04-01', 0.7), "
+        "(3, 8, '2024-02-01', '2024-02-01', 0.9), "
+        "(4, 7, '2024-09-01', '2024-09-01', 9.9)"
     )
     cur.execute(
         f"create temp table sites ({_q(n['right id (spatial)'])} int, "

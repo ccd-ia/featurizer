@@ -98,11 +98,20 @@ def test_a_derived_definition_carries_the_quoted_input(tmp_path) -> None:
 
 # ------------------------------------------------------------- execution
 
-SQL_TYPE = {"numeric": "double precision", "date": "date", "text": "text"}
+SQL_TYPE = {
+    "numeric": "double precision",
+    "date": "date",
+    "text": "text",
+    "categorical": "text",
+}
 SAMPLE = {
     "numeric": ["10.0", "20.0", "5.5"],
     "date": ["date '2024-01-01'", "date '2024-02-15'", "date '2024-03-31'"],
     "text": ["'alpha beta'", "'Gamma!'", "'delta, epsilon.'"],
+    # ``cum_count`` takes categorical / index input only. Without this entry the
+    # sweep skipped it without a word, which tests/test_sweep_matrix_coverage.py
+    # is there to make impossible.
+    "categorical": ["'a'", "'b'", "'a'"],
 }
 
 # Not configurable as a bare transformations: entry.
