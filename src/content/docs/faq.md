@@ -284,6 +284,26 @@ trip PostgreSQL — if it does, lower the group width yourself by splitting
 your config, and please report it. See
 [performance internals](/featurizer/engineering/internals/).
 
+### A generated query takes tens of seconds on a small table
+
+That is PostgreSQL's JIT compiler. A query whose estimated cost is over
+`jit_above_cost` (100,000 by default) has every expression of its target list
+compiled before the first row is read, and a generated query has hundreds of
+aggregate expressions. The compile time does not depend on the data: issue #53
+measured 55.6 s for one query over five rows, and 0.1 s with `jit = off`.
+
+`to_dataframe`, `to_arrow`, `to_parquet` and `to_tables` turn `jit` off around
+their own statements and put your value back afterwards, on your `connection=`
+as well. If you execute the SQL yourself (`query`, `query_groups`), turn it off
+in the same transaction:
+
+```sql
+set local jit = off;
+```
+
+The measurement on the three live databases is in the
+[internals page](/featurizer/engineering/internals/#jit-compilation).
+
 ### `Cannot yet materialize the oversized synth … as-of LATERAL join`
 
 A **forward temporal relationship** (`temporal: {mode: as_of}` pulling the

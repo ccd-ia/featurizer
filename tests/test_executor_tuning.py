@@ -6,9 +6,10 @@ The contract under test:
 
 1. ``apply_planner_tuning`` issues the ``PLANNER_TUNING`` values as
    ``SET LOCAL`` under a savepoint, and never raises (pure optimization).
-2. The materialized path tunes ONLY featurizer-owned connections — a caller's
-   ``connection=`` is never mutated (``SET LOCAL`` would stay in force for the
-   remainder of the caller's open transaction).
+2. The materialized path applies ``PLANNER_TUNING`` ONLY to featurizer-owned
+   connections (``SET LOCAL`` would stay in force for the remainder of a
+   caller's open transaction). The one setting a caller's ``connection=`` sees
+   changed is ``jit``, and it is put back: ``tests/test_executor_jit.py``.
 3. The records fast path runs the SETs and the main query on ONE held
    connection (SET LOCAL is transaction-scoped; a per-query pooled connection
    would silently drop the tuning).
@@ -38,6 +39,9 @@ class FakeCursor:
         if self._fail_on is not None and sql.startswith(self._fail_on):
             raise RuntimeError(f"forced failure on {sql!r}")
         self._executed.append(sql)
+
+    def fetchone(self) -> tuple[Any, ...]:
+        return ("on",)  # the server default that ``show jit`` answers
 
     def fetchall(self) -> list[tuple[Any, ...]]:
         return [("2020-01-01", 1)]
@@ -107,7 +111,12 @@ def test_materialized_path_never_tunes_a_caller_connection() -> None:
         target_id="id",
         connection=conn,
     )
-    assert not any("set local" in sql for sql in conn.executed)
+    # jit off and back is all a caller's connection sees; never work_mem or the
+    # collapse limits, which would outlive the call inside their transaction.
+    assert [sql for sql in conn.executed if sql.startswith("set local")] == [
+        "set local jit = off",
+        "set local jit = on",
+    ]
     # The stats refresh is connection-agnostic (ANALYZE is global) and still runs.
     assert any(sql.startswith("analyze") for sql in conn.executed)
     assert not conn.closed  # caller's connection stays open

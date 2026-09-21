@@ -52,12 +52,14 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
+from unittest import mock
 
 import yaml
 
@@ -247,6 +249,23 @@ JIT_SERVER_SETTINGS = (
 JIT_ORDER = ("off", "on", "on", "off")
 
 
+@contextlib.contextmanager
+def _engine_leaves_jit_alone() -> Iterator[None]:
+    """Since the measurement, the engine turns ``jit`` off around its own
+    statements (``featurizer.executor.jit_disabled``), on a caller's connection
+    too. A ``jit = on`` run needs it not to, or it measures ``off`` twice."""
+    import featurizer.executor as executor
+    import featurizer.featurizer as engine
+
+    def untouched(conn: Any) -> contextlib.AbstractContextManager[None]:
+        return contextlib.nullcontext()
+
+    with contextlib.ExitStack() as stack:
+        for module in (executor, engine):
+            stack.enter_context(mock.patch.object(module, "jit_disabled", untouched))
+        yield
+
+
 def _frame_digest(frame) -> str:
     """A digest of the frame's values that does not depend on row order."""
     import hashlib
@@ -308,7 +327,8 @@ def run_jit_cell(triage_dir: Path, dataset: str, variant: str) -> Dict[str, Any]
                 )
                 cur.execute("insert into as_of_dates values (%s)", (as_of,))
             t0 = time.perf_counter()
-            frame = f.to_dataframe(connection=conn)
+            with _engine_leaves_jit_alone():
+                frame = f.to_dataframe(connection=conn)
             exec_s = time.perf_counter() - t0
             conn.rollback()
             runs.append(

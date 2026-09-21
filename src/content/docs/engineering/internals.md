@@ -97,8 +97,44 @@ database-agnostic, and value-preserving (stats, not data).
 On top of that, featurizer-owned connections get conservative
 planner/memory tuning (`SET LOCAL work_mem = '64MB'`, collapse limits 20,
 `geqo` deliberately ON — the aggressive variant crashed the backend
-exhaustively planning a 38-way join). A caller's `connection=` is never
-tuned: `SET LOCAL` would stay in force inside *their* transaction.
+exhaustively planning a 38-way join). A caller's `connection=` never gets
+these: `SET LOCAL` would stay in force inside *their* transaction. The one
+setting a caller's connection does see changed, and restored, is `jit`.
+
+## JIT compilation
+
+PostgreSQL compiles the expressions of a query whose estimated cost is over
+`jit_above_cost` before it reads a row. A generated query is a target list of
+hundreds of aggregate expressions, so the compile time grows with the width of
+the config and not with the data: issue #53 measured 55.6 s for one query over
+five rows, and 0.1 s with `jit = off`.
+
+`benchmarks/final_matrix.py --jit-compare` then ran the nine cells of the
+live-database matrix under `jit` off, on, on, off (PostgreSQL 16.14, server
+defaults, 3,000 to 30,654 target rows; every run is in
+`specs/jit-on-off/raw/`). Seconds, `jit = on` / `jit = off`, best of two runs
+each:
+
+| | narrow | all-agg | wide |
+|---|---|---|---|
+| dirtyduck | 0.84 / 0.86 | 5.16 / 4.25 | 59.39 / 7.48 |
+| chicago311 | 0.21 / 0.21 | 3.25 / 2.57 | 41.72 / 17.75 |
+| donorschoose | 0.18 / 0.18 | 9.04 / 8.58 | 598.70 / 436.54 |
+
+JIT was faster in no cell (0.84 s against 0.86 s is less than the spread between
+two runs of one setting), and the returned frame was identical across the four
+runs in all nine.
+
+So `to_dataframe`, `to_arrow`, `to_parquet` and `to_tables` run their statements,
+the TEMP-table preamble included, with `jit = off`. This one reaches a caller's
+`connection=` too, because that is where a consumer's TEMP `as_of_dates` lives:
+featurizer reads the current value, issues `SET LOCAL jit = off` (a session
+`SET` on an autocommit connection, where `SET LOCAL` does nothing), and puts
+back the value it found. If a statement fails, the transaction is aborted and
+the rollback undoes `SET LOCAL` by itself. Callers who execute `query` or
+`query_groups` themselves run `set local jit = off` in the same transaction.
+
+Every wall-clock on this page was taken before that change, with `jit = on`.
 
 ## Staying under PostgreSQL's limits
 
