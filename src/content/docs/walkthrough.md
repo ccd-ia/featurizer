@@ -239,7 +239,41 @@ aggregation relationship is discarded, and `validate` warns about it.
 Tutorial 02 (healthcare) puts the two directions side by side —
 [examples/02-temporal-joins](https://github.com/ccd-ia/featurizer/tree/master/examples/02-temporal-joins).
 
-## 9. Visualize the matrix
+Two more things the engine decides for you, since 1.3.0. A target that
+declares a `temporal_ix` is read as of each date too, so a row dated after an
+as-of date is not emitted under it; leave `temporal_ix` off the target to get
+every row under every date. And two rows on one timestamp are always walked in
+the same order (identifiers, then the declared variables), so a lag or a
+transition never depends on how the table was loaded.
+[How a feature is computed](/featurizer/concepts/how-a-feature-is-computed/) explains both.
+
+## 9. When each date has its own cohort
+
+By default the matrix holds every target row under every as-of date, which is
+the shape temporal cross-validation wants. Some cohorts are defined by the
+date instead: the day's arrivals, the events of a date, the customers active
+in the month before. Give `as_of_dates` a second column holding the target's
+id, one row per `(date, id)` pair, and declare it:
+
+```sql
+create temp table as_of_dates (as_of_date date, cohort_id int);
+insert into as_of_dates values ('2024-02-01', 1), ('2024-02-01', 2), ('2024-03-01', 2);
+```
+
+```yaml
+as_of_dates:
+  id_column: cohort_id
+```
+
+The matrix then has one row per pair, and the children are read for that
+cohort only, so a date no longer aggregates the history of every entity to
+keep a twentieth of it. On the 22,169-facility validation database, 272
+features over 6 monthly dates take 5.0 s paired against 21.3 s dense (measured
+2026-09-21, PostgreSQL 16). Values equal the dense run's on the pairs.
+[Paired cohorts](/featurizer/concepts/paired-cohorts/) has the recipes for the
+pair table, including the one-row-per-event shape.
+
+## 10. Visualize the matrix
 
 The optional `[viz]` extra adds `FeaturizerViz` — distribution, missingness,
 correlation, embedding, and per-entity temporal diagnostics on the materialized
@@ -259,7 +293,7 @@ Real output from a live 177k-row × 272-feature matrix:
 
 ![Missingness heatmap — NULLs kept as signal](/featurizer/images/viz/missing-heatmap.png)
 
-## 10. Where next
+## 11. Where next
 
 - **The tutorials**: five executed notebooks, from basic aggregations to custom
   primitives —
