@@ -61,7 +61,13 @@ jobs:
       - run: uv sync --extra parquet --extra tui
       - run: uv run pytest -q -m "not integration"
       - run: uv run basedpyright
+      # JIT off, as in test.yml (#54): a generated query is wide, and with the
+      # server default PostgreSQL compiles its target list before reading a
+      # row. The v1.3.0 tag's first run hit this job's 25-minute limit on the
+      # integration step for want of this line; test.yml's leg takes 3 minutes.
       - run: uv run pytest -q -m "integration and not slow"
+        env:
+          PGOPTIONS: "-c jit=off"
 
   publish:
     name: build + GitHub release
