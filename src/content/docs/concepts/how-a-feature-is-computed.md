@@ -104,6 +104,8 @@ cross join lateral (
 order by aod.as_of_date
 ```
 
+![The six CTEs inside the lateral: orders is read and cut, transformed and aggregated; customers is read and cut, joined with the aggregates and transformed into the output](/featurizer/images/cte-flow.svg)
+
 `cross join lateral` evaluates the whole `with` block once per as-of date,
 with `aod.as_of_date` in scope inside every CTE. That scope is what makes the
 rest of this page possible: any CTE can compare a row's timestamp with the
@@ -153,6 +155,8 @@ customers_synth as (
 )
 ```
 
+![Timeline of two customers around the as-of date 2024-06-01: customer 1's orders before the date are read, the one in the P30D window counts for the interval column, the one after is never read; customer 2 signed up after the date and has no row under it](/featurizer/images/asof-cut-timeline.svg)
+
 A customer who signs up in August is not a row under an as-of date in
 January. Their aggregates would have been NULL anyway; emitting the row told a
 model trained as of January that the customer would exist
@@ -198,6 +202,8 @@ stored. Before 1.3.0 the order was the temporal index alone, and two rows on
 one date came out in the physical order of the table; a reload or a `cluster`
 could change a lag, a transition or a run length. Every window of an entity
 uses the same list, so PostgreSQL sorts the entity once for all of them.
+
+![Four orders of one customer, two on the same date, walked once in the 1.3.0 row order and once in the physical order of the table; order 8's lag_1 is 12 under the first and 7 under the second](/featurizer/images/row-order.svg)
 
 **Rolling percentiles are a subquery**, because PostgreSQL does not allow
 `over` on an ordered-set aggregate. `rolling_median_7` re-reads the entity's

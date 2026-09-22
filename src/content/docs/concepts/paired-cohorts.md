@@ -34,6 +34,8 @@ entities that took part in it. A daily scoring run covers that day's arrivals.
 The entity set changes from one date to the next, and an entity may appear under
 one date only.
 
+![Two grids of as-of dates by customers: the dense run computes every cell, 18 of 18; the paired run computes the 7 declared pairs](/featurizer/images/paired-cohort-grid.svg)
+
 Under the dense reading those cohorts cost `dates x entities` rows to compute
 and keep one row per pair. With 6 dates and 22,169 entities the dense matrix has
 133,014 rows; if the six cohorts hold 7,070 pairs between them, PostgreSQL
@@ -111,6 +113,8 @@ create temp table as_of_dates as
 select played_on - 1 as as_of_date, game_id as cohort_id
 from games;
 ```
+
+![Timeline of one game and its home team's earlier games: paired with the day before, the game's row is emitted and only the team's rows before that day are read; the team's row on the game's own day and a later one are not](/featurizer/images/events-of-a-date.svg)
 
 Two decisions sit in that statement.
 

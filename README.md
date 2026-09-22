@@ -555,6 +555,8 @@ dependency matrix).
     as-of lookup gives the same value however the table was loaded, clustered
     or vacuumed.
 
+<p align="center"><img src="docs/images/asof-cut-timeline.svg" width="820" alt="Timeline of two customers around one as-of date: orders dated after the date are never read, and a customer who signed up after the date has no row under it"/></p>
+
 The whole path from a config to a matrix, CTE by CTE, is on the docs site:
 [How a feature is computed](https://ccd-ia.github.io/featurizer/concepts/how-a-feature-is-computed/).
 
