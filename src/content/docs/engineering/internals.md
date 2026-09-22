@@ -13,7 +13,7 @@ A full-default config synthesizes hundreds to tens of thousands of columns.
 Naively compiled, that query melts a PostgreSQL backend — early versions
 proved it repeatedly, with measurements. This page tells the story of the
 current design: what the emitted SQL looks like, where each cost lives, and
-which decision record carries the evidence. For the step-by-step account of
+what each change measured. For the step-by-step account of
 what each CTE computes, read
 [How a feature is computed](/featurizer/concepts/how-a-feature-is-computed/)
 first. Every number below was measured
@@ -47,12 +47,10 @@ The guard sits where an entity is **read**, in `<child>_synth`, as well as in
 the aggregation. The aggregation's copy alone is enough for a window that only
 looks backwards, and not for one that spans its partition: `percent_rank()`
 divides by the partition's size, so a row the aggregation was about to drop
-had already shaped the value it kept
-([ADR-0016](/featurizer/engineering/adr/0016-leak-fixes-are-not-breaking/)).
+had already shaped the value it kept (fixed in 1.3.0).
 The target's own read carries the guard too when the target declares a
 `temporal_ix`: a row that does not exist yet at a date is not emitted under it
-([ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/)).
-A target without one is read whole.
+(1.3.0). A target without one is read whole.
 
 ## Joins: three kinds, one contract
 
@@ -64,8 +62,7 @@ A target without one is read whole.
   state at or before each child row's date, optionally bounded by `grace`.
   The `order by` continues over the source's row order (identifiers, then
   declared variables), so two source rows on one timestamp yield the same one
-  on every read
-  ([ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/)).
+  on every read (since 1.3.0).
 - **Column groups → matrix**: when the output is sharded (below), every group
   leads with the full carried identifier tuple and the executor re-joins
   groups on **all** of it — a target carrying relationship keys repeats them
@@ -82,13 +79,9 @@ at `loops=18909` accounting for essentially all of a 356.8-second run.
 The fix is one idea applied family by family: **compute each family once as a
 set-based companion CTE** (a windowed pre-pass with `GROUP BY` join key —
 `count(*) FILTER` shared-support counts for KL divergence, per-window
-`percentile_cont … FILTER` for Wasserstein), then join it in. Decision
-records: [ADR-0009](/featurizer/engineering/adr/0009-correlated-subquery-aggregator-scaling/)
-(the scaling analysis),
-[ADR-0010](/featurizer/engineering/adr/0010-set-based-preaggregation/) (the
-rewrite), [ADR-0012](/featurizer/engineering/adr/0012-set-based-two-window-drift/)
-(the drift families that were deferred and then bit hardest:
-**356.8s → 27.6s** on dirtyduck all-agg).
+`percentile_cont … FILTER` for Wasserstein), then join it in. The rewrite
+landed family by family; the drift families were deferred and then bit
+hardest: **356.8s → 27.6s** on dirtyduck all-agg once they went set-based.
 
 ## Planner statistics: the invisible 40×
 
@@ -96,8 +89,7 @@ The spine table is created by *you*, usually seconds before the query runs —
 so it has **no statistics**, and PostgreSQL assumes a ~2550-row default. On
 donorschoose that mis-estimate picked a catastrophic join plan: one Merge
 Join was 99% of a 294-second run. The executor now issues a best-effort,
-savepoint-isolated `ANALYZE as_of_dates` before every query
-([ADR-0013](/featurizer/engineering/adr/0013-analyze-as-of-dates/)):
+savepoint-isolated `ANALYZE as_of_dates` before every query:
 **294s → 7.5s** on donorschoose, **27.6s → 7.0s** on dirtyduck — universal,
 database-agnostic, and value-preserving (stats, not data).
 

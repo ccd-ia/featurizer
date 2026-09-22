@@ -18,13 +18,10 @@ Every bridge follows one lifecycle:
 compute  →  materialize  →  emit_yaml  →  splice into your config  →  spine
 ```
 
-The hard invariant is the causal boundary
-([ADR-0001](/featurizer/engineering/adr/0001-phi-bridge-precompute-causal-boundary/)):
-any *fitted* model trains only on rows knowable as-of the cutoff, enforced
-fail-fast by `assert_pre_t0`. The 0.9.0 contract extensions — multi-column
-output, temporal snapshot sequences, `persist=`, `model_vintage` — are
-recorded in
-[ADR-0014](/featurizer/engineering/adr/0014-multi-column-bridge-and-temporal-snapshots/).
+The hard invariant is the causal boundary: any *fitted* model trains only on
+rows knowable as-of the cutoff, enforced fail-fast by `assert_pre_t0`. The
+0.9.0 contract extensions — multi-column output, temporal snapshot sequences,
+`persist=`, `model_vintage` — are part of the frozen bridge contract.
 
 ## Worked example — text (Path 1: reduce → aggregate)
 
@@ -59,7 +56,7 @@ fragment = bridge.emit_yaml(
 ```
 
 `NERCountsBridge` is the multi-column case: **one spaCy parse emits five
-columns** (`persons`, `orgs`, `locations`, `money`, `dates`) via the ADR-0014
+columns** (`persons`, `orgs`, `locations`, `money`, `dates`) via the
 `MultiColumnBridge` contract. It wraps a *pretrained* model, which
 `assert_pre_t0` cannot see — declare `model_vintage=` (the model's training
 cutoff) and call `assert_model_vintage(as_of)` in strict backtests.
@@ -118,9 +115,8 @@ The output is keyed `(node, as_of_date)` — an ordinary event stream, so the
 spine trends "centrality over time" like any other metric.
 
 `CommunityBridge` (Louvain) emits membership as a **categorical** column — it
-flows through the existing fixed-vocabulary one-hot path
-([ADR-0007](/featurizer/engineering/adr/0007-direct-categorical-fixed-vocabulary/))
-— plus the partition's modularity. Labels are per-partition names, not stable
+flows through the existing fixed-vocabulary one-hot path — plus the
+partition's modularity. Labels are per-partition names, not stable
 identities across snapshots.
 
 ## The native alternative: `graph_relationships` (no Python at all)
@@ -233,9 +229,8 @@ class UrgencyBridge(MultiColumnBridge):
 
 Rules of the road:
 
-- **Optional deps stay optional**
-  ([ADR-0003](/featurizer/engineering/adr/0003-bridge-orchestration-boundary/)):
-  the SQL spine never imports bridge deps; add yours to the `[bridge]` extra.
+- **Optional deps stay optional**: the SQL spine never imports bridge deps;
+  add yours to the `[bridge]` extra.
 - **`persist=True`** turns the default session-temporary output into a real
   table — the shape you want when the bridge runs as a Dagster/Snakemake asset
   upstream of the SQL run. The bridge is a library, not a scheduler.
@@ -244,7 +239,7 @@ Rules of the road:
   per-window recomputation.
 - **Pretrained models**: `assert_pre_t0` guards *fitted* models only. A
   pretrained snapshot trained on post-t₀ data is silent leakage — declare
-  `model_vintage` and assert it in strict backtests (ADR-0014).
+  `model_vintage` and assert it in strict backtests.
 
 ## Dependency matrix
 

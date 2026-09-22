@@ -110,8 +110,7 @@ entities:
   `rolling_*`, `ema_*`, `diff`, …) partition by the entity's `id` and walk its
   rows in the entity's row order: `temporal_ix`, then the other identifier
   columns, then every declared variable. Two rows on one timestamp therefore
-  come out in the same order on every read (1.3.0,
-  [ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/)).
+  come out in the same order on every read (since 1.3.0).
   An event table declared with the id of the row it belongs to (`id:
   customer_id` on `orders`) walks that customer's events; declared with its
   own unique key it walks one-row partitions, and a lag over it is NULL; with

@@ -146,8 +146,7 @@ truncation) when a single query is impossible.
     small) and bounded by a window-function budget. `Featurizer.query_groups`
     returns `OrderedDict[str, str]`; `to_arrow` returns one `pyarrow.Table` when
     it fits else an `OrderedDict` of group tables; `to_parquet(dir)` writes one
-    file per group. See
-    [ADR-0005](docs/adr/0005-column-group-sharding.md).
+    file per group.
 
 -   **Oversized child entity -> temp-table materialization.** When a *non-target
     child* CTE alone exceeds the limit (its consumer `synth`/`transform` cascade
@@ -156,8 +155,7 @@ truncation) when a single query is impossible.
     preamble run on one connection before the group queries. This is automatic on
     every output path; the rejoined matrix is value-identical to the single query.
     `Featurizer.materialization_ddl` exposes the preamble for SQL-only callers, and
-    `Featurizer(..., materialize_threshold=N)` lowers the 1664 trigger. See
-    [ADR-0006](docs/adr/0006-temp-table-materialization.md).
+    `Featurizer(..., materialize_threshold=N)` lowers the 1664 trigger.
 
 To **persist** the matrix as triage-style feature-group tables, use `to_tables`:
 
@@ -188,7 +186,7 @@ nulls, recorded *before* any fill. Adapters may rely on the
 
 `measure_strategy="mean"` / `"median"` fits the fill over the **whole returned
 matrix** (every as-of date and the entire cohort, including validation/test
-rows)&#x2014;temporal leakage (ADR-0001). On the engine paths it is refused
+rows)&#x2014;temporal leakage. On the engine paths it is refused
 unless you also pass `allow_full_matrix_fit=True`, and even then it emits a
 runtime warning. Fit imputers on your training split instead.
 
@@ -240,8 +238,7 @@ columns on every output path (`to_arrow(impute=True)` included); a consumer stri
 the key columns + `*__missing` and treats the rest as features.
 
 Child-event categoricals are unchanged — they are reduced to numeric via
-aggregation, not one-hot. See
-[ADR-0007](docs/adr/0007-direct-categorical-fixed-vocabulary.md).
+aggregation, not one-hot.
 
 
 ## Feature manifest
@@ -431,7 +428,7 @@ interactive exploration.
     configs need no `name:` and keep byte-identical feature names.
     Parent/child key columns may have different names on each side
     (`parent: customers.customer_id` / `child: orders.buyer_id`) —
-    generated SQL references each side's own column. See ADR-0008.
+    generated SQL references each side's own column.
 
 
 ## Planner Passes & φ-Bridge Families (beyond the registry)
@@ -458,7 +455,9 @@ passes** driven by their own config blocks, or **φ-bridge** precomputes
     sentence embeddings, embedding-trajectory novelty/drift/volatility,
     change-point and periodicity scores, and text-induced edge builders
     (near-duplicate MinHash/LSH, co-mentions) that feed the graph
-    features. See ADR-0001/ADR-0014 for the causal contract.
+    features. The causal contract: a *fitted* model trains only on rows
+    knowable as of the cutoff (`assert_pre_t0`); a pretrained one declares
+    its `model_vintage`.
 
 Full documentation:
 [configuration reference](https://ccd-ia.github.io/featurizer/reference/configuration/)
@@ -544,13 +543,13 @@ dependency matrix).
     Temporal joins fall back to static key joins when either side lacks a
     temporal index.
 -   **Every entity with a `temporal_ix` is cut on the as-of date where it is
-    read**, the target included (1.3.0, ADR-0016 and ADR-0017). No window,
+    read**, the target included (1.3.0). No window,
     however wide its frame, can see a row dated after the as-of date, and a
     target row dated after an as-of date is not emitted under it. A target
     without a `temporal_ix` is read whole, which is how you ask for every row
     under every date.
--   **Two rows on one timestamp are walked in a fixed order** (1.3.0,
-    ADR-0018): the temporal index, then the entity's other identifier columns,
+-   **Two rows on one timestamp are walked in a fixed order** (1.3.0):
+    the temporal index, then the entity's other identifier columns,
     then its declared variables. A lag, a transition, a run length or an
     as-of lookup gives the same value however the table was loaded, clustered
     or vacuumed.
@@ -671,16 +670,15 @@ return shapes, the output-naming contract, the imputation contract, and the
 φ-bridge contract are frozen — breaking any of them requires a major
 version, and deprecations warn for at least one minor release first.
 Planner internals, CTE names, and generated SQL text stay refactorable.
-The full commitment: [ADR-0015](docs/adr/0015-v1-api-stability-commitment.md).
+The freeze list, item by item, is the [stability and deprecation
+policy](CONTRIBUTING.md#stability--deprecation-policy-v10).
 
 Three rulings narrow it, all shipped in 1.3.0 and each with the sweep that
-enforces it: a value that depended on rows after the as-of date
-([ADR-0016](docs/adr/0016-leak-fixes-are-not-breaking.md)), a row that did not
-exist yet at the date ([ADR-0017](docs/adr/0017-an-unknowable-row-is-not-emitted.md)),
-and a value that depended on the physical order of the rows
-([ADR-0018](docs/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows.md))
-were never part of the contract, so removing the dependence ships in a minor
-release, with the CHANGELOG naming every primitive that moves.
+enforces it: a value that depended on rows after the as-of date, a row that
+did not exist yet at the date, and a value that depended on the physical
+order of the rows were never part of the contract, so removing the
+dependence ships in a minor release, with the CHANGELOG naming every
+primitive that moves.
 
 ### Tested compatibility matrix
 

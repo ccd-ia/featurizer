@@ -150,8 +150,7 @@ Three feature families are **planner passes** with their own config blocks
 rather than registry primitives — but they are the same shape: functions of
 restricted histories.
 
-**The φ-bridge** ([ADR-0001](/featurizer/engineering/adr/0001-phi-bridge-precompute-causal-boundary/)).
-Some φ need heavy Python — an embedding, a graph statistic — that SQL should
+**The φ-bridge.** Some φ need heavy Python — an embedding, a graph statistic — that SQL should
 not recompute. The bridge computes a value **per source row** offline,
 materializes it back as an ordinary column *with the row's own timestamp*,
 and the value re-enters the algebra as a plain variable subject to the same
