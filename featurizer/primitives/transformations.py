@@ -35,7 +35,7 @@ Important: Transformers must return NEW Feature instances (never mutate input)
 to preserve hashing semantics for set operations and deduplication.
 """
 
-from typing import Callable, Iterable, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 from .abstractions import Entity, Feature, pg_identifier, quote_if_bare
 from .utils import register_transformer
@@ -510,6 +510,45 @@ class WindowFunctionTransformer:
         )
 
 
+def _temporal_column(
+    feature: Feature, parent: Optional[Entity] = None
+) -> Optional[str]:
+    """The temporal index of the entity doing the transform, as a column.
+
+    For a primitive that reads the timestamp as a VALUE (the epoch an EMA
+    weights by, the x axis of a trend). The ORDER BY of a window is
+    :func:`_temporal_ordering`, which starts with this column and does not end
+    there.
+    """
+    entity = parent if parent is not None else feature.entity
+    temporal_ix = getattr(entity, "temporal_ix", None)
+    if temporal_ix is None:
+        return None
+    # A declared column: delimited where SQL reads it (issue #46).
+    return quote_if_bare(temporal_ix.name)
+
+
+def _ordering_columns(
+    feature: Feature, parent: Optional[Entity] = None
+) -> Optional[List[str]]:
+    """The columns a window orders by, in order (ADR-0018).
+
+    The temporal index first. Then, because two rows of one partition on the
+    same timestamp have no order and PostgreSQL returns them as they were read
+    (issue #66), the entity's row order: its other identifier columns, then its
+    declared variables (:meth:`Entity.tiebreak_columns`). The same list for
+    every window over the entity, whatever column it reads, so they all share
+    one sort and number a tied pair the same way.
+    """
+    entity = parent if parent is not None else feature.entity
+    temporal = _temporal_column(feature, parent)
+    if temporal is None:
+        return None
+    partition = entity.id.name if getattr(entity, "id", None) else None
+    tiebreak = entity.tiebreak_columns(partition, entity.temporal_ix.name)
+    return [temporal] + [quote_if_bare(name) for name in tiebreak]
+
+
 def _temporal_ordering(
     feature: Feature, parent: Optional[Entity] = None
 ) -> Optional[str]:
@@ -529,13 +568,11 @@ def _temporal_ordering(
 
     ``parent`` is optional so a one-argument call still resolves exactly as it
     always did — that is the native-feature case, where the two coincide.
+
+    Since ADR-0018 the timeline has a tiebreak: :func:`_ordering_columns`.
     """
-    entity = parent if parent is not None else feature.entity
-    temporal_ix = getattr(entity, "temporal_ix", None)
-    if temporal_ix is None:
-        return None
-    # A declared column: delimited where SQL reads it (issue #46).
-    return quote_if_bare(temporal_ix.name)
+    columns = _ordering_columns(feature, parent)
+    return ", ".join(columns) if columns else None
 
 
 def _build_temporal_window(
@@ -591,17 +628,22 @@ def _build_rolling_percentile(
     partition = _partition(parent)
     if partition is None:
         return None
-    order_by = _temporal_ordering(feature, parent)
-    if order_by is None:
+    columns = _ordering_columns(feature, parent)
+    if columns is None:
         return None
     synth = f"{parent.alias}_synth"
     ego = TRANSFORM_EGO_ALIAS
+    # "Up to and including the current row" in the window's own order: a row
+    # comparison, so the tiebreak applies here as it does in the ORDER BY.
+    rows_before = ", ".join(f"{synth}.{column}" for column in columns)
+    ego_row = ", ".join(f"{ego}.{column}" for column in columns)
+    most_recent = ", ".join(f"{synth}.{column} desc" for column in columns)
     return (
         f"(select percentile_cont({percentile}) within group (order by _w.v) "
         f"from (select {synth}.{_col(feature)} as v from {synth} "
         f"where {synth}.{partition} = {ego}.{partition} "
-        f"and {synth}.{order_by} <= {ego}.{order_by} "
-        f"order by {synth}.{order_by} desc limit {window}) _w)"
+        f"and ({rows_before}) <= ({ego_row}) "
+        f"order by {most_recent} limit {window}) _w)"
     )
 
 
@@ -1009,7 +1051,8 @@ class ExponentialMovingAverageTransformer:
         if frame:
             start, end = frame
             frame_clause = f" rows between {start} and {end}"
-        timestamp_expr = f"(extract(epoch from {order_by})::numeric / 86400.0)"
+        timestamp = _temporal_column(feature, parent)
+        timestamp_expr = f"(extract(epoch from {timestamp})::numeric / 86400.0)"
         weight_expr = f"exp({self.decay} * {timestamp_expr})"
         base_window = f"partition by {partition} order by {order_by}{frame_clause}"
         numerator = (
@@ -1089,8 +1132,8 @@ class HoltWintersTrendTransformer:
     def __call__(self, parent, feature):
         if feature.type != "numeric":
             return feature
-        order_by = _temporal_ordering(feature, parent)
-        if order_by is None:
+        timestamp = _temporal_column(feature, parent)
+        if timestamp is None:
             return None
         frame = _frame_for_window(self.window)
         # regr_slope needs a numeric X axis; the temporal index is a date/
@@ -1099,7 +1142,7 @@ class HoltWintersTrendTransformer:
             "regr_slope",
             parent,
             feature,
-            args=[f"extract(epoch from {order_by})"],
+            args=[f"extract(epoch from {timestamp})"],
             frame=frame,
         )
         if expression is None:

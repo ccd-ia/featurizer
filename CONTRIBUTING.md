@@ -55,7 +55,7 @@ bare identifier, a whole-partition window over a child with a row after the
 as-of date, the TEMP-table path with two as-of dates. The code involved was
 months old. The suite had rendered it many times and never run it that way.
 
-Six invariants are now checked by sweeps that execute against PostgreSQL and
+Seven invariants are now checked by sweeps that execute against PostgreSQL and
 run over the **whole registry**:
 
 | invariant | sweep |
@@ -66,6 +66,7 @@ run over the **whole registry**:
 | the three render paths agree (single query, column groups, TEMP tables) | `tests/integration/test_sharding.py`, `test_path_equivalence_defaults.py`, `test_materialization_real_width.py` |
 | a config that validates runs | `tests/integration/test_valid_config_runs.py`, `test_transformer_selection.py` |
 | a paired cohort gives the dense matrix's values on its pairs, on the target and over every child it narrows | `tests/test_cohort_pairs.py`, `tests/test_cohort_child_reads.py`, `tests/integration/test_cohort_child_read_sweeps.py` |
+| a value does not depend on the physical order of the rows, and a reduction over a degenerate series is NULL rather than rounding noise | `tests/integration/test_tied_timestamps.py`, `tests/integration/test_degenerate_phase.py` |
 
 **A new primitive, a new config key that names a column, or a new render path
 lands with its row in the matrix.** `tests/test_sweep_matrix_coverage.py`

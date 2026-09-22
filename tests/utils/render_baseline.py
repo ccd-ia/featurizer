@@ -47,6 +47,22 @@ synth, and nothing is removed. ``ddl`` and ``n_groups`` did not change. Unlike
 the earlier moves this one changes what a config returns, which is the point of
 the fix; the baseline only records that nothing ELSE in the SQL moved.
 
+Issue #66 then gave every entity one row order (ADR-0018): after the temporal
+index a window orders by the entity's other identifier columns and then by its
+declared variables, the rolling percentiles' "up to the current row" became a
+row comparison over the same columns, and the as-of lookup's ``limit 1`` takes
+the last row in that order. So they were captured a seventh time, from
+``18299ac`` plus that fix (``ordered_by``). Four of the nine cases move, in
+five parts: the three whose config selects a window transformer, in ``groups``;
+and the snapshot config, in ``query`` and ``groups``, whose one as-of lookup is
+all that moves in it. Read as text against ``18299ac`` with the
+gained columns stripped from every ``order by`` and row comparison, what is
+left differs in nine lines: a column-group synth gaining the one declared
+target variable its ``order by`` now reads (``gender`` in four groups of
+``featurizer.yaml``, ``age`` in five of ``sample_config.yaml``); the literal-name
+rule keeps what a window names. ``ddl`` and ``n_groups`` did not move, and
+neither did any transform's select list, so no output column moves.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """

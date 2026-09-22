@@ -1,6 +1,6 @@
 {
   "bounded_by": "#27",
-  "captured_from": "da99fd4",
+  "captured_from": "18299ac",
   "cases": {
     "examples/01-basic-aggregations/config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -28,7 +28,7 @@
     },
     "featurizer/featurizer.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "8b2ac81248823b397549d3b35a437b2a30d65fa43af827c2cf3af5cd55276827",
+      "groups": "a43e77ab6d180063901ca6c8a61d558ac0930bab7c4d44a185680b8f64cd5d46",
       "n_groups": "5"
     },
     "generated/chain": {
@@ -38,21 +38,22 @@
     },
     "generated/wide": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "0e95a1e11755b246aca7c428fa95f4063721b00ad48ce84bc44f61a29a026722",
+      "groups": "6f6c0b2279f19138620889555bd255b024cef076257dd5f7d319298973183cb5",
       "n_groups": "11"
     },
     "tests/fixtures/sample_config.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "1f11c0f87faa84b235a17dafc62da3d836532346fbd96a0999d5d6f930300242",
+      "groups": "10f63ca786bc10c21de653c35c1b95be6e547471c4dac74304e6cb2360a62366",
       "n_groups": "6"
     },
     "tests/fixtures/sample_config_snapshot.yaml": {
       "ddl": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "groups": "ec9149df9be3f41f0b2720d429aa8be5f574db2040cec168f26b833f79c2a88a",
+      "groups": "1e4a41d661351a1df118ec8a7b5b9869114643d28ab09fb1cc4ab6f08ab5e26e",
       "n_groups": "1",
-      "query": "21aadab942485ab352fbc1b8f51b316ffa7b270b38e8fd581f5784a3c83dba0b"
+      "query": "bd640aa21c5fc02536ac4fbc0ce83d1ba657d317ad62dd26e471b6ee722de908"
     }
   },
+  "ordered_by": "#66",
   "pruned_rejoin_by": "#37",
   "quoted_identifiers_by": "#46",
   "requoted_by": "#29",

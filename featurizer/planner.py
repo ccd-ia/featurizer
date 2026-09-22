@@ -383,47 +383,13 @@ class FeaturePlanner:
         return sorted(features, key=lambda feature: feature.name)
 
     @staticmethod
-    def _carried_index_columns(target: Entity) -> List[str]:
-        """Index-typed *variables* that must be projected but are not features.
-
-        A foreign key declared ``type: index`` (e.g. ``care_plans.patient_id``)
-        is neither the entity's own id/temporal/spatial index nor a registered
-        relationship key, so it falls out of the normal projection. It is still
-        needed as a column — notably for the as-of join's ``WHERE`` clause — so
-        carry it through synth/transform by name.
-        """
-        covered = {ix.name for ix in target.indexes} | {key.name for key in target.keys}
-        return sorted(
-            {
-                feature.name
-                for feature in target.features
-                if feature.type == "index" and feature.name not in covered
-            }
-        )
-
-    @classmethod
-    def _identifier_columns(cls, target: Entity) -> List[str]:
+    def _identifier_columns(target: Entity) -> List[str]:
         """Distinct identifier column names to project from the base table.
 
-        Combines id/temporal/spatial indexes, relationship keys, and carried
-        index variables. The same name can appear as both the entity id and a
-        relationship key when a primary key doubles as a foreign key (an entity
-        keyed by ``patient_id`` that is also the child of a ``patient_id``
-        relationship). Projecting it twice makes the reference ambiguous, so
-        dedupe by name while preserving order.
+        :meth:`Entity.identifier_columns`, which the primitives read as well
+        since the tiebreak of ADR-0018 orders by these columns.
         """
-        names = (
-            [ix.name for ix in target.indexes]
-            + [key.name for key in target.keys]
-            + cls._carried_index_columns(target)
-        )
-        seen: Set[str] = set()
-        ordered: List[str] = []
-        for name in names:
-            if name not in seen:
-                seen.add(name)
-                ordered.append(name)
-        return ordered
+        return target.identifier_columns()
 
     @staticmethod
     def _relationship_order(relationship: Relationship) -> Tuple[str, str, str, str]:
@@ -1971,6 +1937,20 @@ class FeaturePlanner:
             )
 
         cte_name = f"{relationship.parent_naming_alias}_asof_for_{target.alias}"
+        # "The most recent source row": two source rows on one timestamp would
+        # otherwise leave ``limit 1`` to the physical order of the table (issue
+        # #66). The source's row order (ADR-0018), every column descending, so
+        # the row taken is the last one in that order.
+        most_recent = ", ".join(
+            f"{source.alias}_transform.{column} desc"
+            for column in [source_temporal]
+            + [
+                quote_if_bare(name)
+                for name in source.tiebreak_columns(
+                    relationship.parent_key, source_temporal_name
+                )
+            ]
+        )
         # Convert the CTE text into a lateral join referencing the target table row.
         lateral_join = (
             " lateral (\n"
@@ -1978,7 +1958,7 @@ class FeaturePlanner:
             f"        {projected_sql}\n"
             f"        from {source.alias}_transform\n"
             f"        where {' and '.join(where_clauses)}\n"
-            f"        order by {source.alias}_transform.{source_temporal} desc\n"
+            f"        order by {most_recent}\n"
             "        limit 1\n"
             f"    ) as {cte_name} on true "
         )

@@ -69,6 +69,31 @@ def _tix(feature: Feature) -> str:
     return current_timeline() or quote_if_bare(feature.entity.temporal_ix.name)
 
 
+def _timeline(table: str, feature: Feature, child, relationship) -> str:
+    """The ORDER BY of an aggregation that walks the child's timeline.
+
+    Ordering by the temporal index alone leaves two rows of one key on the same
+    timestamp in whatever order they arrive, and a lag, a transition or a run
+    length then depends on the physical order of the table (issue #66: the same
+    dense query over the same rows stored in another order moved 36 columns on
+    1,437 of donorschoose's 3,000 entities). ADR-0018: after the temporal index
+    the child's row order, its other identifier columns (the ``id`` first, when
+    that is not the key the rows are partitioned by) and then its declared
+    variables (:meth:`Entity.tiebreak_columns`). The same list for every
+    family, so they share one sort.
+
+    ``table`` is the alias the rows are read under: ``<child>_transform`` in a
+    set-based pre-pass, ``sub`` / ``s`` in a correlated subquery.
+    """
+    temporal = getattr(getattr(child, "temporal_ix", None), "name", None)
+    keys = [f"{table}.{_tix(feature)}"]
+    keys.extend(
+        f"{table}.{quote_if_bare(name)}"
+        for name in child.tiebreak_columns(relationship.child_key, temporal)
+    )
+    return ", ".join(keys)
+
+
 def _epoch_day_span(hi: str, lo: str) -> str:
     """Difference of two temporal SQL expressions, in fractional days (numeric).
 
@@ -1081,11 +1106,11 @@ def _transitions_inner(feature, child, relationship, interval):
     ck = relationship.child_key_sql
     ct = f"{child.alias}_transform"
     col = _col(feature)
-    ts = _tix(feature)
     where = _num_causal_where(feature, child, interval)
     return (
         f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, "
-        f"lag({ct}.{col}) over (partition by {ct}.{ck} order by {ct}.{ts}) as prev "
+        f"lag({ct}.{col}) over (partition by {ct}.{ck} "
+        f"order by {_timeline(ct, feature, child, relationship)}) as prev "
         f"from {ct} {where}"
     )
 
@@ -1126,11 +1151,10 @@ class NgramFrequency(SubqueryAggregator):
         ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
-        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         lag_cols = ", ".join(
-            f"lag({ct}.{col}, {i}) over "
-            f"(partition by {ct}.{ck} order by {ct}.{ts}) as lag_{i}"
+            f"lag({ct}.{col}, {i}) over (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)}) as lag_{i}"
             for i in range(1, self.n)
         )
         lag_names = ", ".join(f"lag_{i}" for i in range(1, self.n))
@@ -1149,10 +1173,10 @@ class NgramFrequency(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
-        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
         lag_cols = ", ".join(
-            f"LAG(sub.{_col(feature)}, {i}) OVER (ORDER BY sub.{event_col}) as lag_{i}"
+            f"LAG(sub.{_col(feature)}, {i}) OVER (ORDER BY "
+            f"{_timeline('sub', feature, child, relationship)}) as lag_{i}"
             for i in range(1, self.n)
         )
         return (
@@ -1199,13 +1223,13 @@ class SequenceEntropy(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
-        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
         return (
             f"(SELECT -SUM(freq::float / total * LN(freq::float / total)) "
             f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
             f"FROM (SELECT sub.{_col(feature)} as curr, "
-            f"LAG(sub.{_col(feature)}) OVER (ORDER BY sub.{event_col}) as prev "
+            f"LAG(sub.{_col(feature)}) OVER (ORDER BY "
+            f"{_timeline('sub', feature, child, relationship, _col(feature))}) as prev "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") transitions WHERE prev IS NOT NULL "
@@ -1233,21 +1257,26 @@ class LongestStreak(SubqueryAggregator):
         ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
-        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
-        # Consecutive-run identity: rows of the same value in one run share a
-        # constant (global rank - per-value rank). Group by (value, run) to get
-        # run lengths, then MAX. Both ranks partitioned by child key.
-        inner = (
+        # A run starts where the value differs from the previous row's. The
+        # row number and the previous value come from ONE window, so a tied
+        # pair is numbered the way it was compared; the run id then follows the
+        # row number, which is unique. Two ranks over two partitions (the older
+        # "global rank minus per-value rank") sort twice, and two rows equal in
+        # every column can come out of the two sorts in different orders.
+        order = _timeline(ct, feature, child, relationship)
+        ordered = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
-            f"row_number() over (partition by {ct}.{ck} order by {ct}.{ts}) - "
-            f"row_number() over "
-            f"(partition by {ct}.{ck}, {ct}.{col} order by {ct}.{ts}) as grp "
-            f"from {ct} {where}"
+            f"row_number() over w as rn, lag({ct}.{col}) over w as prev "
+            f"from {ct} {where} window w as (partition by {ct}.{ck} order by {order})"
+        )
+        runs = (
+            f"select {ck}, sum(case when prev is distinct from val then 1 else 0 end) "
+            f"over (partition by {ck} order by rn) as run from ({ordered}) o"
         )
         prepass = (
-            f"select {ck}, count(*) as streak_len from ({inner}) streaks "
-            f"group by {ck}, val, grp"
+            f"select {ck}, count(*) as streak_len from ({runs}) streaks "
+            f"group by {ck}, run"
         )
         return PreAggSpec(
             family_key=f"streak:{feature.name}",
@@ -1259,17 +1288,19 @@ class LongestStreak(SubqueryAggregator):
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
-        event_col = _tix(feature)
         interval_filter = self._causal_filter(feature, interval)
+        order = _timeline("sub", feature, child, relationship)
         return (
             f"(SELECT MAX(streak_len) FROM ("
             f"SELECT COUNT(*) as streak_len FROM ("
-            f"SELECT sub.{_col(feature)}, "
-            f"ROW_NUMBER() OVER (ORDER BY sub.{event_col}) - "
-            f"ROW_NUMBER() OVER (PARTITION BY sub.{_col(feature)} ORDER BY sub.{event_col}) as grp "
+            f"SELECT sum(case when prev is distinct from val then 1 else 0 end) "
+            f"OVER (ORDER BY rn) as run FROM ("
+            f"SELECT sub.{_col(feature)} AS val, "
+            f"ROW_NUMBER() OVER w AS rn, LAG(sub.{_col(feature)}) OVER w AS prev "
             f"FROM {child_table} sub "
-            f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
-            f") streaks GROUP BY {_col(feature)}, grp) streak_counts)"
+            f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter} "
+            f"WINDOW w AS (ORDER BY {order})"
+            f") ordered) runs GROUP BY run) streak_counts)"
         )
 
 
@@ -1441,11 +1472,11 @@ class _SequenceReduction(SubqueryAggregator):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = _tix(feature)
         col = _col(feature)
         return (
             f"SELECT sub.{col} AS curr, "
-            f"LAG(sub.{col}) OVER (ORDER BY sub.{ts}) AS prev "
+            f"LAG(sub.{col}) OVER (ORDER BY "
+            f"{_timeline('sub', feature, child, relationship)}) AS prev "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
         )
@@ -1548,7 +1579,8 @@ class TimeInCurrentState(_SequenceReduction):
         # change, matching the correlated ``prev IS DISTINCT FROM curr``.
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{ts} as ts, {ct}.{col} as curr, "
-            f"lag({ct}.{col}) over (partition by {ct}.{ck} order by {ct}.{ts}) as prev "
+            f"lag({ct}.{col}) over (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)}) as prev "
             f"from {ct} {where}"
         )
         return PreAggSpec(
@@ -1570,7 +1602,8 @@ class TimeInCurrentState(_SequenceReduction):
         return (
             f"(aod.as_of_date::date - (SELECT max(run.ts) FROM ("
             f"SELECT s.{ts} AS ts, s.{col} AS curr, "
-            f"LAG(s.{col}) OVER (ORDER BY s.{ts}) AS prev "
+            f"LAG(s.{col}) OVER (ORDER BY "
+            f"{_timeline('s', feature, child, relationship)}) AS prev "
             f"FROM {child_table} s "
             f"WHERE s.{child_key} = {child_table}.{child_key}{causal}"
             f") run WHERE run.prev IS DISTINCT FROM run.curr)::date)"
@@ -1770,12 +1803,11 @@ class AutoCorrelation(_NumericStreamReduction):
         ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
-        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
-            f"lag({ct}.{col}, {self.k}) over "
-            f"(partition by {ct}.{ck} order by {ct}.{ts}) as lagk "
+            f"lag({ct}.{col}, {self.k}) over (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)}) as lagk "
             f"from {ct} {where}"
         )
         return PreAggSpec(
@@ -1790,12 +1822,12 @@ class AutoCorrelation(_NumericStreamReduction):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = _tix(feature)
         col = _col(feature)
         return (
             f"(SELECT corr(val, lagk) FROM ("
             f"SELECT sub.{col} AS val, "
-            f"LAG(sub.{col}, {self.k}) OVER (ORDER BY sub.{ts}) AS lagk "
+            f"LAG(sub.{col}, {self.k}) OVER (ORDER BY "
+            f"{_timeline('sub', feature, child, relationship)}) AS lagk "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
             f") t WHERE lagk IS NOT NULL)"
@@ -1815,12 +1847,11 @@ class VarianceRatio(_NumericStreamReduction):
         ck = relationship.child_key_sql
         ct = f"{child.alias}_transform"
         col = _col(feature)
-        ts = _tix(feature)
         where = _num_causal_where(feature, child, interval)
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
-            f"{ct}.{col} - lag({ct}.{col}) over "
-            f"(partition by {ct}.{ck} order by {ct}.{ts}) as d "
+            f"{ct}.{col} - lag({ct}.{col}) over (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)}) as d "
             f"from {ct} {where}"
         )
         return PreAggSpec(
@@ -1834,12 +1865,12 @@ class VarianceRatio(_NumericStreamReduction):
         child_key = relationship.child_key_sql
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
-        ts = _tix(feature)
         col = _col(feature)
         return (
             f"(SELECT var_samp(val) / NULLIF(var_samp(d), 0) FROM ("
             f"SELECT sub.{col} AS val, "
-            f"sub.{col} - LAG(sub.{col}) OVER (ORDER BY sub.{ts}) AS d "
+            f"sub.{col} - LAG(sub.{col}) OVER (ORDER BY "
+            f"{_timeline('sub', feature, child, relationship)}) AS d "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
             f") t)"
@@ -1856,11 +1887,29 @@ class CosinorAmplitude(_NumericStreamReduction):
     built from the event timestamp. Exact when the basis columns are
     uncorrelated over the window; otherwise a seasonal-strength approximation.
     Backward-only.
+
+    NULL when the basis has no spread (issue #67): rows a whole number of
+    periods apart share a phase, ``sin`` and ``cos`` are then constant up to the
+    rounding of an argument near 1e4 radians, and ``regr_slope`` divides by
+    that rounding. Measured: prices in the hundreds gave amplitudes of 1e15,
+    different on every read. ``regr_slope`` returns NULL on its own only when
+    the variance is exactly zero.
     """
+
+    #: The variance of a basis column below which it has no spread. Rounding
+    #: noise sits near 1e-24; two rows one second apart on a weekly period are
+    #: already at 2.5e-11, and a real cycle is between 0.1 and 0.5.
+    BASIS_SPREAD = "1e-12"
 
     def __init__(self, name="cosinor_amplitude_weekly", period_seconds=7 * 86400):
         super().__init__(name=name)
         self.period_seconds = period_seconds
+
+    def _guarded(self, amplitude: str) -> str:
+        eps = self.BASIS_SPREAD
+        return (
+            f"case when var_pop(s) > {eps} and var_pop(c) > {eps} then {amplitude} end"
+        )
 
     def _build_preagg(self, feature, child, relationship, interval=None):
         ck = relationship.child_key_sql
@@ -1877,7 +1926,9 @@ class CosinorAmplitude(_NumericStreamReduction):
             family_key=f"cosinor{self.period_seconds}:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
-            reduction="sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2))",
+            reduction=self._guarded(
+                "sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2))"
+            ),
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
@@ -1887,8 +1938,11 @@ class CosinorAmplitude(_NumericStreamReduction):
         ts = _tix(feature)
         col = _col(feature)
         omega = f"2 * pi() * extract(epoch from sub.{ts}) / {self.period_seconds}"
+        amplitude = self._guarded(
+            "sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2))"
+        )
         return (
-            f"(SELECT sqrt(power(regr_slope(val, s), 2) + power(regr_slope(val, c), 2)) "
+            f"(SELECT {amplitude} "
             f"FROM (SELECT sub.{col} AS val, sin({omega}) AS s, cos({omega}) AS c "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
@@ -2195,13 +2249,14 @@ class DistanceTravelled(SpatialAggregator):
         ct = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         lat, lon = self._latlon(feature)
-        ts = _col(feature)
+        # Two fixes on one timestamp: the path goes through them in one order.
+        order = _timeline("sub", feature, child, relationship)
         step = haversine_m("plat", "plon", "lat", "lon")
         return (
             f"(SELECT SUM({step}) FROM ("
             f"SELECT sub.{lat} AS lat, sub.{lon} AS lon, "
-            f"LAG(sub.{lat}) OVER (ORDER BY sub.{ts}) AS plat, "
-            f"LAG(sub.{lon}) OVER (ORDER BY sub.{ts}) AS plon "
+            f"LAG(sub.{lat}) OVER (ORDER BY {order}) AS plat, "
+            f"LAG(sub.{lon}) OVER (ORDER BY {order}) AS plon "
             f"FROM {ct} sub WHERE sub.{ck} = {ct}.{ck}{causal}"
             f") steps WHERE plat IS NOT NULL)"
         )
