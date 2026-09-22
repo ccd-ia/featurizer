@@ -1,0 +1,72 @@
+<svg viewBox="0 0 880 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four orders of one customer laid out in the order a window walks them, once under the 1.3.0 row order and once under the physical order, with the lag_1 value each row receives" font-family="-apple-system,'Segoe UI',Roboto,sans-serif">
+  <rect x="0.5" y="0.5" width="879" height="429" rx="12" fill="#ffffff" stroke="#d7dbe0"/>
+  <defs><marker id="walk" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,1 L9,5 L0,9 z" fill="#134e4a"/></marker></defs>
+  <text x="24" y="30" font-size="14" fill="#1a2332" font-weight="700">A window walks one partition in the entity's row order</text>
+  <text x="40" y="66" font-size="12" fill="#1a2332" font-weight="700">1.3.0 — order by ordered_at, then the other identifiers (order_id), then the declared variables (amount)</text>
+  <rect x="40" y="100" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="56" cy="116" r="10" fill="#134e4a"/>
+  <text x="56" y="120" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">1</text>
+  <text x="74" y="120" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-01-10</text>
+  <text x="52" y="140" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 3</text>
+  <text x="52" y="158" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 10</text>
+  <text x="125.0" y="192" font-size="11" fill="#134e4a" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = NULL</text>
+  <line x1="213" y1="136" x2="231" y2="136" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="234" y="100" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="250" cy="116" r="10" fill="#134e4a"/>
+  <text x="250" y="120" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">2</text>
+  <text x="268" y="120" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-03-05</text>
+  <text x="246" y="140" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 5</text>
+  <text x="246" y="158" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 7</text>
+  <text x="319.0" y="192" font-size="11" fill="#134e4a" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 10</text>
+  <line x1="407" y1="136" x2="425" y2="136" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="428" y="100" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="444" cy="116" r="10" fill="#134e4a"/>
+  <text x="444" y="120" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">3</text>
+  <text x="462" y="120" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-03-05</text>
+  <text x="440" y="140" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 6</text>
+  <text x="440" y="158" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 12</text>
+  <text x="513.0" y="192" font-size="11" fill="#134e4a" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 7</text>
+  <line x1="601" y1="136" x2="619" y2="136" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="622" y="100" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="638" cy="116" r="10" fill="#134e4a"/>
+  <text x="638" y="120" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">4</text>
+  <text x="656" y="120" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-04-20</text>
+  <text x="634" y="140" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 8</text>
+  <text x="634" y="158" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 9</text>
+  <text x="707.0" y="192" font-size="11" fill="#134e4a" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 12</text>
+  <path d="M234,94 L234,86 L598,86 L598,94" fill="none" stroke="#b45309" stroke-width="1.5"/>
+  <text x="416.0" y="82" font-size="10.5" fill="#b45309" text-anchor="middle">same ordered_at: order_id decides</text>
+  <text x="40" y="238" font-size="12" fill="#1a2332" font-weight="700">before 1.3.0 — order by ordered_at only; rows 2 and 3 as the table stored them (here 6 before 5)</text>
+  <rect x="40" y="272" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="56" cy="288" r="10" fill="#134e4a"/>
+  <text x="56" y="292" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">1</text>
+  <text x="74" y="292" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-01-10</text>
+  <text x="52" y="312" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 3</text>
+  <text x="52" y="330" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 10</text>
+  <text x="125.0" y="364" font-size="11" fill="#b91c1c" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = NULL</text>
+  <line x1="213" y1="308" x2="231" y2="308" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="234" y="272" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="250" cy="288" r="10" fill="#134e4a"/>
+  <text x="250" y="292" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">2</text>
+  <text x="268" y="292" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-03-05</text>
+  <text x="246" y="312" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 6</text>
+  <text x="246" y="330" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 12</text>
+  <text x="319.0" y="364" font-size="11" fill="#b91c1c" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 10</text>
+  <line x1="407" y1="308" x2="425" y2="308" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="428" y="272" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="444" cy="288" r="10" fill="#134e4a"/>
+  <text x="444" y="292" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">3</text>
+  <text x="462" y="292" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-03-05</text>
+  <text x="440" y="312" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 5</text>
+  <text x="440" y="330" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 7</text>
+  <text x="513.0" y="364" font-size="11" fill="#b91c1c" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 12</text>
+  <line x1="601" y1="308" x2="619" y2="308" stroke="#134e4a" stroke-width="1.4" marker-end="url(#walk)"/>
+  <rect x="622" y="272" width="170" height="72" rx="8" fill="#ffffff" stroke="#0f766e" stroke-width="1.4"/>
+  <circle cx="638" cy="288" r="10" fill="#134e4a"/>
+  <text x="638" y="292" font-size="10.5" fill="#ffffff" text-anchor="middle" font-weight="700">4</text>
+  <text x="656" y="292" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">ordered_at 2024-04-20</text>
+  <text x="634" y="312" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">order_id 8</text>
+  <text x="634" y="330" font-size="10.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">amount 9</text>
+  <text x="707.0" y="364" font-size="11" fill="#b91c1c" text-anchor="middle" font-family="Menlo,Consolas,monospace">lag_1(amount) = 7</text>
+  <text x="40" y="410" font-size="11.5" fill="#5b6472">The same four rows, two answers for order 8's lag_1: 12 above, 7 below. A reload or a cluster could swap them.</text>
+</svg>

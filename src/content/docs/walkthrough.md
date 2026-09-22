@@ -265,6 +265,8 @@ as_of_dates:
   id_column: cohort_id
 ```
 
+![Dense grid against paired grid: 18 cells against the 7 declared pairs](/featurizer/images/paired-cohort-grid.svg)
+
 The matrix then has one row per pair, and the children are read for that
 cohort only, so a date no longer aggregates the history of every entity to
 keep a twentieth of it. On the 22,169-facility validation database, 272

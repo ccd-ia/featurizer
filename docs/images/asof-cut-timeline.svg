@@ -1,0 +1,54 @@
+<svg viewBox="0 0 880 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Timeline of two customers and their orders around one as-of date: orders dated after the date are never read, and a customer who signs up after the date has no row under it" font-family="-apple-system,'Segoe UI',Roboto,sans-serif">
+  <rect x="0.5" y="0.5" width="879" height="399" rx="12" fill="#ffffff" stroke="#d7dbe0"/>
+  <text x="24" y="30" font-size="14" fill="#1a2332" font-weight="700">One as-of date. What each read can see, and which target rows exist.</text>
+  <rect x="455.0" y="70" width="94.70000000000005" height="180" fill="#fef3c7" opacity="0.7"/>
+  <text x="502.35" y="86" font-size="11" fill="#b45309" text-anchor="middle" font-family="Menlo,Consolas,monospace">interval P30D</text>
+  <line x1="549.7" y1="56" x2="549.7" y2="330" stroke="#b45309" stroke-width="1.8" stroke-dasharray="6 4"/>
+  <text x="555.7" y="62" font-size="11.5" fill="#b45309" font-weight="700" font-family="Menlo,Consolas,monospace">aod.as_of_date = 2024-06-01</text>
+  <line x1="70" y1="330" x2="840" y2="330" stroke="#1a2332" stroke-width="1.4"/>
+  <line x1="70.0" y1="326" x2="70.0" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="70.0" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Jan 1</text>
+  <line x1="167.8" y1="326" x2="167.8" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="167.8" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Feb 1</text>
+  <line x1="259.3" y1="326" x2="259.3" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="259.3" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Mar 1</text>
+  <line x1="357.2" y1="326" x2="357.2" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="357.2" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Apr 1</text>
+  <line x1="451.8" y1="326" x2="451.8" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="451.8" y="350" font-size="11" fill="#5b6472" text-anchor="middle">May 1</text>
+  <line x1="549.7" y1="326" x2="549.7" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="549.7" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Jun 1</text>
+  <line x1="644.3" y1="326" x2="644.3" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="644.3" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Jul 1</text>
+  <line x1="742.2" y1="326" x2="742.2" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="742.2" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Aug 1</text>
+  <line x1="840.0" y1="326" x2="840.0" y2="334" stroke="#1a2332" stroke-width="1.2"/>
+  <text x="840.0" y="350" font-size="11" fill="#5b6472" text-anchor="middle">Sep 1</text>
+  <line x1="70" y1="140" x2="840" y2="140" stroke="#d7dbe0" stroke-width="1"/>
+  <text x="70" y="126" font-size="11.5" fill="#1a2332" font-weight="700">customer 1 · signed_up 2024-01-10</text>
+  <rect x="91.9" y="133.5" width="13" height="13" rx="2" fill="#b45309"/>
+  <circle cx="227.8" cy="140" r="6" fill="#0f766e"/>
+  <circle cx="486.6" cy="140" r="6" fill="#0f766e"/>
+  <circle cx="650.7" cy="140" r="6" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <line x1="70" y1="230" x2="840" y2="230" stroke="#d7dbe0" stroke-width="1"/>
+  <text x="70" y="216" font-size="11.5" fill="#1a2332" font-weight="700">customer 2 · signed_up 2024-07-08</text>
+  <rect x="659.9" y="223.5" width="13" height="13" rx="2" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <circle cx="729.5" cy="230" r="6" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <circle cx="783.2" cy="230" r="6" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <text x="98.4" y="172" font-size="10.5" fill="#b45309" text-anchor="middle">row emitted</text>
+  <text x="227.8" y="172" font-size="10.5" fill="#0f766e" text-anchor="middle">read</text>
+  <text x="486.6" y="172" font-size="10.5" fill="#0f766e" text-anchor="middle">read, in window</text>
+  <text x="650.7" y="172" font-size="10.5" fill="#b91c1c" text-anchor="middle">not read</text>
+  <text x="666.4" y="262" font-size="10.5" fill="#b91c1c" text-anchor="middle">row not emitted (ADR-0017)</text>
+  <text x="783.2" y="262" font-size="10.5" fill="#b91c1c" text-anchor="middle">not read</text>
+  <text x="70" y="296" font-size="11.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">customer 1:  COUNT(orders.order_id) = 2 · |interval=P30D = 1</text>
+  <text x="70" y="312" font-size="11.5" fill="#1a2332" font-family="Menlo,Consolas,monospace">customer 2:  no row under this date</text>
+  <circle cx="80" cy="372" r="5" fill="#0f766e"/>
+  <text x="92" y="376" font-size="11" fill="#5b6472">read: temporal_ix &lt;= aod.as_of_date</text>
+  <circle cx="330" cy="372" r="5" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <text x="342" y="376" font-size="11" fill="#5b6472">dated after the as-of date: never read</text>
+  <rect x="594.5" y="366.5" width="11" height="11" rx="2" fill="#b45309"/>
+  <text x="612" y="376" font-size="11" fill="#5b6472">target row emitted</text>
+  <rect x="739.5" y="366.5" width="11" height="11" rx="2" fill="#ffffff" stroke="#b91c1c" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <text x="757" y="376" font-size="11" fill="#5b6472">not emitted</text>
+</svg>
