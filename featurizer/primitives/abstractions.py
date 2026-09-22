@@ -343,6 +343,79 @@ class Entity:
         result.append(self.temporal_ix)
         return [ix for ix in result if ix is not None]
 
+    def carried_index_columns(self) -> List[str]:
+        """Index-typed *variables* that must be projected but are not features.
+
+        A foreign key declared ``type: index`` (e.g. ``care_plans.patient_id``)
+        is neither the entity's own id/temporal/spatial index nor a registered
+        relationship key, so it falls out of the normal projection. It is still
+        needed as a column — notably for the as-of join's ``WHERE`` clause — so
+        the planner carries it through synth/transform by name.
+        """
+        covered = {ix.name for ix in self.indexes} | {key.name for key in self.keys}
+        return sorted(
+            {
+                feature.name
+                for feature in self.features
+                if feature.type == "index" and feature.name not in covered
+            }
+        )
+
+    def identifier_columns(self) -> List[str]:
+        """Distinct identifier column names, in the order synth projects them.
+
+        Combines id/temporal/spatial indexes, relationship keys, and carried
+        index variables. The same name can appear as both the entity id and a
+        relationship key when a primary key doubles as a foreign key (an entity
+        keyed by ``patient_id`` that is also the child of a ``patient_id``
+        relationship). Projecting it twice makes the reference ambiguous, so
+        dedupe by name while preserving order.
+        """
+        names = (
+            [ix.name for ix in self.indexes]
+            + [key.name for key in self.keys]
+            + self.carried_index_columns()
+        )
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for name in names:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
+    def tiebreak_columns(self, *excluded: Optional[str]) -> List[str]:
+        """The columns that pin the order of this entity's rows on one timestamp.
+
+        A primitive that walks a timeline orders by the temporal index, and two
+        rows of one partition on the same timestamp then come out in whatever
+        order they were read, which is the physical order of the table (issue
+        #66). ADR-0018: after the temporal index a window orders by the
+        entity's remaining identifier columns, the id first, then by every
+        declared variable a window can compare. Two rows that still tie are the
+        same base row twice, and every value the engine derives from them is
+        the same. One order for the whole entity, so every window over it
+        shares one sort. ``excluded`` names what the caller already orders or
+        partitions by.
+
+        Left out: ``index``-typed variables (identifiers already), ``vector``
+        (no order worth sorting by), and ``role: identifier`` variables, which
+        the target's synth does not carry.
+        """
+        skip = {name for name in excluded if name}
+        ordered = [name for name in self.identifier_columns() if name not in skip]
+        skip.update(ordered)
+        for feature in self.features:
+            if (
+                isinstance(feature, Variable)
+                and feature.name not in skip
+                and feature.type not in {"index", "vector"}
+                and getattr(feature, "role", None) != "identifier"
+            ):
+                ordered.append(feature.name)
+                skip.add(feature.name)
+        return ordered
+
     def add_key(self, key: Key) -> None:
         if key not in self.keys:
             self.keys.append(key)

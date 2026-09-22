@@ -62,7 +62,7 @@
         care_plans_transform."risk_score" as "risk_score"
         from care_plans_transform
         where care_plans_transform."patient_id" = analytics.patients."patient_id" and care_plans_transform."effective_at" <= analytics.patients."registered_at" and care_plans_transform."effective_at" >= analytics.patients."registered_at" - interval 'P14D'
-        order by care_plans_transform."effective_at" desc
+        order by care_plans_transform."effective_at" desc, care_plans_transform."plan_id" desc, care_plans_transform."risk_score" desc
         limit 1
     ) as care_plans_asof_for_patients on true  left join  visits_aggs_for_patients on visits_aggs_for_patients."patient_id" = analytics.patients."patient_id" 
         where analytics.patients."registered_at" <= aod.as_of_date

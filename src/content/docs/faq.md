@@ -252,6 +252,32 @@ The rule is in the
 A column created by unquoted DDL needs none of this: `totalAmount` in the
 config matches the stored `totalamount`.
 
+### Two events share a timestamp. Which one comes first?
+
+Since 1.3.0 the order is fixed, and the same on every read. A window orders by
+the entity's temporal index, then by the entity's other identifier columns (its
+`id` first, then relationship keys and index-typed variables), then by every
+declared variable of the entity. So `lag_1`, a transition, a run length, an
+autocorrelation, a rolling window or an as-of lookup over two rows on the same
+date gives the same value whether the table was just loaded, clustered or
+vacuumed. Two rows that tie in all of that are the same row twice.
+
+Before 1.3.0 two such rows came out in the physical order of the table, and the
+value of an order-dependent primitive could change without the data changing:
+issue #66 measured it on 36 columns of 1,437 of 3,000 entities. If you use the
+sequence, autocorrelation, difference or lag families on an engine older than
+1.3.0, make the temporal index unique within a key, or upgrade. The decision is
+[ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/).
+
+### `cosinor_amplitude_weekly` is NULL for a series that has data
+
+Every timestamp of that series falls on the same weekly phase: rows a whole
+number of weeks apart, which a `date` index on one weekday produces. The sine
+and cosine the amplitude regresses on are then constant, and before 1.3.0 the
+primitive divided by their rounding error and returned numbers around 1e15
+(#67). It returns NULL when the basis has no spread. A series that sits on two
+or more phases gets a value.
+
 ### My matrix has fewer rows than entities × dates
 
 Your target declares a `temporal_ix`, and some of its rows are dated after

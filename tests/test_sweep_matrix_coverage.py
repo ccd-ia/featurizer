@@ -32,6 +32,8 @@ import pytest
 import tests.integration.test_all_aggregators_execution as aggregators_execute
 import tests.integration.test_asof_bounded_child_read as transformer_future_row
 import tests.integration.test_cohort_child_read_sweeps as narrowed_child
+import tests.integration.test_degenerate_phase as degenerate_phase
+import tests.integration.test_tied_timestamps as tied_rows
 import tests.integration.test_future_row_aggregations as aggregation_future_row
 import tests.integration.test_transformer_selection as transformer_selection
 import tests.test_aggregation_quoting as aggregation_quoting
@@ -68,6 +70,9 @@ TRANSFORMER_SWEEPS = {
     "a child narrowed by a paired cohort gives the dense value": lambda: _first_values(
         narrowed_child._sweep_cases()
     ),
+    "the physical order of tied rows moves nothing": lambda: _first_values(
+        tied_rows._transformer_cases()
+    ),
 }
 
 AGGREGATION_SWEEPS = {
@@ -84,6 +89,18 @@ AGGREGATION_SWEEPS = {
             narrowed_child.test_every_aggregation_over_a_narrowed_child_gives_the_dense_value
         )
     ),
+    "the physical order of tied rows moves nothing": lambda: _parametrized_over(
+        tied_rows.test_no_aggregation_depends_on_the_order_of_tied_rows
+    ),
+}
+
+# The degenerate-phase sweep is over the aggregations with a NUMERIC input, the
+# only ones a basis of sines can apply to; the others are excluded by type, not
+# by name, so a new numeric aggregation is covered the day it is registered.
+NUMERIC_ONLY_SWEEPS = {
+    "a series on one weekly phase gives null or a value of the data's size": (
+        lambda: set(degenerate_phase.NUMERIC)
+    ),
 }
 
 
@@ -96,6 +113,20 @@ def test_a_transformer_sweep_covers_the_whole_registry(sweep: str) -> None:
         "sweep a sample for their input type, or record why they are excluded"
     )
     assert covered <= registry
+
+
+@pytest.mark.parametrize("sweep", sorted(NUMERIC_ONLY_SWEEPS))
+def test_a_numeric_aggregation_sweep_covers_every_numeric_aggregation(
+    sweep: str,
+) -> None:
+    from tests.test_aggregation_quoting import _input_type
+
+    covered = NUMERIC_ONLY_SWEEPS[sweep]()
+    numeric = {name for name in list_aggregations() if _input_type(name) == "numeric"}
+    assert covered == numeric, (
+        f"'{sweep}' skips {sorted(numeric - covered)} "
+        f"and names unknown {sorted(covered - numeric)}"
+    )
 
 
 @pytest.mark.parametrize("sweep", sorted(AGGREGATION_SWEEPS))

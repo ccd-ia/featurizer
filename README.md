@@ -679,5 +679,5 @@ Automating Data Science Endeavors*. IEEE DSAA, 2015.
 -   `featurizer/tui/` &#x2013; The terminal cockpit on lynkeus (optional `tui` extra, Python 3.12+)
 -   `tests/` &#x2013; Test suite (2,468 tests: 915 DB-free + 1,553 integration)
 -   `examples/` &#x2013; Six self-contained examples executing against PostgreSQL
--   `docs/` &#x2013; ADRs (17), primitives reference, and design notes
+-   `docs/` &#x2013; ADRs (18), primitives reference, and design notes
 

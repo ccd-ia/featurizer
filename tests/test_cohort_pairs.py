@@ -70,14 +70,16 @@ def test_the_baseline_was_captured_before_the_change() -> None:
     # Captured from 3dbbfd8, reproduced by de03142, captured again when issue
     # #29 quoted the aggregations' inputs, when issue #27 cut every child read
     # on the as-of date, when issue #46 quoted every other declared identifier,
-    # when issue #37 pruned the shard re-joins, and when issue #49 cut the
-    # target's read too — see tests/utils/render_baseline.
-    assert baseline["captured_from"] == "da99fd4"
+    # when issue #37 pruned the shard re-joins, when issue #49 cut the target's
+    # read too, and when issue #66 gave every window a tiebreak — see
+    # tests/utils/render_baseline.
+    assert baseline["captured_from"] == "18299ac"
     assert baseline["requoted_by"] == "#29"
     assert baseline["bounded_by"] == "#27"
     assert baseline["quoted_identifiers_by"] == "#46"
     assert baseline["pruned_rejoin_by"] == "#37"
     assert baseline["target_bounded_by"] == "#49"
+    assert baseline["ordered_by"] == "#66"
     # One case must exercise the temp-table preamble, the only reader of
     # as_of_dates outside the query itself.
     empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
