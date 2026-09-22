@@ -156,7 +156,7 @@ over what exists; the Config, Manifest and SQL screens call the public
 `Featurizer` methods and the `validate` verb's own function; work starts only
 through `just` recipes and `python -m featurizer` verbs as subprocesses. It
 adds no run ledger and no persisted table — a new table would sit on the
-freeze list's side of the line ([ADR-0015](/featurizer/engineering/adr/)),
+[frozen API](/featurizer/faq/#what-does-stable-mean-since-10)'s side of the line,
 and a timestamp nobody wrote cannot be invented. Nothing here changes the
 public surface; the cockpit is an optional extra and the two verbs are
 additive.

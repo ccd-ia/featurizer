@@ -62,8 +62,9 @@ public surface and return shapes, the output-naming contract, the
 imputation contract, and the φ-bridge contract are **frozen** — breaking
 any of them requires a major version, and removals warn for at least one
 minor first. Internals (CTE names, SQL text, module layout) stay free to
-change. The full text is
-[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/).
+change. The freeze list, item by item, is the [stability and deprecation
+policy](https://github.com/ccd-ia/featurizer/blob/master/CONTRIBUTING.md#stability--deprecation-policy-v10)
+in `CONTRIBUTING.md`.
 
 ## Concepts
 
@@ -105,8 +106,8 @@ monolithic query. The fix is **column-group sharding**: featurizer splits the
 feature set into groups, materializes each group's CTE closure separately, and
 re-joins on the full key. It kicks in automatically past a threshold you can
 tune with `Featurizer(..., materialize_threshold=N)`. See
-[performance internals](/featurizer/engineering/internals/) and
-[ADR-0005](/featurizer/engineering/adr/0005-column-group-sharding/).
+[performance internals](/featurizer/engineering/internals/) and the [three
+render paths](/featurizer/concepts/how-a-feature-is-computed/#8-three-render-paths-one-result).
 
 ### My column names look truncated or contain a `~`
 
@@ -206,9 +207,8 @@ A **both-ends** shape does dominate the status quo — and still isn't worth it.
 It leaves 311 ambiguous columns, so you would keep needing the manifest anyway,
 while renaming 57.8% of columns and silently invalidating every downstream
 feature cache and column-matching config. The naming contract *including
-63-byte capping* is frozen under
-[ADR-0015](/featurizer/engineering/adr/0015-v1-api-stability-commitment/), so
-that rename also costs a major version and a deprecation cycle. Paying all that
+63-byte capping* is [frozen](#what-does-stable-mean-since-10), so that
+rename also costs a major version and a deprecation cycle. Paying all that
 to go from "physical names are unparseable" to "physical names are slightly
 less unparseable" is a bad trade.
 
@@ -227,9 +227,8 @@ values. This makes the feature matrix **split-blind**: the same columns appear
 whether you featurize the train split, the test split, or a single row, so
 train/serve schemas can't drift. A value present in your enum but absent from a
 given slice still gets its (all-zero) column; a value in your data but not the
-enum is a modeling error to fix upstream. See
-[ADR-0007](/featurizer/engineering/adr/0007-direct-categorical-fixed-vocabulary/)
-and the [categoricals notebook](/featurizer/notebooks/05-categoricals-output/).
+enum is a modeling error to fix upstream. See the [categoricals
+notebook](/featurizer/notebooks/05-categoricals-output/).
 Imputation of the resulting matrix is **opt-in**, not automatic.
 
 ### `column "entityid" does not exist` — but the table has `entityId`
@@ -266,8 +265,9 @@ Before 1.3.0 two such rows came out in the physical order of the table, and the
 value of an order-dependent primitive could change without the data changing:
 issue #66 measured it on 36 columns of 1,437 of 3,000 entities. If you use the
 sequence, autocorrelation, difference or lag families on an engine older than
-1.3.0, make the temporal index unique within a key, or upgrade. The decision is
-[ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/).
+1.3.0, make the temporal index unique within a key, or upgrade. The [row
+order](/featurizer/concepts/how-a-feature-is-computed/#4-transform-windows-and-the-order-they-walk)
+every window and every as-of lookup uses is on the concepts page.
 
 ### `cosinor_amplitude_weekly` is NULL for a series that has data
 
@@ -288,8 +288,9 @@ logs a warning that names the target when this applies.
 
 If you want every target row under every date, leave `temporal_ix` off the
 target, or left-join the matrix onto your own entities × dates table. The
-reasons are in
-[ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/).
+reasons are under [the target's
+read](/featurizer/concepts/how-a-feature-is-computed/#3-reading-an-entity-the-cut-on-the-as-of-date)
+on the concepts page.
 
 ### `row is too big: size …, maximum size 8160` — but only with `to_tables`
 

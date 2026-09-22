@@ -139,8 +139,8 @@ That last sentence is the reason the cut sits here and not only in the
 aggregation. Until 1.3.0 the child was read whole and cut when aggregated; a
 backward-looking window never noticed, but `percent_rank()` divides by the
 size of its partition, and that size counted rows the aggregation was about to
-drop. Six transformers changed value for it;
-[ADR-0016](/featurizer/engineering/adr/0016-leak-fixes-are-not-breaking/) records the fix.
+drop. Six transformers changed value for it; the 1.3.0 entry of the
+[changelog](/featurizer/engineering/changelog/) lists them.
 
 **The target is read the same way.** `customers` declares `signed_up`, so:
 
@@ -159,9 +159,8 @@ customers_synth as (
 
 A customer who signs up in August is not a row under an as-of date in
 January. Their aggregates would have been NULL anyway; emitting the row told a
-model trained as of January that the customer would exist
-([ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/),
-1.3.0). A target **without** a `temporal_ix` is read whole, which is how you
+model trained as of January that the customer would exist (since 1.3.0). A
+target **without** a `temporal_ix` is read whole, which is how you
 ask for every target row under every date. The planner logs one warning per
 process for a target that declares one, so the smaller row count is never a
 surprise.
@@ -191,9 +190,8 @@ walk a customer's orders in order, declare the child with the id of the thing
 whose history you want (`id: customer_id`). An entity with no `id` has no
 partition, and the window transformers emit nothing for it.
 
-**The order is the entity's row order** (1.3.0,
-[ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/)):
-the temporal index, then the entity's other identifier columns (relationship
+**The order is the entity's row order** (since 1.3.0): the temporal index,
+then the entity's other identifier columns (relationship
 keys and index-typed variables; the id is the partition), then every declared
 variable. For `orders` that is `"ordered_at", "customer_id", "amount"`. Two
 rows on one timestamp are ordered by their identifiers and then by their
@@ -247,8 +245,7 @@ one aggregate call per interval plus the unfiltered one.
 Not every aggregation fits a `group by`. A transition matrix, an
 autocorrelation, a run length or a spatial path needs the rows in order
 first. Those families render a **companion pre-pass CTE** (one per family and
-interval; [ADR-0010](/featurizer/engineering/adr/0010-set-based-preaggregation/))
-that orders the child's rows by the same row order as section 4, computes the
+interval) that orders the child's rows by the same row order as section 4, computes the
 per-row quantity (`lag`, a transition pair, a run id), and reduces it per key.
 The aggregation CTE then reads the companion's result. Families that fall
 outside both shapes render a correlated subquery per target row, over the same
@@ -338,15 +335,13 @@ renders differently, with the same result:
 - **Column groups.** The output is split into groups of columns; each group
   is a query of the shape above, pruned to the CTEs and joins its columns
   need, and every group leads with the target's identifier columns. The
-  executor re-joins the groups on those columns
-  ([ADR-0005](/featurizer/engineering/adr/0005-column-group-sharding/)).
+  executor re-joins the groups on those columns.
   `query_groups` returns them; `query` raises, because there is no single
   query to return.
 - **TEMP tables.** When a *child's* synth or transform is itself too wide, the
   executor materializes the chain into session TEMP tables before the group
   queries run, one shard per as-of date and column slice, in the single query's own
-  shape, and the group queries read the shards
-  ([ADR-0006](/featurizer/engineering/adr/0006-temp-table-materialization/)).
+  shape, and the group queries read the shards.
   `materialization_ddl` holds the statements.
 
 The three paths agree on every value. That is a tested claim, not a design
@@ -361,8 +356,7 @@ the connection they run on:
 
 1. **`analyze as_of_dates`**, savepoint-isolated, because a table you created
    seconds ago has no statistics and PostgreSQL would plan the lateral for a
-   2,550-row default
-   ([ADR-0013](/featurizer/engineering/adr/0013-analyze-as-of-dates/)).
+   2,550-row default.
 2. **`set local jit = off`**, then the query, then your previous value back
    (1.3.0). PostgreSQL compiles every expression of a query over
    `jit_above_cost` before it reads a row, and a generated query is a target

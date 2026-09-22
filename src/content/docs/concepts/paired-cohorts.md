@@ -125,8 +125,7 @@ the game's features. Paired with the day before, a game sees everything up to
 and including the previous day, and its own day counts for the next game.
 
 **The target declares no `temporal_ix`.** A target with one is read as of the
-date ([ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/)),
-and an event dated after its as-of date is not emitted under it, which is the
+date, and an event dated after its as-of date is not emitted under it, which is the
 day before by construction. Without one the target is read whole, and the
 pairing alone decides which events a date returns. The children keep their
 `temporal_ix`, and that is what the cut applies to.
