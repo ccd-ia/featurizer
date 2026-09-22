@@ -106,8 +106,18 @@ entities:
   date earlier than every row returns nothing. Releases up to 1.2 emitted those
   rows. For every target row under every date, leave `temporal_ix` off the
   target; to choose among the rows that exist, use `as_of_dates: {id_column}`.
+- **`id` is what a window walks.** Window transformers (`lag_*`, `cum_*`,
+  `rolling_*`, `ema_*`, `diff`, …) partition by the entity's `id` and walk its
+  rows in the entity's row order: `temporal_ix`, then the other identifier
+  columns, then every declared variable. Two rows on one timestamp therefore
+  come out in the same order on every read (1.3.0,
+  [ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/)).
+  An event table declared with the id of the row it belongs to (`id:
+  customer_id` on `orders`) walks that customer's events; declared with its
+  own unique key it walks one-row partitions, and a lag over it is NULL; with
+  no `id` the window transformers emit nothing for it.
 - **Variable `type`**: `numeric`, `categorical`, `text`, `boolean`, `date`,
-  `timestamp`, or `index`. Types decide which aggregations/transformers
+  `timestamp`, `index` or `vector`. Types decide which aggregations/transformers
   apply.
 - **`role: categorical` + `vocabulary`** one-hot encodes a *direct*
   categorical into `"<alias>.<col>=<value>"` 0/1 columns against the declared

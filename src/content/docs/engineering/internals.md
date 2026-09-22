@@ -13,7 +13,10 @@ A full-default config synthesizes hundreds to tens of thousands of columns.
 Naively compiled, that query melts a PostgreSQL backend — early versions
 proved it repeatedly, with measurements. This page tells the story of the
 current design: what the emitted SQL looks like, where each cost lives, and
-which decision record carries the evidence. Every number below was measured
+which decision record carries the evidence. For the step-by-step account of
+what each CTE computes, read
+[How a feature is computed](/featurizer/concepts/how-a-feature-is-computed/)
+first. Every number below was measured
 against live databases and is archived in the
 <a href="/featurizer/specs/live-db-revalidation-v100.html">v1.0.0 validation reports</a>.
 
@@ -57,8 +60,12 @@ A target without one is read whole.
   child stream by join key and `LEFT JOIN`s onto the target's synth CTE
   (missing groups stay NULL — no data is signal).
 - **As-of parents**: a `temporal: {mode: as_of}` relationship renders
-  `LEFT JOIN LATERAL (… where τ ≤ t order by τ desc limit 1)` — the newest
-  state at or before each as-of date, optionally bounded by `grace`.
+  `LEFT JOIN LATERAL (… where τ ≤ t order by τ desc, … limit 1)` — the newest
+  state at or before each child row's date, optionally bounded by `grace`.
+  The `order by` continues over the source's row order (identifiers, then
+  declared variables), so two source rows on one timestamp yield the same one
+  on every read
+  ([ADR-0018](/featurizer/engineering/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows/)).
 - **Column groups → matrix**: when the output is sharded (below), every group
   leads with the full carried identifier tuple and the executor re-joins
   groups on **all** of it — a target carrying relationship keys repeats them

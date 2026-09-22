@@ -59,14 +59,87 @@ as_of_dates:
   id_column: cohort_id     # the column of as_of_dates that holds customers' id
 ```
 
-The matrix then has exactly one row per declared pair. A pair that appears twice
-still gives one row.
+The matrix then has one row per declared pair, for a target with one row per
+id. A pair that appears twice still gives one row. For a target with several
+rows per id (an event-like target, one row per visit with the patient as its
+`id`), a pair keeps every row of that id the date can see.
 
 `featurizer validate` checks the block's shape: a mapping with the one key
 `id_column`, a non-empty string, on a target that declares an `id`. It cannot
 check that your table has the column, because validation has no database
 connection. A wrong name surfaces when the query runs, as PostgreSQL's
 `column _cohort.<name> does not exist`.
+
+## Two recipes for the pair table
+
+The pair table is yours to write, and its shape is where the cohort is
+defined. Two recipes cover the cases that come up. Both are SQL you run before
+featurizer, on the same connection when the table is `TEMP`; both were run
+against the test database with the rows below.
+
+### Entities active before each date
+
+Score, at each month end, the customers who had an order in the month before
+it:
+
+```sql
+create temp table as_of_dates as
+select d::date as as_of_date, active.customer_id as cohort_id
+from generate_series(date '2024-02-01', date '2024-04-01', interval '1 month') as d
+join lateral (
+  select distinct customer_id
+  from orders
+  where ordered_at <  d::date
+    and ordered_at >= d::date - interval '1 month'
+) active on true;
+```
+
+With orders on 2024-01-10 (customer 1), 2024-02-20 (customer 2) and
+2024-03-05 (customer 1), the table holds `(2024-02-01, 1)`, `(2024-03-01, 2)`,
+`(2024-04-01, 1)`, and the matrix has exactly those three rows. This is the
+shape `benchmarks/final_matrix.py --dates N` builds on the live databases.
+
+### The events of a date
+
+A model scores each event once, on its own date, with the history that
+preceded it: a game scored with its teams' previous games, a request scored with its
+area's earlier requests, a visit scored with the patient's earlier visits. The
+target is the event table, and the pair table is one row per event:
+
+```sql
+create temp table as_of_dates as
+select played_on - 1 as as_of_date, game_id as cohort_id
+from games;
+```
+
+Two decisions sit in that statement.
+
+**The as-of date is the day before the event.** With `as_of_boundary:
+inclusive` (the default) a child row dated on the as-of date is knowable, so
+pairing a game with its own date lets the teams' rows of that same day into
+the game's features. Paired with the day before, a game sees everything up to
+and including the previous day, and its own day counts for the next game.
+
+**The target declares no `temporal_ix`.** A target with one is read as of the
+date ([ADR-0017](/featurizer/engineering/adr/0017-an-unknowable-row-is-not-emitted/)),
+and an event dated after its as-of date is not emitted under it, which is the
+day before by construction. Without one the target is read whole, and the
+pairing alone decides which events a date returns. The children keep their
+`temporal_ix`, and that is what the cut applies to.
+
+With games on 2024-03-01 (home team 100), 2024-03-01 (team 200), 2024-03-08
+(team 100) and 2024-03-15 (team 300), and the teams' rows on 2024-02-20,
+2024-03-01, 2024-03-01, 2024-03-08 and 2024-03-15, the matrix has one row per
+game: the first game's `COUNT(home.played_on)` is 1 (the 2024-02-20 row), the
+third's is 2, and the second and fourth, whose home teams had no earlier row,
+are NULL.
+
+If the event's own day should count, pair the event with its own date and
+declare the `temporal_ix` on the target: the event's row is then emitted with
+every child row up to and including that day (and so is every earlier row of
+the same id, for a target with several rows per id), while its rows dated
+later are cut. Which of the two is right is a modelling decision about what
+was known when the prediction was needed, and featurizer renders either.
 
 ## What it renders
 
@@ -183,8 +256,8 @@ engine turns it off itself since #53):
 
 chicago311 is the worst case on purpose. Its children are keyed by community
 area and request type, every area has an event every month, so the cohort the
-harness derives is the whole population and the cut removes nothing: no gain,
-and 0.2 s of overhead on the smallest config.
+harness derives is the whole population and the cut removes nothing. There is
+no gain, and 0.2 s of overhead on the smallest config.
 
 Before the child reads were narrowed, the second row was 7.8 to 8.4 s dense and
 6.4 to 6.7 s paired: the pairing saved the target's side only, and each date

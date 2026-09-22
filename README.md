@@ -12,6 +12,7 @@
 
 **Documentation** — [ccd-ia.github.io/featurizer](https://ccd-ia.github.io/featurizer/):
 [Walkthrough](https://ccd-ia.github.io/featurizer/walkthrough/) ·
+[How a feature is computed](https://ccd-ia.github.io/featurizer/concepts/how-a-feature-is-computed/) ·
 [Tutorial notebooks](https://ccd-ia.github.io/featurizer/notebooks/) ·
 [Primitives](https://ccd-ia.github.io/featurizer/reference/primitives/) ·
 [Configuration](https://ccd-ia.github.io/featurizer/reference/configuration/) ·
@@ -542,6 +543,46 @@ dependency matrix).
     `child_timestamp`; otherwise their declared `temporal_ix` is used.
     Temporal joins fall back to static key joins when either side lacks a
     temporal index.
+-   **Every entity with a `temporal_ix` is cut on the as-of date where it is
+    read**, the target included (1.3.0, ADR-0016 and ADR-0017). No window,
+    however wide its frame, can see a row dated after the as-of date, and a
+    target row dated after an as-of date is not emitted under it. A target
+    without a `temporal_ix` is read whole, which is how you ask for every row
+    under every date.
+-   **Two rows on one timestamp are walked in a fixed order** (1.3.0,
+    ADR-0018): the temporal index, then the entity's other identifier columns,
+    then its declared variables. A lag, a transition, a run length or an
+    as-of lookup gives the same value however the table was loaded, clustered
+    or vacuumed.
+
+The whole path from a config to a matrix, CTE by CTE, is on the docs site:
+[How a feature is computed](https://ccd-ia.github.io/featurizer/concepts/how-a-feature-is-computed/).
+
+
+## Cohorts
+
+By default the matrix holds every target row under every as-of date, the
+shape temporal cross-validation wants. When each date has its own set of
+entities&#x2014;the day's arrivals, the events of a date, the customers
+active in the month before&#x2014;give `as_of_dates` a second column holding
+the target's id and declare it:
+
+    create temp table as_of_dates (as_of_date date, cohort_id int);
+
+```yaml
+as_of_dates:
+  id_column: cohort_id
+```
+
+The matrix then has one row per `(as_of_date, id)` pair, and a child that only
+the target aggregates is read for that cohort too, so a date no longer
+aggregates the history of every entity to keep a twentieth of it. Measured
+2026-09-21 on the 22,169-facility validation database, dense against paired:
+147 features over 6 monthly dates, 5.1 s against 0.4 s; 272 features over 6
+dates, 21.3 s against 5.0 s. Values equal the dense run's on the pairs, for
+every registered primitive. Without the block nothing changes.
+[Paired cohorts](https://ccd-ia.github.io/featurizer/concepts/paired-cohorts/)
+has the pair-table recipes, including the one-row-per-event shape.
 
 
 <a id="org328866b"></a>
@@ -629,6 +670,15 @@ return shapes, the output-naming contract, the imputation contract, and the
 version, and deprecations warn for at least one minor release first.
 Planner internals, CTE names, and generated SQL text stay refactorable.
 The full commitment: [ADR-0015](docs/adr/0015-v1-api-stability-commitment.md).
+
+Three rulings narrow it, all shipped in 1.3.0 and each with the sweep that
+enforces it: a value that depended on rows after the as-of date
+([ADR-0016](docs/adr/0016-leak-fixes-are-not-breaking.md)), a row that did not
+exist yet at the date ([ADR-0017](docs/adr/0017-an-unknowable-row-is-not-emitted.md)),
+and a value that depended on the physical order of the rows
+([ADR-0018](docs/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows.md))
+were never part of the contract, so removing the dependence ships in a minor
+release, with the CHANGELOG naming every primitive that moves.
 
 ### Tested compatibility matrix
 
