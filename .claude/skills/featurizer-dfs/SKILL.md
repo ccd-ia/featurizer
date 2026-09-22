@@ -333,7 +333,9 @@ Point-in-time correctness is *why* Featurizer exists over a naive join. Guard it
 - **A point-in-time leak fix is not a breaking change** (ADR-0016, ADR-0017):
   a value, or a row, that depended on data after the as-of date was never part
   of the contract, so its fix ships in a minor and the CHANGELOG names every
-  primitive that moves.
+  primitive that moves. Neither is a value that depended on the physical order
+  of the rows (ADR-0018, 1.3.0): two rows on one timestamp are ordered by the
+  entity's identifiers and then its declared variables, the same on every read.
 - **Not frozen:** planner/renderer internals, CTE names, SQL text, module
   layout. Consumer code that asserts on CTE names or SQL fragments is
   asserting on internals — key off the manifest and the output columns.

@@ -18,8 +18,8 @@ for six invariants.
 
 Nothing on ADR-0015's freeze list changes meaning: the config schema keeps its
 keys, the `Featurizer` surface keeps its signatures and return shapes, output
-names do not move. **Two things do change what a matrix contains, by ruling
-(ADR-0016, ADR-0017). Read them first.**
+names do not move. **Three things do change what a matrix contains, by ruling
+(ADR-0016, ADR-0017, ADR-0018). Read them first.**
 
 ### Read this first: which rows and values change
 
@@ -52,12 +52,44 @@ names do not move. **Two things do change what a matrix contains, by ruling
   transformers shows it. None of the six is in the curated defaults and no
   `triage-pg` config names one. **A model trained on one of them has to be
   retrained.**
+- **A value no longer depends on the physical order of the rows** (#66, #67,
+  [ADR-0018](docs/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows.md)).
+  A primitive that walks a timeline ordered its rows by the temporal index
+  alone, and two rows of one entity on the same timestamp came out in the
+  order the table was read: the same query over the same rows stored in
+  another order moved 28 columns on 25 of dirtyduck's 22,169 entities and 36
+  columns on 1,437 of donorschoose's 3,000, every one an entity with two child
+  rows on one date, which a `date` index makes the normal case. Every entity
+  now has one row order (the temporal index, then its other identifier
+  columns, then its declared variables) and every window, rolling percentile
+  and as-of lookup uses it. Values move only where there was a tie, for these
+  primitives: `acf_1`, `distance_travelled`, `longest_streak`,
+  `markov_conditional_entropy`, `max_transition_prob`, `ngram_2_freq`,
+  `ngram_3_freq`, `rework_count`, `sequence_entropy`, `state_volatility`,
+  `time_in_current_state`, `transition_matrix_summary`, `variance_ratio`;
+  `cusum`, `diff`, `diff2`, `diff3`, `ema_7`, `ema_14`,
+  `holt_winters_level_7`, `holt_winters_level_14`, `holt_winters_trend_7`,
+  `holt_winters_trend_14`, `lag_1`, `lag_3`, `lag_7`, `last`,
+  `mean_shift_ratio_7`, `ntile`, `pct_change_1`, `pct_change_3`, `previous`,
+  `rolling_iqr_7`, `rolling_iqr_14`, `rolling_mean_3`, `rolling_mean_7`,
+  `rolling_mean_14`, `rolling_median_5`, `rolling_median_7`, `rolling_std_3`,
+  `rolling_std_7`, `rolling_std_14`, `time_since_previous`; and a value pulled
+  by an as-of lookup whose source has two rows on one timestamp. The values
+  they replace were not reproducible: a reload, a `cluster` or a different
+  plan changed them. `longest_streak` had a second fault, two sorts that could
+  split a run of identical rows, and is right for the first time on such rows.
+  **`cosinor_amplitude_weekly` returns NULL** where every timestamp of a
+  series shares the weekly phase (rows whole weeks apart); it returned the
+  rounding error of `sin()` divided by itself, around 1e15, different on every
+  read.
 
-ADR-0016 is the rule both ship under: a value, or a row, that depended on data
-after the as-of date was never part of the ADR-0015 contract, so removing that
-dependence is a minor release. The exemption is narrow by construction: the
-qualifying test adds an unknowable row and shows the value moved before the
-change and does not after it.
+ADR-0016 is the rule the first two ship under: a value, or a row, that
+depended on data after the as-of date was never part of the ADR-0015 contract,
+so removing that dependence is a minor release. The exemption is narrow by
+construction: the qualifying test adds an unknowable row and shows the value
+moved before the change and does not after it. ADR-0018 extends it to a value
+that depended on the physical order of the rows, or on rounding noise: it could
+not be relied on twice, so it was never part of the contract either.
 
 ### Added
 
@@ -83,17 +115,18 @@ change and does not after it.
   the other rows of its entity (`cross_entity_zscore`, `cross_entity_percentile`:
   `avg(x) over ()`). A paired cohort then narrows nothing and filters the final
   select instead. Set it on a custom transformer that windows across entities.
-- **The sweep matrix** (#50). Six invariants, each checked by a sweep that
+- **The sweep matrix** (#50). Seven invariants, each checked by a sweep that
   executes against PostgreSQL over the whole registry: a primitive executes; it
   executes when a declared identifier is not a bare name, whatever the
   identifier's role; a row dated after the as-of date moves nothing; the three
   render paths agree; a config that validates runs; a paired cohort gives the
-  dense values on its pairs. `tests/test_sweep_matrix_coverage.py` fails the
+  dense values on its pairs; a value does not depend on the physical order of
+  the rows. `tests/test_sweep_matrix_coverage.py` fails the
   fast tier when a sweep skips a registered primitive (it found one the day it
   was written: the quoting sweep had skipped `cum_count` since #24) or when a
   config parameter is not classified as naming a column or not. CONTRIBUTING,
-  "The sweep matrix", has the rule for contributors. 2,468 tests: 915 DB-free,
-  1,553 integration.
+  "The sweep matrix", has the rule for contributors. 2,650 tests: 918 DB-free,
+  1,732 integration.
 - **Validation: a key nothing reads is an error** (#7, #12), at the top level,
   on a relationship and on a variable, with the valid keys as the suggestion.
   `whitelist:`, a relationship's `parent_key:`, a variable's `intervals:` were
@@ -115,14 +148,15 @@ change and does not after it.
   child timestamps) and `--jit-compare` (the single-date cell under `jit` off,
   on, on, off, with a digest of the returned frame). Artifacts:
   `specs/jit-on-off/raw/`.
-- **ADR-0016** and **ADR-0017**, and `just revendor-skill` (#33).
+- **ADR-0016**, **ADR-0017** and **ADR-0018**, and `just revendor-skill` (#33).
 - **Docs**: a *Column budget* section (an aggregation yields `intervals + 1`
   columns per child column, because the whole-history column is always emitted)
   and the 8 kB heap-row ceiling, which binds near 1,000 numeric columns, before
   the 1664-entry limit (#11, #12); the cockpit page's screenshots, read from the
   committed test snapshots (#16); a *JIT compilation* section; FAQ entries for a
   matrix with fewer rows than entities × dates, a mixed-case column that "does
-  not exist", and a query that takes tens of seconds on a small table.
+  not exist", a query that takes tens of seconds on a small table, which of
+  two events on one timestamp comes first, and a NULL cosinor amplitude.
 
 ### Changed
 
@@ -201,20 +235,6 @@ change and does not after it.
   interval and under `count`, and `child_timestamp` need not be a declared
   variable. The lookup's `index` and `key` columns were promised to the parent
   and never transferred, and an interval read the lookup's timeline.
-
-### Known issues
-
-Both predate this release, are in 1.2.0 as well, and wait for a ruling on
-whether the fix is a value change under ADR-0015:
-
-- **#66**: an order-dependent primitive over tied timestamps returns a value
-  that depends on the physical order of the rows (11 of 67 aggregations, at
-  least 14 of 83 transformers). On donorschoose, where a project's resources
-  share its date, the same dense query over the same rows in another physical
-  order moves 36 columns on 1,437 of 3,000 entities. Make the temporal index
-  unique within a key if you use the sequence, autocorrelation or lag families.
-- **#67**: `cosinor_amplitude_weekly` divides by rounding noise when all the
-  timestamps of a series share a weekly phase, and returns values around 1e15.
 
 ## [1.2.0] - 2026-09-04
 
