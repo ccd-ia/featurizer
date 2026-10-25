@@ -7,9 +7,10 @@ transformers. This asks the same question of the set a config gets when it
 selects nothing: ``DEFAULT_AGGREGATIONS`` x ``DEFAULT_TRANSFORMATIONS``, one
 interval, two as-of dates.
 
-One numeric variable per entity keeps that matrix at 545 columns, which still
+One numeric variable per entity keeps that matrix at 364 columns, which still
 fits one query, so all three paths are compared: the single query, column
-groups over inline CTEs, and a materialized child chain.
+groups over inline CTEs, and a materialized child chain. It was 545 until issue
+#76: the undated target's 181 ``CUM_SUM`` columns were unordered copies.
 """
 
 from __future__ import annotations
@@ -140,7 +141,7 @@ def test_inline_and_materialized_child_chains_agree_on_the_defaults(pg_conn, pai
     )
     assert n_single == 1 and n_groups > 1
     assert not groups_materialized and temp_materialized
-    assert len(next(iter(single.values()))) > 400, "not the curated defaults"
+    assert len(next(iter(single.values()))) > 300, "not the curated defaults"
 
     for name, other in (("column groups", groups), ("TEMP tables", temp)):
         assert set(other) == set(single), name
