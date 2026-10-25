@@ -63,6 +63,18 @@ target variable its ``order by`` now reads (``gender`` in four groups of
 rule keeps what a window names. ``ddl`` and ``n_groups`` did not move, and
 neither did any transform's select list, so no output column moves.
 
+Issue #76 then stopped ``WindowFunctionTransformer`` and
+``DistributionTransformer`` from rendering a window on an entity without a
+``temporal_ix``, which they had written as ``over (partition by id)`` with no
+order, so they were captured an eighth time, from ``c3ce3ac`` plus that fix
+(``timeline_required_by``). Only ``generated/wide`` moves, in ``groups`` and
+``n_groups`` (11 to 5): its undated target runs the default transformers, and
+``cum_sum`` copied each of its aggregates. Read column by column against
+``c3ce3ac``: 3,043 of 9,129 columns are gone, every one a
+``CUM_SUM(accounts.…)`` of ``accounts_transform`` with no ``order by``; no
+column is added, and no remaining column's projection changed. Like #49's move,
+this one changes what a config returns; ``ddl`` did not move.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """

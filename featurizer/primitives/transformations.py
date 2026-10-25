@@ -476,13 +476,18 @@ class WindowFunctionTransformer:
         partition = _partition(parent)
         if not partition:
             return None
+        order_clause = self._resolve_order_by(feature, parent)
+        if self.order_by is not None and not order_clause:
+            # Asked for the entity's timeline and it has none: an unordered
+            # ``last_value``/``lag`` returns whichever row is read (ADR-0018),
+            # and on the target it only copies the column.
+            return None
         window_args = [expression] + list(self._resolve_args(feature))
         window_call = [f"{self.function}({', '.join(window_args)})"]
         if self.filter and feature.specials:
             # filter by clause
             window_call.append(f" filter (where {_col(feature)} = {feature.specials}) ")
         window_call.append(f" over (partition by {partition}")
-        order_clause = self._resolve_order_by(feature, parent)
         if order_clause:
             window_call.append(f" order by {order_clause}")
         if self.frame:
@@ -838,17 +843,17 @@ class DistributionTransformer(WindowFunctionTransformer):
         partition = _partition(parent)
         if not partition:
             return None
+        order_clause = self._resolve_order_by(feature, parent)
+        if self.order_by is not None and not order_clause:
+            # The same guard as ``WindowFunctionTransformer``: no timeline,
+            # no rank over it.
+            return None
         pieces = []
         if self.arg_func:
             pieces.append(f"{self.function}({self.arg_func})")
         else:
             pieces.append(f"{self.function}()")
         pieces.append(f" over (partition by {partition}")
-        order_clause = (
-            self._resolve_order_by(feature, parent)
-            if hasattr(self, "_resolve_order_by")
-            else None
-        )
         if order_clause:
             pieces.append(f" order by {order_clause}")
         if self.frame:

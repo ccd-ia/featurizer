@@ -774,9 +774,14 @@ def test_window_fn_budget_bounds_each_group():
     """Window-heavy configs close groups early so no group's transform tuple
     carries more window functions than the planning-safe budget (PostgreSQL's
     planning memory is superlinear in same-statement window-function count)."""
-    f = _featurizer(
-        _wide_config(transformations=["identity", "cum_sum", "lag_1", "rolling_mean_7"])
+    config = _wide_config(
+        transformations=["identity", "cum_sum", "lag_1", "rolling_mean_7"]
     )
+    # The target's windows walk its timeline; without one they render nothing.
+    # Until the windows that ignored that were cut, this test counted their
+    # unordered copies.
+    config["entities"][0]["temporal_ix"] = "signup_date"
+    f = _featurizer(config)
     sharder = ColumnGroupSharder(f._plan, max_window_fns_per_group=50)
     groups = sharder._partition_columns()
     assert len(groups) > 1
