@@ -1,7 +1,11 @@
 """Transformer tests cover object copying semantics and composite outputs."""
 
+import re
+
+import pytest
+
 from featurizer.primitives.abstractions import Entity
-from featurizer.primitives.utils import get_transformers
+from featurizer.primitives.utils import get_transformers, list_transformations
 
 
 def _make_numeric_entity() -> Entity:
@@ -271,3 +275,60 @@ def test_ge_binary_transformer_uses_valid_operator():
     assert result is not None
     assert " >= " in result.definition
     assert "=>" not in result.definition
+
+
+def _make_timeless_entity() -> Entity:
+    """An entity with an id and no ``temporal_ix``: a partition with no order."""
+    return Entity(
+        alias="patients",
+        table="clinic.patients",
+        id="patient_id",
+        variables={
+            "glucose": {"type": "numeric"},
+            "ward": {"type": "categorical"},
+            "admitted_on": {"type": "date"},
+        },
+    )
+
+
+# ``in_array`` needs a third argument the planner never supplies (see
+# ``DEFAULT_TRANSFORMERS``); it renders no window.
+_NEEDS_ARGUMENT = {"in_array"}
+_PARTITION_WINDOW = re.compile(r"over \(\s*partition by [^()]*\)", re.IGNORECASE)
+
+
+@pytest.mark.parametrize("name", sorted(set(list_transformations()) - _NEEDS_ARGUMENT))
+def test_no_partition_window_without_a_timeline(name):
+    """A window over an entity's partition is ordered, or it is not rendered.
+
+    An entity without ``temporal_ix`` contributes only static features
+    (configuration reference). Every window class but two returned None there;
+    ``WindowFunctionTransformer`` and ``DistributionTransformer`` rendered
+    ``over (partition by id)`` with no ORDER BY. On a target that copies every
+    column; on a child with several rows per id, ``last``/``first``/``previous``/
+    ``ntile`` return whichever row PostgreSQL reads (ADR-0018).
+    """
+    entity = _make_timeless_entity()
+    transformer = get_transformers([name])[name]
+    for feature in entity.features:
+        result = transformer(entity, feature)
+        produced = result if isinstance(result, (list, tuple)) else [result]
+        for out in produced:
+            if out is None or out is feature:
+                continue
+            for window in _PARTITION_WINDOW.findall(out.definition or ""):
+                assert "order by" in window.lower(), (name, feature.name, window)
+
+
+def test_window_transformer_without_order_by_still_renders():
+    """The guard is for a window that ASKS for the timeline and finds none. A
+    ``WindowFunctionTransformer`` built with no ``order_by`` is a deliberate
+    partition aggregate (a caller's custom primitive) and keeps rendering."""
+    from featurizer.primitives.transformations import WindowFunctionTransformer
+
+    partition_sum = WindowFunctionTransformer(name="partition_sum", function="sum")
+    entity = _make_timeless_entity()
+    result = partition_sum(entity, _get_feature(entity, "glucose"))
+
+    assert result is not None
+    assert 'sum("glucose")  over (partition by "patient_id"' in result.definition
