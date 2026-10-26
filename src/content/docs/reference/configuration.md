@@ -114,7 +114,11 @@ entities:
   An event table declared with the id of the row it belongs to (`id:
   customer_id` on `orders`) walks that customer's events; declared with its
   own unique key it walks one-row partitions, and a lag over it is NULL; with
-  no `id` the window transformers emit nothing for it.
+  no `id` the window transformers emit nothing for it. Without a `temporal_ix`
+  there is no row order to walk, and they emit nothing either (since 1.3.1).
+  Earlier releases rendered the window without an order: on a target, a copy
+  of each column; on a child with several rows per `id`, a `last` or `first`
+  that depended on the order the rows were read in.
 - **Variable `type`**: `numeric`, `categorical`, `text`, `boolean`, `date`,
   `timestamp`, `index` or `vector`. Types decide which aggregations/transformers
   apply.
@@ -229,7 +233,8 @@ state as of this row" and the only timeline left to walk is the receiver's.
 The two windows mean different things and both are kept:
 `CUM_SUM(plans.cost)` is computed on the source side and walks the source's
 history; `CUM_SUM(plans.CUM_SUM(plans.cost))` is the same window applied again
-after the transfer, and walks the receiver's rows.
+after the transfer, and walks the receiver's rows. A receiver without a
+`temporal_ix` gets only the first.
 
 **Known boundary (v1.0):** the correlated LATERAL cannot be flattened into
 temp-table shards. If the entity carrying an as-of join *also* grows past

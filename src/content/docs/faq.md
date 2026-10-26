@@ -79,6 +79,45 @@ in SQL so leakage can't creep in. See the
 [φ theory page](/featurizer/concepts/phi-theory/) and drag the as-of date in the
 [interactive explorable](/featurizer/explorables/phi-dfs.html).
 
+### How do I get the last known value of a variable, beside its aggregates?
+
+Apply the `last` transformer on the child and aggregate it. For a lab-results
+table that rolls up to patients:
+
+```yaml
+aggregations: [mean, stddev, min, max, count]
+transformations: [identity, last]
+entities:
+  - alias: labs
+    table: labs
+    id: patient_id          # what the window walks: the patient, not the reading
+    temporal_ix: measured_at
+    variables:
+      glucose: {type: numeric}
+```
+
+`last` takes each patient's most recent `glucose` among the readings dated on
+or before the as-of date, and writes it on every one of that patient's rows.
+Any aggregation then reduces it to one value per patient:
+`MAX(labs.LAST(labs.glucose))` is the last known glucose at each as-of date,
+next to `MEAN(labs.glucose)`, `STDDEV(labs.glucose)` and the rest. Under an
+interval, `MAX(labs.LAST(labs.glucose)|interval=P90D)` is that same value when
+the reading falls in the last 90 days, and NULL when it is older.
+
+- **`id` decides what `last` walks.** Declared as `id: lab_id`, each reading is
+  its own partition, `LAST(labs.glucose)` is the reading itself, and
+  `MAX(labs.LAST(labs.glucose))` is only the maximum. The rule is in the
+  [entities reference](/featurizer/reference/configuration/#entities).
+- **`MAX`, `MIN` and `MEAN` of `LAST(…)` are equal**, and `STDDEV` of it is 0
+  or NULL, because every aggregation applies to every column. Keep one.
+- **Keep `identity` in `transformations`.** Without it the target carries no
+  plain column, and a target without a `temporal_ix` ends up with none at all.
+
+When the target is a dated event (an admission, a visit), an
+[as-of lookup](/featurizer/reference/configuration/#temporal-as-of-joins)
+answers a different question, the last reading before that event:
+`temporal: {mode: as_of, grace: P90D}` with the lab table as the `parent`.
+
 ### Why aren't peer-group, spatial, or φ-bridge features in the primitives list?
 
 Because they aren't registry primitives — they're **planner passes** driven by
@@ -124,8 +163,8 @@ outer wrapper prefixes), so a deep composition erases the innermost — most
 informative — fragment:
 
 ```
-CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rod~978dcf98
-       └ full name: CUM_SUM(facilities.MEAN(inspections.ABS(inspections.kw_rodent_complaint_flag)))
+ABS(facilities.MEAN(inspections.ABS(inspections.kw_rod~978dcf98
+   └ full name: ABS(facilities.MEAN(inspections.ABS(inspections.kw_rodent_complaint_flag)))
 ```
 
 Anything that matches on **physical** column names (glob patterns like
