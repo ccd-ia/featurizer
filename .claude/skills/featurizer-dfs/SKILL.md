@@ -26,7 +26,7 @@ user-invocable: true
      snapshots of the BODY (from the H1 down) live in ~/.claude/skills/ and in
      the claude-tips skills catalog; they keep their own frontmatter. -->
 
-# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.3.0
+# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.3.1
 
 Featurizer implements Deep Feature Synthesis for relational PostgreSQL data with
 first-class temporal semantics. You declare an entity graph once; it traverses
@@ -382,6 +382,11 @@ high-redundancy, low-importance features before training.
 - ❌ Declaring `temporal_ix` on the target and expecting every row under every
   date — since 1.3.0 a row appears from the first as-of date on or after its
   own. No `temporal_ix` on the target = the dense grid.
+- ❌ Expecting a window (`cum_*`, `last`, `first`, `lag_*`, `percent_rank`, …) on
+  an entity without `temporal_ix` — since 1.3.1 none is emitted (#76). And a
+  window walks the entity's `id`: for a patient's last known reading, the lab
+  table declares `id: patient_id`, not its own row key, and the parent reads
+  `MAX(labs.LAST(labs.glucose))`.
 - ❌ Filtering a dense matrix down to each date's own entities after the fact —
   declare `as_of_dates: {id_column}` and the rows are never computed.
 - ❌ Rebuilding cohorts/labels/splits here — that's `pg-ml-pipeline`'s job.
@@ -415,7 +420,7 @@ Docs hub: https://ccd-ia.github.io/featurizer/ (configuration reference,
 primitives explorer, bridge cookbook, FAQ, ADRs). Distribution is GitHub
 releases on `ccd-ia/featurizer` (no PyPI, deliberate); each release also
 attaches a `docs-site-vX.Y.Z.tar.gz` snapshot. Pin
-`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.3.0`
+`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.3.1`
 (extras: `parquet` for Arrow/Parquet output, `bridge` for φ-bridges, `viz` for
 `FeaturizerViz`, `tui` for the terminal cockpit — Python 3.12+ only, empty on
 3.10/3.11).

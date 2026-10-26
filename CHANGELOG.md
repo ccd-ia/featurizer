@@ -4,6 +4,48 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
+## [1.3.1] - 2026-10-26
+
+A fix release. Eleven window transformers rendered a window on an entity
+without a `temporal_ix`, with no ORDER BY (#76, PR #77). Every other window
+class already emitted nothing there, as the configuration reference states.
+Nothing on ADR-0015's freeze list changes meaning and no output name moves,
+but **columns go away**.
+
+### Read this first: which columns go away
+
+- **On a target without a `temporal_ix`, the window columns are gone.** They
+  were copies: the target holds one row per id under each as-of date, so
+  `CUM_SUM(<target>.X)` equalled `X`. `cum_sum` is a default transformer, so a
+  config with an undated target and the default set loses one
+  `CUM_SUM(<target>.…)` column per aggregate. The values of every remaining
+  column are unchanged. In the test suite's wide render fixture that is 3,043
+  of 9,129 columns, and 181 of 543 in the defaults path-equivalence fixture.
+  Every triage-pg example config has this shape.
+- **On a child without a `temporal_ix` whose `id` several rows share, `last`,
+  `first`, `previous` and `ntile` are gone.** Their value depended on the order
+  PostgreSQL read the rows in, the dependence ADR-0018 rules out, and
+  `validate` accepted them without a warning. A model trained on one of these
+  columns has to be retrained.
+
+### Fixed
+
+- **`WindowFunctionTransformer` and `DistributionTransformer` emit no feature
+  when the transformer orders by the entity's timeline and the entity has
+  none:** `cum_sum`, `cum_mean`, `cum_max`, `cum_min`, `cum_count`, `first`,
+  `last`, `previous`, `cdf`, `percent_rank`, `ntile`. A
+  `WindowFunctionTransformer` built without `order_by` (a caller's partition
+  aggregate) still renders. A registry-wide test applies every transformer to
+  an entity without a `temporal_ix`. The render baseline is re-captured from
+  `c3ce3ac` (`timeline_required_by`): only the wide fixture moves.
+
+### Documentation
+
+- The entities reference states that a window needs a `temporal_ix`. The FAQ
+  gains "How do I get the last known value of a variable, beside its
+  aggregates?", and its truncation example names a column that is still
+  emitted.
+
 ## [1.3.0] - 2026-09-21
 
 A correctness release. Between 2026-09-06, when the tracker opened, and this
