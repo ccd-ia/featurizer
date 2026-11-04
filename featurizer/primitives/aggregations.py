@@ -85,13 +85,36 @@ def _timeline(table: str, feature: Feature, child, relationship) -> str:
     ``table`` is the alias the rows are read under: ``<child>_transform`` in a
     set-based pre-pass, ``sub`` / ``s`` in a correlated subquery.
     """
+    return ", ".join(_timeline_keys(table, feature, child, relationship))
+
+
+def _timeline_keys(table: str, feature: Feature, child, relationship) -> list[str]:
+    """The keys of :func:`_timeline`, one SQL expression per list item.
+
+    For a caller that has to decorate every key, as :func:`_timeline_desc`
+    does. Splitting the joined string back on ``", "`` would cut a delimited
+    identifier that contains a comma.
+    """
     temporal = getattr(getattr(child, "temporal_ix", None), "name", None)
     keys = [f"{table}.{_tix(feature)}"]
     keys.extend(
         f"{table}.{quote_if_bare(name)}"
         for name in child.tiebreak_columns(relationship.child_key, temporal)
     )
-    return ", ".join(keys)
+    return keys
+
+
+def _timeline_desc(table: str, feature: Feature, child, relationship) -> str:
+    """:func:`_timeline` reversed: the latest row of the timeline first.
+
+    Every key carries its own ``desc``. Appending one ``desc`` to the joined
+    list would reverse only the last tiebreak key and leave the temporal index
+    ascending. ``desc`` alone (NULLs first) is the exact reverse of the
+    ascending default (NULLs last), so a NULL tiebreak value sorts the same
+    way in both directions.
+    """
+    keys = _timeline_keys(table, feature, child, relationship)
+    return ", ".join(f"{key} desc" for key in keys)
 
 
 def _epoch_day_span(hi: str, lo: str) -> str:
@@ -1307,6 +1330,75 @@ class LongestStreak(SubqueryAggregator):
 longest_streak = LongestStreak()
 
 
+class LastValue(SubqueryAggregator):
+    """The last known value of a numeric child column before the as-of date.
+
+    For each parent, as-of date and interval window, the value on the child's
+    latest row that the aggregation sees, skipping NULLs: the last non-NULL
+    value, NULL when there is none. "Latest" is the child's timeline
+    (:func:`_timeline`, ADR-0018), so two rows on one timestamp resolve by the
+    entity's tiebreak columns and never by the physical order of the table.
+
+    It does what ``MAX(<child>.LAST(<child>.<column>))`` was used for without
+    that recipe's trap: the ``last`` transformer partitions by the child's
+    ``id``, so it is the last value per parent only when the child declares the
+    parent key as its ``id``.
+
+    Not rendered for a child without a ``temporal_ix``: with no timeline there
+    is no "last", the same rule the window transformers follow (issue #76).
+    Numeric only, so a raw string never lands in the numeric matrix.
+    """
+
+    def __init__(self):
+        super().__init__(name="last_value", input_types=["numeric"])
+
+    def __call__(self, parent, child, feature, interval=None, *, relationship=None):
+        if feature.entity is None or feature.entity.temporal_ix is None:
+            return None
+        return super().__call__(
+            parent, child, feature, interval=interval, relationship=relationship
+        )
+
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        ck = relationship.child_key_sql
+        ct = f"{child.alias}_transform"
+        col = _col(feature)
+        # The as-of bound (or the interval window) and the NULL skip both apply
+        # before the row number, so row 1 is the latest non-NULL row in view.
+        where = (
+            f"{_num_causal_where(feature, child, interval)} and {ct}.{col} is not null"
+        )
+        order = _timeline_desc(ct, feature, child, relationship)
+        prepass = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as val, "
+            f"row_number() over (partition by {ct}.{ck} order by {order}) as rn "
+            f"from {ct} {where}"
+        )
+        return PreAggSpec(
+            family_key=f"last_value:{feature.name}",
+            interval=interval,
+            prepass_sql=prepass,
+            reduction="MAX(val)",
+            reduction_where="rn = 1",
+        )
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        child_key = relationship.child_key_sql
+        child_table = f"{child.alias}_transform"
+        col = _col(feature)
+        interval_filter = self._causal_filter(feature, interval)
+        order = _timeline_desc("sub", feature, child, relationship)
+        return (
+            f"(select sub.{col} from {child_table} sub "
+            f"where sub.{child_key} = {child_table}.{child_key}{interval_filter} "
+            f"and sub.{col} is not null "
+            f"order by {order} limit 1)"
+        )
+
+
+last_value = LastValue()
+
+
 # --- Phase 5: distributional & sequence reductions (all bounded via _causal_filter) ---
 
 
@@ -2436,6 +2528,20 @@ _SPATIAL_AGGREGATIONS = {
 DEFAULT_AGGREGATIONS.update(_SPATIAL_AGGREGATIONS)
 
 for _name, _agg in _SPATIAL_AGGREGATIONS.items():
+    register_aggregation(_name, _agg)
+
+
+# --- Opt-in aggregations: registered, never part of DEFAULT_AGGREGATIONS ---
+#
+# A config gets these only by naming them under ``aggregations:``. Adding one to
+# DEFAULT_AGGREGATIONS would add a column to every config that omits the key,
+# and an existing config must keep rendering byte-identical SQL (ADR-0015).
+
+_OPT_IN_AGGREGATIONS = {
+    "last_value": last_value,
+}
+
+for _name, _agg in _OPT_IN_AGGREGATIONS.items():
     register_aggregation(_name, _agg)
 
 

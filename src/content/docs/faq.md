@@ -81,8 +81,39 @@ in SQL so leakage can't creep in. See the
 
 ### How do I get the last known value of a variable, beside its aggregates?
 
-Apply the `last` transformer on the child and aggregate it. For a lab-results
+Ask for the `last_value` aggregation beside the others. For a lab-results
 table that rolls up to patients:
+
+```yaml
+aggregations: [mean, stddev, min, max, count, last_value]
+transformations: [identity]
+entities:
+  - alias: labs
+    table: labs
+    id: lab_id
+    temporal_ix: measured_at
+    variables:
+      glucose: {type: numeric}
+```
+
+`LAST_VALUE(labs.glucose)` is each patient's most recent non-NULL `glucose`
+among the readings dated on or before the as-of date, next to
+`MEAN(labs.glucose)`, `STDDEV(labs.glucose)` and the rest. Under an interval,
+`LAST_VALUE(labs.glucose|interval=P90D)` is that same value when the reading
+falls in the last 90 days, and NULL when it is older.
+
+- **NULLs are skipped.** A reading whose `glucose` is NULL does not hide the one
+  before it. A patient with no non-NULL reading gets NULL.
+- **Ties follow the timeline.** Two readings on the same timestamp are ordered
+  by the child's other identifier columns and then its variables, never by the
+  order of the rows in the table.
+- **It needs a `temporal_ix`.** On a child without one there is no "last", and
+  the feature is not rendered.
+- **It is opt-in.** `last_value` is not in the default set, so a config that
+  omits `aggregations:` does not get it.
+- **Numeric only.** For a categorical variable, use the transformer below.
+
+The alternative is the `last` transformer on the child, aggregated:
 
 ```yaml
 aggregations: [mean, stddev, min, max, count]
@@ -99,15 +130,13 @@ entities:
 `last` takes each patient's most recent `glucose` among the readings dated on
 or before the as-of date, and writes it on every one of that patient's rows.
 Any aggregation then reduces it to one value per patient:
-`MAX(labs.LAST(labs.glucose))` is the last known glucose at each as-of date,
-next to `MEAN(labs.glucose)`, `STDDEV(labs.glucose)` and the rest. Under an
-interval, `MAX(labs.LAST(labs.glucose)|interval=P90D)` is that same value when
-the reading falls in the last 90 days, and NULL when it is older.
+`MAX(labs.LAST(labs.glucose))` is the last known glucose at each as-of date.
 
 - **`id` decides what `last` walks.** Declared as `id: lab_id`, each reading is
   its own partition, `LAST(labs.glucose)` is the reading itself, and
   `MAX(labs.LAST(labs.glucose))` is only the maximum. The rule is in the
   [entities reference](/featurizer/reference/configuration/#entities).
+  `last_value` does not have this trap.
 - **`MAX`, `MIN` and `MEAN` of `LAST(…)` are equal**, and `STDDEV` of it is 0
   or NULL, because every aggregation applies to every column. Keep one.
 - **Keep `identity` in `transformations`.** Without it the target carries no

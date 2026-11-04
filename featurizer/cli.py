@@ -325,6 +325,19 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "MAX(streak_length) using gaps-and-islands",
         "temporal": True,
     },
+    "last_value": {
+        "description": (
+            "Last non-NULL value before the as-of date, on the child's timeline "
+            "(opt-in: not in the default set)"
+        ),
+        "input_types": ["numeric"],
+        "output_type": "numeric",
+        "sql_example": (
+            "value of the row with row_number() over "
+            "(partition by key order by event_ts desc, <tiebreak> desc) = 1"
+        ),
+        "temporal": True,
+    },
     # As-of state
     "recency": {
         "description": "Days since the most recent event (aod - max event ts)",
@@ -579,6 +592,7 @@ AGGREGATION_CATEGORIES: Dict[str, str] = {
     "tenure": "temporal",
     "age_in_system": "temporal",
     "inter_event_hazard_proxy": "temporal",
+    "last_value": "temporal",
     # Temporal patterns (burst / seasonality / autocorrelation)
     "burstiness": "temporal_pattern",
     "acf_1": "temporal_pattern",

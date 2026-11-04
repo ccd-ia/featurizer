@@ -202,7 +202,7 @@ Two conventions to know:
 
 ## 7. Choose your primitives
 
-List everything the registry offers — 67 aggregations and 83 transformers:
+List everything the registry offers — 68 aggregations and 83 transformers:
 
 ```bash
 uv run python -m featurizer list-primitives --type agg --category
@@ -213,7 +213,7 @@ Then select per config, as example 01 does. Beyond the basics there are
 ordered-set aggregations (`median`, `p90`…), temporal-gap statistics
 (`gap_mean`, `burstiness`), categorical distributions (`entropy`, `hhi`,
 `gini`), and sequence features (`ngram_2_freq`, `longest_streak`) — the
-[primitives reference](/featurizer/reference/primitives/) lists all 150 with
+[primitives reference](/featurizer/reference/primitives/) lists all 151 with
 SQL examples.
 
 ## 8. Point-in-time joins (as-of)
