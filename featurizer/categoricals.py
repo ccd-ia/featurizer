@@ -1,6 +1,6 @@
 # coding: utf-8
 
-"""Fixed-vocabulary one-hot encoding for direct (target-entity) categoricals.
+"""Fixed-vocabulary one-hot encoding for direct categoricals (target and parent).
 
 Featurizer is **split-blind and fit-free**: it may encode a categorical only
 when the vocabulary comes from a *declared* source — a ``vocabulary: [...]`` list
@@ -23,11 +23,11 @@ or out-of-vocabulary value yields an all-zero row (never a crash).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, Set, Tuple
 
 from loguru import logger
 
-from .primitives import Feature, pg_identifier
+from .primitives import Feature, pg_identifier, quote_if_bare
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .primitives import Entity, Variable
@@ -56,6 +56,33 @@ def _split_schema_table(table: str) -> tuple[Optional[str], str]:
     return schema, name.strip('"')
 
 
+def _is_bare(column: str) -> bool:
+    """True when PostgreSQL reads ``column`` as an identifier without quotes.
+
+    The rule :func:`~featurizer.primitives.quote_if_bare` applies: a letter, an
+    underscore or a non-ASCII character first, then those, digits and ``$``.
+    """
+
+    def starts(ch: str) -> bool:
+        return ch == "_" or not ch.isascii() or ch.isalpha()
+
+    def continues(ch: str) -> bool:
+        return starts(ch) or ch == "$" or ch.isdigit()
+
+    return bool(column) and starts(column[0]) and all(map(continues, column[1:]))
+
+
+def _column_reference(column: str) -> str:
+    """How a one-hot ``case`` expression names its source column.
+
+    A bare identifier is written as declared, so every name that rendered
+    before keeps its bytes (PostgreSQL folds it the way the synth's projection
+    does). Any other name (a space, a hyphen) could never run unquoted, so it
+    is delimited with :func:`quote_if_bare`, which is how the synth projects it.
+    """
+    return column if _is_bare(column) else quote_if_bare(column)
+
+
 class OneHotFeature(Feature):
     """One deterministic 0/1 indicator column for a single categorical value.
 
@@ -72,7 +99,8 @@ class OneHotFeature(Feature):
             name=pg_identifier(intended),
             type="numeric",
             definition=(
-                f"case when {source_column}::text = {_sql_string_literal(value)} "
+                f"case when {_column_reference(source_column)}::text = "
+                f"{_sql_string_literal(value)} "
                 "then 1 else 0 end"
             ),
             entity=entity,
@@ -203,3 +231,37 @@ def build_one_hot_features(
         OneHotFeature(entity=entity, source_column=variable.name, value=value)
         for value in variable.vocabulary
     ]
+
+
+#: (target alias, parent alias, column) triples already warned about, so the
+#: deprecation is said once per process (CONTRIBUTING, deprecation policy).
+_WARNED_TARGET_ALIAS_ONE_HOT: Set[Tuple[str, str, str]] = set()
+
+
+def warn_target_alias_parent_one_hot(
+    target: "Entity", parent: "Entity", variable: "Variable"
+) -> None:
+    """Say once per process that a parent one-hot's target-alias name is deprecated.
+
+    Up to 1.3 a parent-entity categorical reached by an unnamed forward
+    relationship was one-hot encoded under the *target's* alias. ADR-0019 adds
+    the same indicators under the parent's alias and keeps the old names for
+    one minor release.
+    """
+    key = (target.alias, parent.alias, variable.name)
+    if key in _WARNED_TARGET_ALIAS_ONE_HOT:
+        return
+    _WARNED_TARGET_ALIAS_ONE_HOT.add(key)
+    logger.warning(
+        'Deprecated: the one-hot columns "{}.{}=<value>" encode a column of the '
+        "parent entity '{}'. They are also emitted as \"{}.{}=<value>\", and the "
+        "'{}.'-prefixed names will be removed in the next minor release "
+        "(ADR-0019). Read the '{}.'-prefixed columns instead.",
+        target.alias,
+        variable.name,
+        parent.alias,
+        parent.alias,
+        variable.name,
+        target.alias,
+        parent.alias,
+    )

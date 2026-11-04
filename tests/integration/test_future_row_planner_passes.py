@@ -141,6 +141,48 @@ def _lookup_config() -> dict:
     }
 
 
+def _parent_one_hot_config() -> dict:
+    """The lookup's source as the TARGET's parent, its categorical one-hot
+    encoded under both aliases (ADR-0019): ``rates.tier=*`` and the deprecated
+    ``events.tier=*``."""
+    return {
+        "target": "events",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": [],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "events",
+                "table": "events",
+                "id": "event_id",
+                "temporal_ix": "ts",
+                "variables": {"x": {"type": "numeric"}},
+            },
+            {
+                "alias": "rates",
+                "table": "rates",
+                "id": "rate_id",
+                "temporal_ix": "rate_ts",
+                "variables": {
+                    "tier": {
+                        "type": "categorical",
+                        "role": "categorical",
+                        "vocabulary": ["gold", "silver"],
+                    }
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "rates", "key": "zone_id"},
+                "child": {"entity": "events", "key": "zone_ref"},
+                "temporal": {"mode": "as_of"},
+            }
+        ],
+    }
+
+
 # (table, ddl columns, knowable rows, rows dated after the last as-of date)
 TABLES = [
     (
@@ -184,10 +226,10 @@ TABLES = [
     ),
     (
         "rates",
-        "rate_id int, zone_id int, rate_ts date, level double precision",
-        "(1, 7, '2024-01-01', 0.5), (2, 7, '2024-04-01', 0.7), "
-        "(3, 8, '2024-02-01', 0.9), (4, 7, '2024-07-01', 0.8)",
-        "(9, 7, '2024-09-01', 9.9)",
+        "rate_id int, zone_id int, rate_ts date, level double precision, tier text",
+        "(1, 7, '2024-01-01', 0.5, 'silver'), (2, 7, '2024-04-01', 0.7, 'gold'), "
+        "(3, 8, '2024-02-01', 0.9, 'silver'), (4, 7, '2024-07-01', 0.8, 'gold')",
+        "(9, 7, '2024-09-01', 9.9, 'silver')",
     ),
 ]
 
@@ -207,7 +249,8 @@ def _matrix(conn, config: dict, *, future_rows: bool) -> dict:
                 "insert into as_of_dates values (%s)", [(d,) for d in AS_OF]
             )
         rows = run_featurizer(conn, config)
-    return {(row["as_of_date"], row["series_id"]): row for row in rows}
+    target = next(e for e in config["entities"] if e["alias"] == config["target"])
+    return {(row["as_of_date"], row[target["id"]]): row for row in rows}
 
 
 @pytest.mark.parametrize(
@@ -219,6 +262,11 @@ def _matrix(conn, config: dict, *, future_rows: bool) -> dict:
             id="peer-spatial-graph",
         ),
         pytest.param(_lookup_config(), (".level",), id="as-of-lookup"),
+        pytest.param(
+            _parent_one_hot_config(),
+            ("rates.tier=", "events.tier="),
+            id="parent-one-hot",
+        ),
     ],
 )
 def test_a_row_after_the_as_of_date_moves_no_planner_pass(

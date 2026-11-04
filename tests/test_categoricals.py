@@ -214,3 +214,177 @@ def test_unencoded_text_passthrough_warns() -> None:
     assert any(
         "raw string column" in m and "facilities.category" in m for m in warnings
     )
+
+
+# --------------------------------------------------------------------------- #
+# Parent-entity categoricals (ADR-0019)
+# --------------------------------------------------------------------------- #
+
+
+def _parent_config(
+    *, name: str | None = None, temporal: bool = False, max_depth: int = 2
+) -> dict:
+    relationship: Dict[str, Any] = {
+        "parent": {"entity": "facilities", "key": "facility_id"},
+        "child": {"entity": "inspections", "key": "facility_id"},
+    }
+    if name:
+        relationship["name"] = name
+    if temporal:
+        relationship["temporal"] = {"mode": "as_of"}
+    return {
+        "target": "inspections",
+        "max_depth": max_depth,
+        "intervals": [],
+        "aggregations": [],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "inspections",
+                "id": "inspection_id",
+                "table": "inspections",
+                "temporal_ix": "date",
+                "variables": {"score": {"type": "numeric"}},
+            },
+            {
+                "alias": "facilities",
+                "id": "facility_id",
+                "table": "facilities",
+                "temporal_ix": "valid_from",
+                "variables": {
+                    "facility_type": {
+                        "type": "categorical",
+                        "role": "categorical",
+                        "vocabulary": ["restaurant", "grocery"],
+                    }
+                },
+            },
+        ],
+        "relationships": [relationship],
+    }
+
+
+@pytest.fixture
+def _fresh_deprecation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The deprecation is said once per process; start each test unsaid."""
+    from featurizer import categoricals
+
+    monkeypatch.setattr(categoricals, "_WARNED_TARGET_ALIAS_ONE_HOT", set())
+
+
+@pytest.mark.parametrize("temporal", [False, True], ids=["static", "as_of"])
+def test_parent_one_hot_emits_both_name_families(temporal: bool) -> None:
+    featurizer = _featurizer(_parent_config(temporal=temporal))
+    query = featurizer.query
+    for alias in ("facilities", "inspections"):
+        for value in ("grocery", "restaurant"):
+            assert (
+                f"case when facility_type::text = '{value}' then 1 else 0 end"
+                f' as "{alias}.facility_type={value}"'
+            ) in query
+
+    one_hot = {e.column: e for e in featurizer.feature_manifest if e.kind == "one_hot"}
+    assert set(one_hot) == {
+        "facilities.facility_type=grocery",
+        "facilities.facility_type=restaurant",
+        "inspections.facility_type=grocery",
+        "inspections.facility_type=restaurant",
+    }
+    for column, entry in one_hot.items():
+        assert entry.source_column == "facility_type"
+        assert entry.value == column.rsplit("=", 1)[1]
+        assert entry.label == column and entry.truncated is False
+        # The deprecated rows keep the manifest values releases up to 1.3 gave.
+        assert entry.entity == column.split(".", 1)[0]
+
+
+def test_parent_one_hot_deprecation_is_said_once(_fresh_deprecation: None) -> None:
+    with capture_warnings() as warnings:
+        _featurizer(_parent_config())
+        _featurizer(_parent_config(temporal=True))
+    deprecations = [m for m in warnings if m.startswith("Deprecated:")]
+    assert len(deprecations) == 1, deprecations
+    assert '"inspections.facility_type=<value>"' in deprecations[0]
+    assert '"facilities.facility_type=<value>"' in deprecations[0]
+
+
+def test_a_target_categorical_is_not_deprecated(_fresh_deprecation: None) -> None:
+    config = _facilities_config(
+        {"type": "categorical", "role": "categorical", "vocabulary": ["A"]}
+    )
+    with capture_warnings() as warnings:
+        names = [e.column for e in _featurizer(config).feature_manifest]
+    assert names.count("facilities.facility_type=A") == 1
+    assert not any(m.startswith("Deprecated:") for m in warnings)
+
+
+def _one_hot_columns(config: dict) -> List[str]:
+    return sorted(
+        e.column for e in _featurizer(config).feature_manifest if e.kind == "one_hot"
+    )
+
+
+def test_a_named_relationship_keeps_its_raw_transfer() -> None:
+    """Open in ADR-0019: no name is chosen for a qualified transfer yet."""
+    featurizer = _featurizer(_parent_config(name="site"))
+    columns = {e.column: e.kind for e in featurizer.feature_manifest}
+    assert columns.get("site.facility_type") == "derived"
+    assert not [c for c, kind in columns.items() if kind == "one_hot"]
+
+
+def test_a_grandparent_categorical_keeps_only_the_target_alias() -> None:
+    """Open in ADR-0019: a depth-2 parent's prefix is not chosen yet."""
+    config = _parent_config(max_depth=3)
+    config["entities"][1]["variables"] = {"size": {"type": "numeric"}}
+    config["entities"].append(
+        {
+            "alias": "owners",
+            "id": "owner_id",
+            "table": "owners",
+            "variables": {
+                "kind": {
+                    "type": "categorical",
+                    "role": "categorical",
+                    "vocabulary": ["corp", "person"],
+                }
+            },
+        }
+    )
+    config["relationships"].append(
+        {
+            "parent": {"entity": "owners", "key": "owner_id"},
+            "child": {"entity": "facilities", "key": "owner_id"},
+        }
+    )
+    assert _one_hot_columns(config) == [
+        "inspections.kind=corp",
+        "inspections.kind=person",
+    ]
+
+
+def test_a_parent_column_shadowed_by_the_target_stays_as_it_was() -> None:
+    """The target's own ``facility_type`` wins, as on master (ADR-0019, open)."""
+    config = _parent_config()
+    config["entities"][0]["variables"]["facility_type"] = {
+        "type": "categorical",
+        "role": "categorical",
+        "vocabulary": ["grocery"],
+    }
+    assert _one_hot_columns(config) == ["inspections.facility_type=grocery"]
+
+
+def test_a_non_bare_categorical_column_is_quoted_in_its_case() -> None:
+    """A bare name keeps its bytes (see the single-quote test above); one that
+    could never run bare is delimited the way the synth projects it."""
+    config = _facilities_config(
+        {"type": "text"},
+        **{
+            "Facility Type": {
+                "type": "categorical",
+                "role": "categorical",
+                "vocabulary": ["a"],
+            }
+        },
+    )
+    query = _featurizer(config).query
+    assert "case when \"Facility Type\"::text = 'a' then 1 else 0 end" in query

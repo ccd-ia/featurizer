@@ -37,6 +37,7 @@ from .categoricals import (
     ROLE_CATEGORICAL,
     ROLE_IDENTIFIER,
     build_one_hot_features,
+    warn_target_alias_parent_one_hot,
 )
 from .primitives import (
     EdgeSpec,
@@ -244,6 +245,13 @@ class FeaturePlanner:
         # The target's output feature columns (the <target>_transform select
         # list), in deterministic order, for the feature manifest.
         self._output_features: List[Feature] = []
+        # Per receiving entity: each ``role: categorical`` Variable a forward
+        # pull carried in, with the entity and relationship it came through.
+        # A Variable that arrives once, from its own entity, over an unnamed
+        # relationship is a depth-1 parent categorical (ADR-0019).
+        self._categorical_arrivals: Dict[
+            str, List[Tuple[Variable, Entity, Relationship]]
+        ] = {}
 
         # Sharding metadata (issue #7), populated alongside the rendered CTE
         # strings. See ``ShardableCTE`` / ``PlannerResult``.
@@ -322,6 +330,7 @@ class FeaturePlanner:
         self._built_features = {}
         self._synth_columns = {}
         self._output_features = []
+        self._categorical_arrivals = {}
         self._cte_specs = {}
         self._cte_order = []
         self._verbatim_ctes = {}
@@ -1444,6 +1453,11 @@ class FeaturePlanner:
             (target.alias, "direct", relationship)
         )
         directs = list(self._built_features[source.alias])
+        self._categorical_arrivals.setdefault(target.alias, []).extend(
+            (feature, source, relationship)
+            for feature in directs
+            if isinstance(feature, Variable) and feature.role == ROLE_CATEGORICAL
+        )
         if relationship.name:
             directs = [
                 (
@@ -1514,6 +1528,12 @@ class FeaturePlanner:
         # over its resolved (declared or ENUM-introspected) vocabulary.
         for variable in categoricals:
             flattened.update(build_one_hot_features(target, variable))
+            parent = self._depth_one_parent(target, variable)
+            if parent is not None:
+                # ADR-0019: the same indicators under the parent's alias. The
+                # target-alias names above stay for one minor release.
+                flattened.update(build_one_hot_features(parent, variable))
+                warn_target_alias_parent_one_hot(target, parent, variable)
 
         self._debug(
             "transformations",
@@ -1534,6 +1554,30 @@ class FeaturePlanner:
         is_target = self._target is not None and target.alias == self._target.alias
         projected = flattened if is_target else self._features[target.alias]
         self._build_transform_cte(target, self._sort_features(projected))
+
+    def _depth_one_parent(self, target: Entity, variable: Variable) -> Entity | None:
+        """The parent whose own categorical ``variable`` is, if unambiguous.
+
+        Returns the entity when ``variable`` reached ``target`` exactly once,
+        directly from the entity that declares it, over an unnamed forward
+        relationship. A target-owned variable, one carried from a grandparent,
+        one that arrived by more than one path, or one shadowed by a target
+        column of the same name returns ``None``: their naming is not decided
+        (ADR-0019), so they keep the output releases up to 1.3 gave them.
+        """
+        if variable.entity is None or variable.entity.alias == target.alias:
+            return None
+        arrivals = [
+            arrival
+            for arrival in self._categorical_arrivals.get(target.alias, [])
+            if arrival[0] is variable
+        ]
+        if len(arrivals) != 1:
+            return None
+        _, source, relationship = arrivals[0]
+        if source.alias != variable.entity.alias or relationship.name:
+            return None
+        return source
 
     def _apply_direct_roles(self, target: Entity) -> List[Variable]:
         """Apply per-variable ``role`` to the target's own direct variables.

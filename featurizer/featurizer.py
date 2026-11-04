@@ -190,30 +190,58 @@ class Featurizer:
         self._executor: QueryExecutor = QueryExecutor()
 
     def _resolve_categorical_vocabularies(self, connection: Any) -> None:
-        """Bake a fixed vocabulary onto each target ``role: categorical`` variable.
+        """Bake a fixed vocabulary onto each one-hot-encoded categorical.
 
-        Declared vocabularies need no database. If any categorical lacks one, a
-        connection is required to read its PostgreSQL ``ENUM`` labels: the passed
-        ``connection`` is used, else one is opened from ``DATABASE_URL`` / ``PG*``;
-        if neither resolves, :func:`resolve_vocabulary` raises a loud, actionable
-        error. The data is never scanned for distinct values (split-blind).
+        That is every target ``role: categorical`` variable and, since
+        ADR-0019, every one on a parent reached from the target by an unnamed
+        forward relationship. Declared vocabularies need no database. If any
+        categorical lacks one, a connection is required to read its PostgreSQL
+        ``ENUM`` labels: the passed ``connection`` is used, else one is opened
+        from ``DATABASE_URL`` / ``PG*``; if neither resolves, a target
+        categorical raises a loud, actionable error from
+        :func:`resolve_vocabulary`. The data is never scanned for distinct
+        values (split-blind).
         """
         pending = [
-            feature
+            (feature, self.target)
             for feature in self.target.features
             if isinstance(feature, Variable) and feature.role == ROLE_CATEGORICAL
         ]
-        if not pending:
+        parents = sorted(
+            {
+                relationship.parent
+                for relationship in self.graph.get_forward_relationships(self.target)
+                if not relationship.name
+                and relationship.parent.alias != self.target.alias
+            },
+            key=lambda entity: entity.alias,
+        )
+        pending_parents = [
+            (feature, parent)
+            for parent in parents
+            for feature in sorted(parent.features, key=lambda f: f.name)
+            if isinstance(feature, Variable) and feature.role == ROLE_CATEGORICAL
+        ]
+        if not pending and not pending_parents:
             return
 
-        needs_db = any(not var.vocabulary for var in pending)
+        needs_db = any(not var.vocabulary for var, _ in pending + pending_parents)
         conn = connection
         own_connection: Any = None
         if needs_db and conn is None:
             own_connection = conn = self._maybe_env_connection()
         try:
-            for var in pending:
-                var.vocabulary = resolve_vocabulary(var, self.target, conn)
+            for var, entity in pending:
+                var.vocabulary = resolve_vocabulary(var, entity, conn)
+            for var, entity in pending_parents:
+                try:
+                    var.vocabulary = resolve_vocabulary(var, entity, conn)
+                except ValueError:
+                    # Left unresolved, as before ADR-0019: the planner raises
+                    # if the variable reaches the output, and a variable that
+                    # does not (one shadowed by a target column of the same
+                    # name) keeps running.
+                    continue
         finally:
             if own_connection is not None:
                 own_connection.close()

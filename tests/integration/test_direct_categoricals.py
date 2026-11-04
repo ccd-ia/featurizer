@@ -225,3 +225,243 @@ def test_high_cardinality_text_categorical_without_vocabulary_fails_loud(
     }
     with pytest.raises(ValueError, match="vocabulary|ENUM"):
         Featurizer(_write(config), connection=pg_conn)
+
+
+# --------------------------------------------------------------------------- #
+# Parent-entity categoricals (ADR-0019). The target ``inspections`` is the
+# child; its parent ``facilities`` owns the categorical. The indicators are
+# emitted under the parent's alias and, deprecated for one minor release,
+# under the target's alias, which is what releases up to 1.3 emitted.
+# --------------------------------------------------------------------------- #
+
+PARENT_AS_OF = ["2016-01-01"]
+
+# facility 1 changes type on 2015-06-01; the 2017 row is dated after the
+# as-of date and may move nothing.
+_FACILITY_HISTORY = [
+    (1, "2015-01-01", "restaurant", "small"),
+    (1, "2015-06-01", "grocery", "large"),
+    (2, "2015-01-01", "O'Brien's", "small"),
+    (3, "2015-01-01", None, None),
+]
+_FACILITY_AFTER_AS_OF = [(1, "2017-01-01", "restaurant", "small")]
+_FACILITY_KNOWABLE_CHANGE = [(1, "2015-02-01", "grocery", "large")]
+
+_INSPECTIONS = [
+    (100, 1, "2015-03-01", 90),
+    (101, 1, "2015-07-01", 80),
+    (102, 2, "2015-03-01", 70),
+    (103, 3, "2015-03-01", 60),  # NULL type -> all-zero
+    (104, 4, "2015-03-01", 50),  # no facility -> all-zero
+]
+
+_VOCABULARY = ["grocery", "restaurant", "O'Brien's"]
+
+
+def _seed_parent(conn: Any, facility_rows: list) -> None:
+    with conn.cursor() as cur:
+        cur.execute("drop schema if exists parentduck cascade")
+        cur.execute("create schema parentduck")
+        cur.execute("create type parentduck.size_t as enum ('small', 'large')")
+        cur.execute(
+            "create table parentduck.facilities (facility_id int, valid_from date, "
+            "facility_type text, size_class parentduck.size_t)"
+        )
+        cur.execute(
+            "create table parentduck.inspections "
+            "(inspection_id int, facility_id int, date date, score numeric)"
+        )
+        cur.executemany(
+            "insert into parentduck.inspections values (%s, %s, %s, %s)",
+            _INSPECTIONS,
+        )
+    _insert_facilities(conn, facility_rows)
+    make_as_of_dates(conn, PARENT_AS_OF)
+
+
+def _insert_facilities(conn: Any, facility_rows: list) -> None:
+    with conn.cursor() as cur:
+        cur.executemany(
+            "insert into parentduck.facilities values (%s, %s, %s, %s)",
+            facility_rows,
+        )
+
+
+def _parent_config(*, as_of: bool, parent_alias: str = "facilities") -> dict:
+    relationship: Dict[str, Any] = {
+        "parent": {"entity": parent_alias, "key": "facility_id"},
+        "child": {"entity": "inspections", "key": "facility_id"},
+    }
+    if as_of:
+        relationship["temporal"] = {"mode": "as_of"}
+    return {
+        "target": "inspections",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": [],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "inspections",
+                "id": "inspection_id",
+                "table": "parentduck.inspections",
+                "temporal_ix": "date",
+                "variables": {"score": {"type": "numeric"}},
+            },
+            {
+                "alias": parent_alias,
+                "id": "facility_id",
+                "table": "parentduck.facilities",
+                "temporal_ix": "valid_from",
+                "variables": {
+                    "facility_type": {
+                        "type": "categorical",
+                        "role": "categorical",
+                        "vocabulary": _VOCABULARY,
+                    },
+                    # ENUM-typed, no declared list: introspected on the parent.
+                    "size_class": {"type": "categorical", "role": "categorical"},
+                },
+            },
+        ],
+        "relationships": [relationship],
+    }
+
+
+# inspection -> (grocery, restaurant, O'Brien's, large, small), hand-computed
+# from the row of facilities in force at the inspection's date.
+_EXPECTED_AS_OF = {
+    100: (0, 1, 0, 0, 1),  # 2015-01-01 row: restaurant, small
+    101: (1, 0, 0, 1, 0),  # 2015-06-01 row: grocery, large
+    102: (0, 0, 1, 0, 1),  # O'Brien's (a quote in the value), small
+    103: (0, 0, 0, 0, 0),  # NULL -> all-zero
+    104: (0, 0, 0, 0, 0),  # no parent row -> all-zero
+}
+
+
+def _indicator_columns(alias: str) -> list:
+    return [
+        f"{alias}.facility_type=grocery",
+        f"{alias}.facility_type=restaurant",
+        f"{alias}.facility_type=O'Brien's",
+        f"{alias}.size_class=large",
+        f"{alias}.size_class=small",
+    ]
+
+
+def _parent_rows(conn: Any, config: dict) -> Dict[int, Dict[str, Any]]:
+    featurizer = Featurizer(_write(config), connection=conn)
+    frame = featurizer.to_dataframe(connection=conn).reset_index()
+    return {int(row["inspection_id"]): row for row in frame.to_dict("records")}
+
+
+@pytest.mark.parametrize("parent_alias", ["facilities", "FacSites"])
+def test_parent_one_hot_reads_the_row_in_force_at_the_target_date(
+    pg_conn, parent_alias
+) -> None:
+    """Both name families, hand-computed, under ``temporal: {mode: as_of}``.
+
+    ``FacSites`` is an alias that is not lower case: it only appears inside the
+    quoted output name.
+    """
+    _seed_parent(pg_conn, _FACILITY_HISTORY)
+    rows = _parent_rows(pg_conn, _parent_config(as_of=True, parent_alias=parent_alias))
+    for family in (parent_alias, "inspections"):
+        columns = _indicator_columns(family)
+        got = {key: tuple(int(row[c]) for c in columns) for key, row in rows.items()}
+        assert got == _EXPECTED_AS_OF, family
+
+
+def test_parent_one_hot_without_a_temporal_block_reads_the_static_join(
+    pg_conn,
+) -> None:
+    # One row per facility, so the static join does not fan out.
+    _seed_parent(pg_conn, [r for r in _FACILITY_HISTORY if r[1] == "2015-01-01"])
+    rows = _parent_rows(pg_conn, _parent_config(as_of=False))
+    columns = _indicator_columns("facilities")
+    got = {key: tuple(int(rows[key][c]) for c in columns) for key in rows}
+    assert got == {
+        100: (0, 1, 0, 0, 1),
+        101: (0, 1, 0, 0, 1),
+        102: (0, 0, 1, 0, 1),
+        103: (0, 0, 0, 0, 0),
+        104: (0, 0, 0, 0, 0),
+    }
+    for key, row in rows.items():
+        for new, old in zip(columns, _indicator_columns("inspections")):
+            assert row[new] == row[old], (key, new)
+
+
+def test_a_parent_row_dated_after_the_as_of_date_moves_nothing(pg_conn) -> None:
+    _seed_parent(pg_conn, _FACILITY_HISTORY)
+    config = _parent_config(as_of=True)
+    knowable = _parent_rows(pg_conn, config)
+
+    _insert_facilities(pg_conn, _FACILITY_AFTER_AS_OF)
+    assert _parent_rows(pg_conn, config) == knowable
+
+    # The control: a row dated before inspection 100 is in force at its date,
+    # so it does move that inspection, under both names.
+    _insert_facilities(pg_conn, _FACILITY_KNOWABLE_CHANGE)
+    moved = _parent_rows(pg_conn, config)
+    for family in ("facilities", "inspections"):
+        assert knowable[100][f"{family}.facility_type=restaurant"] == 1
+        assert moved[100][f"{family}.facility_type=restaurant"] == 0
+        assert moved[100][f"{family}.facility_type=grocery"] == 1
+
+
+def _three_paths(conn: Any, config: dict) -> Dict[str, Dict[tuple, Dict[str, Any]]]:
+    from featurizer.sharding import ColumnGroupSharder
+
+    path = _write(config)
+
+    def run(sql: str) -> list:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            columns = [d.name for d in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    def rejoin(queries: Any) -> Dict[tuple, Dict[str, Any]]:
+        joined: Dict[tuple, Dict[str, Any]] = {}
+        for sql in queries.values():
+            for row in run(sql):
+                key = (row["as_of_date"], row["inspection_id"])
+                joined.setdefault(key, {}).update(row)
+        return joined
+
+    single = {
+        (row["as_of_date"], row["inspection_id"]): row
+        for row in run(Featurizer(path, connection=conn).query)
+    }
+    built = ColumnGroupSharder(
+        Featurizer(path, connection=conn)._plan, max_columns_per_group=4
+    ).build()
+    assert len(built.queries) > 1, "expected the small budget to force >1 group"
+    grouped = Featurizer(path, connection=conn, materialize_threshold=1)._grouped()
+    assert grouped.materialization is not None, "expected a TEMP-table preamble"
+    with conn.cursor() as cur:
+        for ddl in grouped.materialization.ddl:
+            cur.execute(ddl)
+    return {
+        "single query": single,
+        "column groups": rejoin(built.queries),
+        "TEMP tables": rejoin(grouped.queries),
+    }
+
+
+@pytest.mark.parametrize("as_of", [True, False], ids=["as_of", "static"])
+def test_the_three_render_paths_agree_on_parent_one_hot(pg_conn, as_of) -> None:
+    history = _FACILITY_HISTORY
+    if not as_of:
+        history = [r for r in _FACILITY_HISTORY if r[1] == "2015-01-01"]
+    _seed_parent(pg_conn, history)
+    paths = _three_paths(pg_conn, _parent_config(as_of=as_of))
+    single = paths["single query"]
+    assert any(
+        value == 1
+        for row in single.values()
+        for column, value in row.items()
+        if column.startswith("facilities.")
+    )
+    assert paths["column groups"] == single
+    assert paths["TEMP tables"] == single

@@ -633,6 +633,175 @@ def test_the_edge_entity_family_reads_a_non_bare_identifier(
 # --------------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------------- #
+# A parent's role: categorical column, pulled into the target by an unnamed
+# forward relationship and one-hot encoded under both aliases (ADR-0019). The
+# column is read twice: projected through the synth, and named again inside
+# each indicator's ``case`` expression. Its own scenario, because a forward
+# relationship on the plain scenario's target would add its foreign key to that
+# scenario's key metadata, which the two tests below pin.
+# --------------------------------------------------------------------------- #
+
+PARENT_PLAIN = {"parent categorical": "zone_kind"}
+
+
+def _parent_config(n: dict) -> dict:
+    return {
+        "target": "series",
+        "max_depth": 2,
+        "intervals": [],
+        "aggregations": [],
+        "transformations": ["identity"],
+        "entities": [
+            {
+                "alias": "series",
+                "table": "series",
+                "id": "series_id",
+                "temporal_ix": "opened",
+                "variables": {"size": {"type": "numeric"}},
+            },
+            {
+                "alias": "zones",
+                "table": "zones",
+                "id": "zone_id",
+                "temporal_ix": "zone_ts",
+                "variables": {
+                    n["parent categorical"]: {
+                        "type": "categorical",
+                        "role": "categorical",
+                        "vocabulary": ["a", "O'Brien"],
+                    }
+                },
+            },
+        ],
+        "relationships": [
+            {
+                "parent": {"entity": "zones", "key": "zone_id"},
+                "child": {"entity": "series", "key": "zone_ref"},
+                "temporal": {"mode": "as_of"},
+            }
+        ],
+    }
+
+
+def _parent_seed(cur, n: dict) -> None:
+    cur.execute(
+        "create temp table series "
+        "(series_id int, opened date, size double precision, zone_ref int)"
+    )
+    cur.execute(
+        "insert into series values (1, '2024-01-10', 10.0, 1), "
+        "(2, '2024-03-01', 20.0, 2), (3, '2024-05-01', 30.0, 3), "
+        "(4, '2024-07-01', 40.0, 1)"
+    )
+    cur.execute(
+        "create temp table zones "
+        f"(zone_id int, zone_ts date, {_q(n['parent categorical'])} text)"
+    )
+    # Zone 1 changes value; 'b' is out of the vocabulary, NULL is unknown, and
+    # the 2024-09-01 row is dated after both as-of dates.
+    cur.execute(
+        "insert into zones values (1, '2024-01-01', 'a'), "
+        "(1, '2024-06-01', 'O''Brien'), (2, '2024-01-01', 'b'), "
+        "(3, '2024-01-01', null), (1, '2024-09-01', 'a')"
+    )
+    cur.execute("create temp table as_of_dates (as_of_date date)")
+    cur.executemany("insert into as_of_dates values (%s)", [(d,) for d in AS_OF])
+
+
+def _parent_column_groups(cur, config_path: str) -> list[dict]:
+    built = ColumnGroupSharder(
+        Featurizer(config_path)._plan, max_columns_per_group=2
+    ).build()
+    assert len(built.queries) > 1, "expected the small budget to force >1 group"
+    return _rejoin(cur, built.queries, "series_id")
+
+
+PARENT_PATHS = {
+    "single query": lambda cur, path: _rows(cur, Featurizer(path).query),
+    "column groups": _parent_column_groups,
+    "TEMP tables": lambda cur, path: _temp_tables(cur, path, "series_id"),
+}
+
+
+def _parent_matrix(tmp_path: Path, names: dict, path_name: str) -> dict:
+    import psycopg
+
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        pytest.skip("No PostgreSQL configured: set DATABASE_URL")
+    config_path = _write(_parent_config(names), tmp_path)
+    with psycopg.connect(url) as conn, conn.cursor() as cur:
+        _parent_seed(cur, names)
+        rows = PARENT_PATHS[path_name](cur, config_path)
+        conn.rollback()
+    labels = {
+        entry.column.strip('"'): entry.label
+        for entry in Featurizer(config_path).feature_manifest
+    }
+    odd, plain = names["parent categorical"], PARENT_PLAIN["parent categorical"]
+    return {
+        (row["as_of_date"], row["series_id"], labels[column].replace(odd, plain)): value
+        for row in rows
+        for column, value in row.items()
+        if column in labels
+    }
+
+
+def _parent_cases():
+    for shape, odd in SHAPES.items():
+        for path_name in PARENT_PATHS:
+            marks = []
+            if shape == "a reserved word":
+                # Not this change's: a target's own one-hot fails the same way
+                # on master. The ``case`` names a bare-shaped column bare so that
+                # every name that rendered before keeps its bytes, and a reserved
+                # word is bare-shaped.
+                marks.append(
+                    pytest.mark.xfail(
+                        strict=True,
+                        reason="one-hot `case` names a reserved-word column bare "
+                        "(also a target one-hot's defect on master)",
+                    )
+                )
+            yield pytest.param(
+                odd,
+                path_name,
+                id=f"parent categorical={shape}-{path_name}",
+                marks=marks,
+            )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("odd,path_name", list(_parent_cases()))
+def test_a_parent_categorical_with_a_non_bare_name_runs_and_changes_no_value(
+    tmp_path, tmp_path_factory, odd, path_name
+) -> None:
+    expected = _parent_matrix(
+        tmp_path_factory.mktemp("parent-plain"), dict(PARENT_PLAIN), path_name
+    )
+    assert _parent_matrix(tmp_path, {"parent categorical": odd}, path_name) == expected
+
+
+@pytest.mark.integration
+def test_the_three_paths_agree_on_the_parent_categorical(tmp_path_factory) -> None:
+    single = _parent_matrix(
+        tmp_path_factory.mktemp("p1"), dict(PARENT_PLAIN), "single query"
+    )
+    # The oracle is not empty and not all zero, and holds both name families.
+    one_hot = {key: v for key, v in single.items() if "=" in key[2]}
+    assert {key[2] for key in one_hot} == {
+        "zones.zone_kind=a",
+        "zones.zone_kind=O'Brien",
+        "series.zone_kind=a",
+        "series.zone_kind=O'Brien",
+    }
+    assert any(v == 1 for v in one_hot.values())
+    for name in ("column groups", "TEMP tables"):
+        tmp = tmp_path_factory.mktemp(name.replace(" ", "-"))
+        assert _parent_matrix(tmp, dict(PARENT_PLAIN), name) == single, name
+
+
 def test_key_metadata_keeps_the_declared_names(tmp_path) -> None:
     names = {**PLAIN, "target id": "Odd Name", "child id": "Event Id"}
     featurizer = Featurizer(_write(_config(names), tmp_path), materialize_threshold=1)

@@ -128,6 +128,19 @@ entities:
   `vocabulary`). Deliberately **split-blind and fit-free**: featurizer never
   learns a vocabulary from data — learned (train-only) encodings are the
   consumer's job.
+- **A parent's `role: categorical`**, pulled into the target by an unnamed
+  forward relationship, is one-hot encoded under the *parent's* alias:
+  `"facilities.facility_type=<value>"` when the target is `inspections`. With
+  `temporal: {mode: as_of}` each indicator reads the parent row in force at the
+  target row's date; without it, the static join. Releases up to 1.3 emitted
+  these indicators only as `"inspections.facility_type=<value>"`, under the
+  target's alias. Both names are emitted for one minor release, with a
+  deprecation warning, and then the target-alias names go
+  ([ADR-0019](/featurizer/engineering/adr/0019-parent-entity-one-hot/)). The
+  parent's vocabulary comes from the same two places, its declared list or its
+  column's `ENUM`. A parent reached by a *named* relationship, a grandparent,
+  and a parent column with the same name as a target categorical keep the
+  output they had: their naming is not decided yet.
 - **`role: identifier`** excludes a column from the feature output while
   keeping it available as a key.
 - **Column names** are read the way PostgreSQL reads them. A name you could
