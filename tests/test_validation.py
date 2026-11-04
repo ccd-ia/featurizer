@@ -674,3 +674,154 @@ entities:
             assert featurizer is not None
 
             Path(f.name).unlink()
+
+
+class TestEmptyMatrixWarning:
+    """validate_config warns when the planned matrix has no feature column.
+
+    A window transformer needs a timeline; since 1.3.1 (issue #76) it is not
+    rendered on an entity without ``temporal_ix``. A transformer list made only
+    of such windows, on an undated target, used to validate clean and plan a
+    query that selects the id alone.
+    """
+
+    REPRO = """
+target: patients
+max_depth: 1
+intervals: [P1D]
+transformations: [lag_1]
+entities:
+  - alias: patients
+    id: patient_id
+    table: analytics.patients
+    variables:
+      age: {type: numeric}
+"""
+
+    @staticmethod
+    def _write(tmp_path: Path, text: str) -> str:
+        path = tmp_path / "config.yaml"
+        path.write_text(text)
+        return str(path)
+
+    @staticmethod
+    def _empty_matrix_warnings(result: ValidationResult) -> list:
+        return [w for w in result.warnings if "zero feature columns" in w.message]
+
+    def test_undated_target_with_only_window_transformers_warns(self, tmp_path):
+        """The issue's repro: one warning naming entity, cause and fixes."""
+        result = validate_config(self._write(tmp_path, self.REPRO))
+
+        assert result.is_valid
+        warnings = self._empty_matrix_warnings(result)
+        assert len(warnings) == 1
+        message = warnings[0].message
+        assert "'patients'" in message
+        assert "no temporal_ix" in message
+        assert "lag_1" in message
+        assert "'identity'" in message
+        assert "'temporal_ix'" in message
+        assert warnings[0].location == "transformations"
+
+    def test_cli_prints_the_warning_and_exits_zero(self, tmp_path, capsys):
+        """The validate verb shows the warning; the exit code stays 0."""
+        import argparse
+
+        from featurizer.cli import validate_command
+
+        path = self._write(tmp_path, self.REPRO)
+        assert validate_command(argparse.Namespace(config=path)) == 0
+        out = capsys.readouterr().out
+        assert "Configuration is valid" in out
+        assert "zero feature columns" in out
+
+    def test_identity_in_the_list_is_silent(self, tmp_path):
+        """identity keeps the raw variable, so the matrix is not empty."""
+        text = self.REPRO.replace("[lag_1]", "[identity, lag_1]")
+        result = validate_config(self._write(tmp_path, text))
+
+        assert result.is_valid
+        assert self._empty_matrix_warnings(result) == []
+
+    def test_dated_target_is_silent(self, tmp_path):
+        """With a timeline lag_1 renders, so the matrix has a column."""
+        text = self.REPRO.replace(
+            "    table: analytics.patients\n",
+            "    table: analytics.patients\n    temporal_ix: admitted_at\n",
+        )
+        result = validate_config(self._write(tmp_path, text))
+
+        assert result.is_valid
+        assert self._empty_matrix_warnings(result) == []
+
+    CHILD = """
+  - alias: visits
+    id: visit_id
+    table: analytics.visits
+    temporal_ix: visited_at
+    variables:
+      cost: {type: numeric}
+      patient_id: {type: index}
+relationships:
+  - parent: {entity: patients, key: patient_id}
+    child: {entity: visits, key: patient_id}
+aggregations: [count, mean]
+"""
+
+    def test_undated_target_with_aggregated_child_is_silent(self, tmp_path):
+        """Aggregates over a dated child are columns of the undated target."""
+        text = (
+            self.REPRO.replace("max_depth: 1", "max_depth: 2")
+            .replace("transformations: [lag_1]\n", "")
+            .replace(
+                "      age: {type: numeric}\n", "      patient_id: {type: index}\n"
+            )
+            + self.CHILD
+        )
+        path = self._write(tmp_path, text)
+        result = validate_config(path)
+
+        assert result.is_valid
+        assert self._empty_matrix_warnings(result) == []
+
+        from featurizer import Featurizer
+
+        assert Featurizer(path).feature_manifest  # the control: columns exist
+
+    def test_window_only_list_drops_the_aggregates_too(self, tmp_path):
+        """The target's transformers also carry its aggregates to the output,
+        so ``[lag_1]`` on an undated target empties it even with a child."""
+        text = self.REPRO.replace("max_depth: 1", "max_depth: 2") + self.CHILD
+        result = validate_config(self._write(tmp_path, text))
+
+        assert result.is_valid
+        warnings = self._empty_matrix_warnings(result)
+        assert len(warnings) == 1
+        assert "lag_1" in warnings[0].message
+
+    def test_categorical_without_vocabulary_is_not_planned(self, tmp_path, monkeypatch):
+        """An undeclared vocabulary would introspect the DB: skip the check."""
+        import featurizer.arrow as arrow
+
+        def _no_database():
+            raise AssertionError("validate_config opened a database connection")
+
+        monkeypatch.setattr(arrow, "default_connection", _no_database)
+        text = self.REPRO + "      sex: {type: categorical, role: categorical}\n"
+        result = validate_config(self._write(tmp_path, text))
+
+        assert result.is_valid
+        assert self._empty_matrix_warnings(result) == []
+
+    def test_planning_failure_does_not_raise(self, tmp_path, monkeypatch):
+        """A planner error leaves validation as it was: no warning, no raise."""
+        import featurizer.featurizer as featurizer_module
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("planner failed")
+
+        monkeypatch.setattr(featurizer_module, "Featurizer", _boom)
+        result = validate_config(self._write(tmp_path, self.REPRO))
+
+        assert result.is_valid
+        assert self._empty_matrix_warnings(result) == []

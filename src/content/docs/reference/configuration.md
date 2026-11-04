@@ -327,6 +327,9 @@ produce: `transformations: [abs]` emits `ABS(...)` columns and no raw ones.
 Aggregations are not affected. A parent still aggregates its children's raw
 variables, so `ABS(customers.SUM(orders.amount))` is computed whether or not
 `identity` is listed; `SUM(orders.amount)` itself is output only when it is.
+A window transformer (`lag_1`, `last`, `cum_sum`, ...) is not rendered on a
+target without `temporal_ix`, so a list made only of windows yields no
+feature columns there, and `featurizer validate` warns about it.
 
 ## Column budget
 

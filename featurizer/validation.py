@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 import yaml
 
@@ -1517,4 +1517,128 @@ def validate_config(config_path: str, mode: str = "strict") -> ValidationResult:
         config = yaml.safe_load(f) or {}
 
     validator = ConfigValidator(mode=mode)
-    return validator.validate(config)
+    result = validator.validate(config)
+    if result.is_valid:
+        warning = _empty_matrix_warning(config_path, config)
+        if warning is not None:
+            result.warnings.append(warning)
+    return result
+
+
+def _needs_database_to_plan(config: Dict[str, Any]) -> bool:
+    """True when planning this config could open a database connection.
+
+    A ``role: categorical`` variable without a declared ``vocabulary`` is
+    resolved from its PostgreSQL ``ENUM`` labels, which needs a connection.
+    Validation never connects, so such a config is not planned here.
+    """
+    for entity in config.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        variables = entity.get("variables")
+        if not isinstance(variables, dict):
+            continue
+        for var_def in variables.values():
+            if (
+                isinstance(var_def, dict)
+                and var_def.get("role") == "categorical"
+                and not var_def.get("vocabulary")
+            ):
+                return True
+    return False
+
+
+def _empty_matrix_warning(
+    config_path: str, config: Dict[str, Any]
+) -> Optional[ValidationWarning]:
+    """Plan the config DB-free and warn when the matrix has no feature column.
+
+    The planner decides which columns a config yields; this asks it rather
+    than restating its rules. The planning pass never connects to a database
+    (a config that would need one is skipped) and never raises: a config the
+    planner rejects is already covered by the validation errors, or by the
+    error ``Featurizer`` itself raises.
+
+    Args:
+        config_path: Path to the YAML configuration file.
+        config: The parsed configuration, already validated without errors.
+
+    Returns:
+        A warning naming the cause when the planned matrix has zero feature
+        columns, else ``None``.
+    """
+    if _needs_database_to_plan(config):
+        return None
+
+    from .featurizer import Featurizer
+
+    try:
+        featurizer = Featurizer(config_path, validate=False)
+        if featurizer.feature_manifest:
+            return None
+        target = featurizer.target
+        skipped = (
+            _timeline_skipped_transformers(
+                target,
+                featurizer.features.get(target.alias, ()),
+                featurizer.transformations,
+            )
+            if target.temporal_ix is None
+            else []
+        )
+    except Exception:  # noqa: BLE001 - planning is advisory here
+        return None
+
+    if skipped:
+        message = (
+            f"The planned feature matrix has zero feature columns. Entity "
+            f"'{target.alias}' (the target) declares no temporal_ix, so the "
+            f"transformers that need a timeline were skipped: "
+            f"{', '.join(skipped)}. Add 'identity' to 'transformations' to pass "
+            f"the target's variables and aggregates through, or declare "
+            f"'temporal_ix' on '{target.alias}'."
+        )
+    else:
+        message = (
+            f"The planned feature matrix has zero feature columns: the query "
+            f"selects only the identifiers of '{target.alias}'. Check "
+            f"'transformations', 'aggregations' and the relationships."
+        )
+    return ValidationWarning(message=message, location="transformations")
+
+
+def _timeline_skipped_transformers(
+    target: Any, features: Iterable[Any], transformations: Dict[str, Any]
+) -> List[str]:
+    """Names of the selected transformers that need a timeline ``target`` lacks.
+
+    Each transformer is asked directly: it yields nothing on one of the
+    target's planned features (its variables, and the aggregates its children
+    bring), and something once the same entity is given a temporal index. That
+    is the primitives' own rule, not a copy of it.
+
+    Args:
+        target: The undated target entity.
+        features: The target's planned features, before its transformers.
+        transformations: The selected transformers, by name.
+
+    Returns:
+        The transformer names, in selection order.
+    """
+    import copy
+
+    from .primitives.abstractions import Id
+
+    dated = copy.copy(target)
+    dated.temporal_ix = Id(name="__featurizer_probe_timeline__", entity=dated)
+    inputs = sorted(
+        (f for f in features if getattr(f, "type", None) != "index"),
+        key=lambda f: str(f.name),
+    )
+    skipped: List[str] = []
+    for name, transformer in transformations.items():
+        for feature in inputs:
+            if not transformer(target, feature) and transformer(dated, feature):
+                skipped.append(name)
+                break
+    return skipped
