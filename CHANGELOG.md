@@ -4,6 +4,68 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
+## [1.4.0] - 2026-11-04
+
+An additive release. Every config that runs on 1.3.1 renders the same SQL and
+the same columns on 1.4.0. One config shape that raised now runs: a parent
+categorical whose vocabulary comes from its PostgreSQL `ENUM`. Two warnings are
+new. The names `last_known` and `LAST_KNOWN(...)` join ADR-0015's freeze with
+this tag.
+
+### Added
+
+- **`last_known` aggregation (#79).** For each parent, as-of date and interval,
+  the value of a numeric child column on the latest row of the child's
+  timeline, skipping NULLs. NULL when no such row exists. Output:
+  `LAST_KNOWN(<child>.<column>)` and `LAST_KNOWN(<child>.<column>|interval=…)`.
+  Ties on the timestamp resolve by the child's tiebreak columns (ADR-0018). It
+  is not rendered on a child without a `temporal_ix` (the #76 rule). It is
+  opt-in: it is not in the default set, so a config that omits
+  `aggregations:` does not get it. It replaces the
+  `MAX(<child>.LAST(<child>.<column>))` recipe, which returns the maximum when
+  the child's `id` is its own row key. The registry now holds 68 aggregations
+  and 151 primitives.
+- **`featurizer validate` warns when the planned matrix has no feature column
+  (#80).** The usual cause is a target without a `temporal_ix` whose
+  `transformations:` lists only windows (`[lag_1]`). The warning names the
+  skipped transformers and the two fixes. It is a warning: the exit code stays
+  0. The check plans the config without a database, and it is skipped for a
+  config with an undeclared categorical vocabulary, which would need one.
+- **A parent's `role: categorical` reads its vocabulary from the parent
+  table's `ENUM` (#81, ADR-0019).** A categorical on a parent reached by an
+  unnamed forward relationship was already one-hot encoded when its vocabulary
+  was declared. Without a declared list it raised `vocabulary was not
+  resolved`. The labels now come from the parent's own table, through a
+  connection opened only for that variable and closed after planning. With no
+  database, the error names the owning entity. The column names do not change:
+  `"<target_alias>.<column>=<value>"`.
+
+### Changed
+
+- **A transferred column dropped by a name collision now logs a warning
+  (#82).** When a parent's column has the same name as a column the receiving
+  entity already has, the parent's is dropped. This applies to every column
+  type. The output is unchanged. The warning names both entities and the fix:
+  a `name:` on the relationship qualifies the transferred columns as
+  `<name>.<column>`.
+- `featurizer validate` now prints the planner's log lines on stderr, the same
+  lines `render` prints, because it plans the config. For a target with a
+  `temporal_ix`, that includes the once-per-process ADR-0017 notice.
+
+### Documentation
+
+- The FAQ's "last known value" answer recommends `last_known`. The
+  configuration reference states that a list made only of windows yields no
+  columns on an undated target, and how parent categoricals are encoded and
+  named. ADR-0019 records the parent one-hot decision, and ADR-0007 points to
+  it. The featurizer-dfs skill drops the `MAX(labs.LAST(...))` recipe.
+
+### Known issue
+
+- `sequence_entropy`'s correlated-subquery fallback calls `_timeline` with
+  five arguments and would raise `TypeError` (#83). The planner always takes
+  the set-based path for it, so no config reaches it.
+
 ## [1.3.1] - 2026-10-26
 
 A fix release. Eleven window transformers rendered a window on an entity
