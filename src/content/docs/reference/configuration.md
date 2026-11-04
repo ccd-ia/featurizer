@@ -127,7 +127,13 @@ entities:
   vocabulary (or the column's PostgreSQL `ENUM` labels if you omit
   `vocabulary`). Deliberately **split-blind and fit-free**: featurizer never
   learns a vocabulary from data — learned (train-only) encodings are the
-  consumer's job.
+  consumer's job. A parent's categorical that reaches the target through an
+  unnamed forward relationship is encoded too, under the **target's** alias
+  (`"<target>.<col>=<value>"`), with its vocabulary declared on the parent or
+  read from the parent table's `ENUM`. Behind a named relationship it stays a
+  raw string column. If the target already has a column with the same name,
+  the parent's column is dropped and a warning says so: give the relationship
+  a `name:` to keep both.
 - **`role: identifier`** excludes a column from the feature output while
   keeping it available as a key.
 - **Column names** are read the way PostgreSQL reads them. A name you could

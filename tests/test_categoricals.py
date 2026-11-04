@@ -214,3 +214,201 @@ def test_unencoded_text_passthrough_warns() -> None:
     assert any(
         "raw string column" in m and "facilities.category" in m for m in warnings
     )
+
+
+# --------------------------------------------------------------------------- #
+# Parent-entity categoricals (ADR-0019)
+#
+# A parent's role: categorical reached through an unnamed forward relationship
+# is one-hot encoded under the TARGET's alias, as master already does. These
+# pin that naming, resolve the parent's vocabulary from its own table's ENUM,
+# and warn when a transferred column is dropped by a name collision (#82).
+# --------------------------------------------------------------------------- #
+
+
+def _inspections_config(
+    facility_vars: Dict[str, Any],
+    inspection_vars: Dict[str, Any] | None = None,
+    *,
+    owners: bool = False,
+) -> dict:
+    entities: List[Dict[str, Any]] = [
+        {
+            "alias": "inspections",
+            "id": "inspection_id",
+            "table": "inspections",
+            "temporal_ix": "date",
+            "variables": inspection_vars or {"score": {"type": "numeric"}},
+        },
+        {
+            "alias": "facilities",
+            "id": "facility_id",
+            "table": "facilities",
+            "temporal_ix": "valid_from",
+            "variables": facility_vars,
+        },
+    ]
+    relationships: List[Dict[str, Any]] = [
+        {
+            "parent": {"entity": "facilities", "key": "facility_id"},
+            "child": {"entity": "inspections", "key": "facility_id"},
+        }
+    ]
+    if owners:
+        entities.append(
+            {
+                "alias": "owners",
+                "id": "owner_id",
+                "table": "owners",
+                "variables": {
+                    "kind": {
+                        "type": "categorical",
+                        "role": "categorical",
+                        "vocabulary": ["person", "corp"],
+                    }
+                },
+            }
+        )
+        relationships.append(
+            {
+                "parent": {"entity": "owners", "key": "owner_id"},
+                "child": {"entity": "facilities", "key": "owner_id"},
+            }
+        )
+    return {
+        "target": "inspections",
+        # A grandparent's transfer reaches the target only at depth 3.
+        "max_depth": 3 if owners else 2,
+        "intervals": ["P1Y"],
+        "aggregations": ["count"],
+        "transformations": ["identity"],
+        "entities": entities,
+        "relationships": relationships,
+    }
+
+
+_FACILITY_TYPE_ENUM = {"type": "categorical", "role": "categorical"}
+_FACILITY_TYPE_DECLARED = {
+    "type": "categorical",
+    "role": "categorical",
+    "vocabulary": ["restaurant", "grocery"],
+}
+
+
+def _one_hot_columns(featurizer: Featurizer) -> List[str]:
+    return sorted(
+        entry.column for entry in featurizer.feature_manifest if entry.kind == "one_hot"
+    )
+
+
+def test_parent_categorical_keeps_the_target_alias_names() -> None:
+    """The names master emits today stay byte-identical, at depth 1 and 2."""
+    featurizer = _featurizer(
+        _inspections_config(
+            {"size": {"type": "numeric"}, "facility_type": _FACILITY_TYPE_DECLARED},
+            owners=True,
+        )
+    )
+    assert _one_hot_columns(featurizer) == [
+        "inspections.facility_type=grocery",
+        "inspections.facility_type=restaurant",
+        "inspections.kind=corp",
+        "inspections.kind=person",
+    ]
+
+
+def test_parent_categorical_vocabulary_comes_from_the_parent_enum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No declared list: the labels are read from the parent's own table."""
+    import featurizer.categoricals as categoricals
+
+    calls: List[tuple] = []
+
+    def _labels(connection: Any, table: str, column: str) -> List[str]:
+        calls.append((connection, table, column))
+        return ["restaurant", "grocery"]
+
+    monkeypatch.setattr(categoricals, "introspect_enum_labels", _labels)
+    connection = object()
+    featurizer = _featurizer(
+        _inspections_config({"facility_type": _FACILITY_TYPE_ENUM}),
+        connection=connection,
+    )
+    assert calls == [(connection, "facilities", "facility_type")]
+    assert _one_hot_columns(featurizer) == [
+        "inspections.facility_type=grocery",
+        "inspections.facility_type=restaurant",
+    ]
+
+
+def test_parent_enum_connection_from_the_environment_is_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A connection opened to read a parent ENUM is closed once planning ends."""
+    import featurizer.arrow as arrow
+    import featurizer.categoricals as categoricals
+
+    class _Connection:
+        closed = 0
+
+        def close(self) -> None:
+            type(self).closed += 1
+
+    monkeypatch.setattr(arrow, "default_connection", _Connection)
+    monkeypatch.setattr(
+        categoricals, "introspect_enum_labels", lambda *a: ["restaurant"]
+    )
+    featurizer = _featurizer(
+        _inspections_config({"facility_type": _FACILITY_TYPE_ENUM})
+    )
+    assert _one_hot_columns(featurizer) == ["inspections.facility_type=restaurant"]
+    assert _Connection.closed == 1
+
+
+def test_parent_categorical_without_vocabulary_or_db_names_the_parent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No list, no database: the actionable error names the owning entity."""
+    _no_db_env(monkeypatch)
+    with pytest.raises(ValueError, match="'facilities.facility_type' has no"):
+        _featurizer(_inspections_config({"facility_type": _FACILITY_TYPE_ENUM}))
+
+
+@pytest.mark.parametrize(
+    "shared",
+    [
+        pytest.param({"score": {"type": "numeric"}}, id="numeric"),
+        pytest.param({"facility_type": _FACILITY_TYPE_DECLARED}, id="categorical"),
+    ],
+)
+def test_transferred_column_dropped_by_a_name_collision_warns(
+    shared: Dict[str, Any],
+) -> None:
+    """#82: the parent's same-named column is dropped; say so and name the fix."""
+    inspection_vars: Dict[str, Any] = {"score": {"type": "numeric"}}
+    if "facility_type" in shared:
+        inspection_vars["facility_type"] = {
+            "type": "categorical",
+            "role": "categorical",
+            "vocabulary": ["a", "b"],
+        }
+    with capture_warnings() as warnings:
+        _featurizer(_inspections_config(dict(shared), inspection_vars))
+    column = next(iter(shared))
+    collisions = [m for m in warnings if "is not transferred" in m]
+    assert len(collisions) == 1
+    assert f"Column '{column}' of 'facilities'" in collisions[0]
+    assert "to 'inspections'" in collisions[0]
+    assert "`name:`" in collisions[0]
+
+
+def test_no_collision_warning_without_a_shared_name() -> None:
+    with capture_warnings() as warnings:
+        _featurizer(
+            _inspections_config(
+                {"size": {"type": "numeric"}, "facility_type": _FACILITY_TYPE_DECLARED},
+                owners=True,
+            )
+        )
+    assert not [m for m in warnings if "is not transferred" in m]

@@ -82,6 +82,7 @@ categoricals are unchanged (already reduced to numeric via aggregation).
   introspectable `ENUM` fails at construction with actionable guidance, rather
   than silently emitting a raw string column or a learned vocabulary.
 - **Not covered (deferred):** one-hot encoding of categoricals on *parent*
-  entities reached via forward relationships (only target-owned today); and an
+  entities reached via forward relationships (only target-owned today; settled
+  by ADR-0019, which found master already encoding them); and an
   optional one-line count of out-of-vocabulary data values (skipped to keep the
   path DB-light and strictly fit-free).

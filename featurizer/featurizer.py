@@ -175,8 +175,12 @@ class Featurizer:
             boundary=self.as_of_boundary,
             debug=self._debug_enabled,
             cohort_id_column=self.cohort_id_column,
+            vocabulary_resolver=self._parent_vocabulary_resolver(connection),
         )
-        self._plan: PlannerResult = planner.plan()
+        try:
+            self._plan: PlannerResult = planner.plan()
+        finally:
+            self._close_parent_vocabulary_connection()
 
         self.features: Dict[str, Set[Feature]] = {
             alias: set(features) for alias, features in self._plan.features.items()
@@ -217,6 +221,37 @@ class Featurizer:
         finally:
             if own_connection is not None:
                 own_connection.close()
+
+    def _parent_vocabulary_resolver(self, connection: Any) -> Any:
+        """The planner's resolver for a parent's transferred ``role: categorical``.
+
+        Same priority as the target's (:func:`resolve_vocabulary`): the declared
+        list, else the ENUM of the parent's own table. A connection is opened
+        from the environment only when such a variable has no declared list,
+        and closed once planning ends (ADR-0019).
+        """
+        self._own_vocabulary_connection: Any = None
+
+        def resolve(variable: Variable) -> List[str]:
+            entity = variable.entity
+            if entity is None:
+                raise ValueError(
+                    f"Cannot resolve the vocabulary of role: categorical variable "
+                    f"'{variable.name}': it is not attached to an entity."
+                )
+            conn = connection
+            if conn is None and not variable.vocabulary:
+                if self._own_vocabulary_connection is None:
+                    self._own_vocabulary_connection = self._maybe_env_connection()
+                conn = self._own_vocabulary_connection
+            return resolve_vocabulary(variable, entity, conn)
+
+        return resolve
+
+    def _close_parent_vocabulary_connection(self) -> None:
+        if self._own_vocabulary_connection is not None:
+            self._own_vocabulary_connection.close()
+            self._own_vocabulary_connection = None
 
     @staticmethod
     def _maybe_env_connection() -> Any:
