@@ -325,7 +325,7 @@ AGGREGATION_DOCS: Dict[str, Dict[str, Any]] = {
         "sql_example": "MAX(streak_length) using gaps-and-islands",
         "temporal": True,
     },
-    "last_value": {
+    "last_known": {
         "description": (
             "Last non-NULL value before the as-of date, on the child's timeline "
             "(opt-in: not in the default set)"
@@ -592,7 +592,7 @@ AGGREGATION_CATEGORIES: Dict[str, str] = {
     "tenure": "temporal",
     "age_in_system": "temporal",
     "inter_event_hazard_proxy": "temporal",
-    "last_value": "temporal",
+    "last_known": "temporal",
     # Temporal patterns (burst / seasonality / autocorrelation)
     "burstiness": "temporal_pattern",
     "acf_1": "temporal_pattern",

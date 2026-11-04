@@ -81,11 +81,11 @@ in SQL so leakage can't creep in. See the
 
 ### How do I get the last known value of a variable, beside its aggregates?
 
-Ask for the `last_value` aggregation beside the others. For a lab-results
+Ask for the `last_known` aggregation beside the others. For a lab-results
 table that rolls up to patients:
 
 ```yaml
-aggregations: [mean, stddev, min, max, count, last_value]
+aggregations: [mean, stddev, min, max, count, last_known]
 transformations: [identity]
 entities:
   - alias: labs
@@ -96,10 +96,10 @@ entities:
       glucose: {type: numeric}
 ```
 
-`LAST_VALUE(labs.glucose)` is each patient's most recent non-NULL `glucose`
+`LAST_KNOWN(labs.glucose)` is each patient's most recent non-NULL `glucose`
 among the readings dated on or before the as-of date, next to
 `MEAN(labs.glucose)`, `STDDEV(labs.glucose)` and the rest. Under an interval,
-`LAST_VALUE(labs.glucose|interval=P90D)` is that same value when the reading
+`LAST_KNOWN(labs.glucose|interval=P90D)` is that same value when the reading
 falls in the last 90 days, and NULL when it is older.
 
 - **NULLs are skipped.** A reading whose `glucose` is NULL does not hide the one
@@ -109,7 +109,7 @@ falls in the last 90 days, and NULL when it is older.
   order of the rows in the table.
 - **It needs a `temporal_ix`.** On a child without one there is no "last", and
   the feature is not rendered.
-- **It is opt-in.** `last_value` is not in the default set, so a config that
+- **It is opt-in.** `last_known` is not in the default set, so a config that
   omits `aggregations:` does not get it.
 - **Numeric only.** For a categorical variable, use the transformer below.
 
@@ -136,7 +136,7 @@ Any aggregation then reduces it to one value per patient:
   its own partition, `LAST(labs.glucose)` is the reading itself, and
   `MAX(labs.LAST(labs.glucose))` is only the maximum. The rule is in the
   [entities reference](/featurizer/reference/configuration/#entities).
-  `last_value` does not have this trap.
+  `last_known` does not have this trap.
 - **`MAX`, `MIN` and `MEAN` of `LAST(…)` are equal**, and `STDDEV` of it is 0
   or NULL, because every aggregation applies to every column. Keep one.
 - **Keep `identity` in `transformations`.** Without it the target carries no
