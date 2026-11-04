@@ -208,8 +208,14 @@ class FeaturePlanner:
         boundary: AsOfBoundary = DEFAULT_BOUNDARY,
         debug: bool = False,
         cohort_id_column: Optional[str] = None,
+        vocabulary_resolver: Optional[Callable[[Variable], List[str]]] = None,
     ) -> None:
         self.graph = graph
+        # Resolves the vocabulary of a parent's ``role: categorical`` variable
+        # that reaches the target through an unnamed forward relationship
+        # (ADR-0019). Called only for such a variable, and only when it has no
+        # vocabulary yet, so the planner itself never touches a database.
+        self.vocabulary_resolver = vocabulary_resolver
         # The caller's as_of_dates column that pairs each date with target ids
         # (issue #10). Quoted once here: the database owns the name.
         self.cohort_id_column: Optional[str] = (
@@ -1466,6 +1472,7 @@ class FeaturePlanner:
         # as features of the receiver promised its parent a column the
         # receiver's transform never had: ``count( "rate_id" )`` (issue #48).
         # Transferring them is a feature of its own (issue #60).
+        self._warn_on_direct_name_collisions(target, source, directs)
         self._features[target.alias].update(
             feature for feature in directs if feature.type not in {"index", "key"}
         )
@@ -1473,6 +1480,37 @@ class FeaturePlanner:
             self._build_direct_asof(target, source, relationship, directs)
         else:
             self._build_direct_cte(target, source, relationship, directs)
+
+    def _warn_on_direct_name_collisions(
+        self, target: Entity, source: Entity, directs: Iterable[Feature]
+    ) -> None:
+        """Warn when a transferred column shares its name with one ``target`` has.
+
+        Features compare by name, so adding the transferred one to the target's
+        feature set keeps the column already there and drops the other, with no
+        error (issue #82). The output does not change here: this only reports
+        the drop and names the fix.
+        """
+        existing = {feature.name: feature for feature in self._features[target.alias]}
+        for feature in directs:
+            if feature.type in {"index", "key"}:
+                continue
+            kept = existing.get(feature.name)
+            if kept is None or kept is feature:
+                continue
+            kept_from = getattr(kept.entity, "alias", "?")
+            logger.warning(
+                "Column '{}' of '{}' is not transferred to '{}': '{}' already has a "
+                "column with that name (from '{}'), and the transferred one is "
+                "dropped. Give the relationship a `name:` so the transferred "
+                "columns are qualified as '<name>.<column>', or rename one of the "
+                "variables (issue #82).",
+                feature.name.replace('"', ""),
+                source.alias,
+                target.alias,
+                target.alias,
+                kept_from,
+            )
 
     def _build_transformations(self, target: Entity) -> None:
         # Direct-variable role handling applies to the target entity only (the
@@ -1513,6 +1551,16 @@ class FeaturePlanner:
         # role: categorical direct variable becomes N deterministic 0/1 columns
         # over its resolved (declared or ENUM-introspected) vocabulary.
         for variable in categoricals:
+            if (
+                not variable.vocabulary
+                and variable.entity is not target
+                and self.vocabulary_resolver is not None
+            ):
+                # A parent's categorical, transferred onto the target. Its
+                # vocabulary comes from its own declaration or its own table's
+                # ENUM; the target's columns are named after the target as
+                # before (ADR-0019).
+                variable.vocabulary = self.vocabulary_resolver(variable)
             flattened.update(build_one_hot_features(target, variable))
 
         self._debug(
