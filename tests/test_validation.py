@@ -820,8 +820,19 @@ aggregations: [count, mean]
         def _boom(*args, **kwargs):
             raise RuntimeError("planner failed")
 
+        from loguru import logger
+
         monkeypatch.setattr(featurizer_module, "Featurizer", _boom)
-        result = validate_config(self._write(tmp_path, self.REPRO))
+        messages: list = []
+        sink = logger.add(messages.append, level="DEBUG", format="{message}")
+        try:
+            result = validate_config(self._write(tmp_path, self.REPRO))
+        finally:
+            logger.remove(sink)
 
         assert result.is_valid
         assert self._empty_matrix_warnings(result) == []
+        # Not swallowed silently: the skip is logged with its traceback.
+        logged = [m for m in messages if "empty-matrix check skipped" in m]
+        assert len(logged) == 1
+        assert logged[0].record["exception"] is not None

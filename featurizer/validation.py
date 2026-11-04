@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 import yaml
+from loguru import logger
 
 from .primitives import (
     GRAPH_FEATURE_FAMILIES,
@@ -1587,6 +1588,11 @@ def _empty_matrix_warning(
             else []
         )
     except Exception:  # noqa: BLE001 - planning is advisory here
+        # The validation errors (or Featurizer's own) already cover a config the
+        # planner rejects; log the traceback so a planner bug stays visible.
+        logger.opt(exception=True).debug(
+            "empty-matrix check skipped: planning {} raised", config_path
+        )
         return None
 
     if skipped:
