@@ -1,10 +1,10 @@
 {
   "_meta": {
-    "case_count": 232,
+    "case_count": 240,
     "featurizer_version": "0.6.0",
-    "migratable_aggregator_count": 29,
+    "migratable_aggregator_count": 30,
     "note": "Golden values frozen from the correlated-subquery path before the set-based rewrite (specs/correlated-subquery-aggregator-scaling.html). Do not edit without a documented semantics change.",
-    "subquery_aggregator_count": 36
+    "subquery_aggregator_count": 37
   },
   "cases": {
     "acf_1|dense|date|P1M": [
@@ -33291,6 +33291,2806 @@
       {
         "COUNT(c.cat)": 4,
         "COUNT(c.ts)": 4,
+        "as_of_date": "2024-01-01",
+        "pid": 4
+      }
+    ],
+    "last_value|dense|date|P1M": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 24.0,
+        "LAST_VALUE(c.num|interval=P1M)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 37.0,
+        "LAST_VALUE(c.num|interval=P1M)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 50.0,
+        "LAST_VALUE(c.num|interval=P1M)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 63.0,
+        "LAST_VALUE(c.num|interval=P1M)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -11.0,
+        "LAST_VALUE(c.num|interval=P1M)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 15.0,
+        "LAST_VALUE(c.num|interval=P1M)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 2.0,
+        "LAST_VALUE(c.num|interval=P1M)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 28.0,
+        "LAST_VALUE(c.num|interval=P1M)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 16.0,
+        "LAST_VALUE(c.num|interval=P1M)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 29.0,
+        "LAST_VALUE(c.num|interval=P1M)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 42.0,
+        "LAST_VALUE(c.num|interval=P1M)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 55.0,
+        "LAST_VALUE(c.num|interval=P1M)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -19.0,
+        "LAST_VALUE(c.num|interval=P1M)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -6.0,
+        "LAST_VALUE(c.num|interval=P1M)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 20.0,
+        "LAST_VALUE(c.num|interval=P1M)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 65.0,
+        "LAST_VALUE(c.num|interval=P1M)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 7.0,
+        "LAST_VALUE(c.num|interval=P1M)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 30.0,
+        "LAST_VALUE(c.num|interval=P1M)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 43.0,
+        "LAST_VALUE(c.num|interval=P1M)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 56.0,
+        "LAST_VALUE(c.num|interval=P1M)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 69.0,
+        "LAST_VALUE(c.num|interval=P1M)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 21.0,
+        "LAST_VALUE(c.num|interval=P1M)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 34.0,
+        "LAST_VALUE(c.num|interval=P1M)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 47.0,
+        "LAST_VALUE(c.num|interval=P1M)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 8.0,
+        "LAST_VALUE(c.num|interval=P1M)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -1.0,
+        "LAST_VALUE(c.num|interval=P1M)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -14.0,
+        "LAST_VALUE(c.num|interval=P1M)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 57.0,
+        "LAST_VALUE(c.num|interval=P1M)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 70.0,
+        "LAST_VALUE(c.num|interval=P1M)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 22.0,
+        "LAST_VALUE(c.num|interval=P1M)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 35.0,
+        "LAST_VALUE(c.num|interval=P1M)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 48.0,
+        "LAST_VALUE(c.num|interval=P1M)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 61.0,
+        "LAST_VALUE(c.num|interval=P1M)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -9.0,
+        "LAST_VALUE(c.num|interval=P1M)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 49.0,
+        "LAST_VALUE(c.num|interval=P1M)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 62.0,
+        "LAST_VALUE(c.num|interval=P1M)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 75.0,
+        "LAST_VALUE(c.num|interval=P1M)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 1.0,
+        "LAST_VALUE(c.num|interval=P1M)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 14.0,
+        "LAST_VALUE(c.num|interval=P1M)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 27.0,
+        "LAST_VALUE(c.num|interval=P1M)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 40.0,
+        "LAST_VALUE(c.num|interval=P1M)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 53.0,
+        "LAST_VALUE(c.num|interval=P1M)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": -7.0,
+        "LAST_VALUE(c.num|interval=P1M)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 19.0,
+        "LAST_VALUE(c.num|interval=P1M)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P1M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 6.0,
+        "LAST_VALUE(c.num|interval=P1M)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P1M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 45.0,
+        "LAST_VALUE(c.num|interval=P1M)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 58.0,
+        "LAST_VALUE(c.num|interval=P1M)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 71.0,
+        "LAST_VALUE(c.num|interval=P1M)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|dense|date|P3M": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 24.0,
+        "LAST_VALUE(c.num|interval=P3M)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 37.0,
+        "LAST_VALUE(c.num|interval=P3M)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 50.0,
+        "LAST_VALUE(c.num|interval=P3M)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 63.0,
+        "LAST_VALUE(c.num|interval=P3M)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -11.0,
+        "LAST_VALUE(c.num|interval=P3M)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 15.0,
+        "LAST_VALUE(c.num|interval=P3M)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 2.0,
+        "LAST_VALUE(c.num|interval=P3M)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 28.0,
+        "LAST_VALUE(c.num|interval=P3M)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 16.0,
+        "LAST_VALUE(c.num|interval=P3M)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 29.0,
+        "LAST_VALUE(c.num|interval=P3M)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 42.0,
+        "LAST_VALUE(c.num|interval=P3M)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 55.0,
+        "LAST_VALUE(c.num|interval=P3M)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -19.0,
+        "LAST_VALUE(c.num|interval=P3M)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -6.0,
+        "LAST_VALUE(c.num|interval=P3M)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 20.0,
+        "LAST_VALUE(c.num|interval=P3M)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 65.0,
+        "LAST_VALUE(c.num|interval=P3M)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 7.0,
+        "LAST_VALUE(c.num|interval=P3M)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 30.0,
+        "LAST_VALUE(c.num|interval=P3M)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 43.0,
+        "LAST_VALUE(c.num|interval=P3M)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 56.0,
+        "LAST_VALUE(c.num|interval=P3M)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 69.0,
+        "LAST_VALUE(c.num|interval=P3M)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 21.0,
+        "LAST_VALUE(c.num|interval=P3M)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 34.0,
+        "LAST_VALUE(c.num|interval=P3M)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 47.0,
+        "LAST_VALUE(c.num|interval=P3M)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 8.0,
+        "LAST_VALUE(c.num|interval=P3M)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -1.0,
+        "LAST_VALUE(c.num|interval=P3M)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -14.0,
+        "LAST_VALUE(c.num|interval=P3M)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 57.0,
+        "LAST_VALUE(c.num|interval=P3M)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 70.0,
+        "LAST_VALUE(c.num|interval=P3M)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 22.0,
+        "LAST_VALUE(c.num|interval=P3M)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 35.0,
+        "LAST_VALUE(c.num|interval=P3M)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 48.0,
+        "LAST_VALUE(c.num|interval=P3M)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 61.0,
+        "LAST_VALUE(c.num|interval=P3M)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -9.0,
+        "LAST_VALUE(c.num|interval=P3M)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 49.0,
+        "LAST_VALUE(c.num|interval=P3M)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 62.0,
+        "LAST_VALUE(c.num|interval=P3M)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 75.0,
+        "LAST_VALUE(c.num|interval=P3M)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 1.0,
+        "LAST_VALUE(c.num|interval=P3M)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 14.0,
+        "LAST_VALUE(c.num|interval=P3M)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 27.0,
+        "LAST_VALUE(c.num|interval=P3M)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 40.0,
+        "LAST_VALUE(c.num|interval=P3M)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 53.0,
+        "LAST_VALUE(c.num|interval=P3M)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": -7.0,
+        "LAST_VALUE(c.num|interval=P3M)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 19.0,
+        "LAST_VALUE(c.num|interval=P3M)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P3M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 6.0,
+        "LAST_VALUE(c.num|interval=P3M)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P3M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 45.0,
+        "LAST_VALUE(c.num|interval=P3M)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 58.0,
+        "LAST_VALUE(c.num|interval=P3M)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 71.0,
+        "LAST_VALUE(c.num|interval=P3M)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|dense|date|all": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|dense|timestamp|P1M": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 24.0,
+        "LAST_VALUE(c.num|interval=P1M)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 37.0,
+        "LAST_VALUE(c.num|interval=P1M)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 50.0,
+        "LAST_VALUE(c.num|interval=P1M)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 63.0,
+        "LAST_VALUE(c.num|interval=P1M)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -11.0,
+        "LAST_VALUE(c.num|interval=P1M)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 15.0,
+        "LAST_VALUE(c.num|interval=P1M)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 2.0,
+        "LAST_VALUE(c.num|interval=P1M)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 28.0,
+        "LAST_VALUE(c.num|interval=P1M)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 16.0,
+        "LAST_VALUE(c.num|interval=P1M)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 29.0,
+        "LAST_VALUE(c.num|interval=P1M)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 42.0,
+        "LAST_VALUE(c.num|interval=P1M)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 55.0,
+        "LAST_VALUE(c.num|interval=P1M)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -19.0,
+        "LAST_VALUE(c.num|interval=P1M)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -6.0,
+        "LAST_VALUE(c.num|interval=P1M)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 20.0,
+        "LAST_VALUE(c.num|interval=P1M)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 65.0,
+        "LAST_VALUE(c.num|interval=P1M)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 7.0,
+        "LAST_VALUE(c.num|interval=P1M)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 30.0,
+        "LAST_VALUE(c.num|interval=P1M)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 43.0,
+        "LAST_VALUE(c.num|interval=P1M)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 56.0,
+        "LAST_VALUE(c.num|interval=P1M)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 69.0,
+        "LAST_VALUE(c.num|interval=P1M)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 21.0,
+        "LAST_VALUE(c.num|interval=P1M)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 34.0,
+        "LAST_VALUE(c.num|interval=P1M)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 47.0,
+        "LAST_VALUE(c.num|interval=P1M)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 8.0,
+        "LAST_VALUE(c.num|interval=P1M)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -1.0,
+        "LAST_VALUE(c.num|interval=P1M)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -14.0,
+        "LAST_VALUE(c.num|interval=P1M)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 57.0,
+        "LAST_VALUE(c.num|interval=P1M)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 70.0,
+        "LAST_VALUE(c.num|interval=P1M)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 22.0,
+        "LAST_VALUE(c.num|interval=P1M)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 35.0,
+        "LAST_VALUE(c.num|interval=P1M)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 48.0,
+        "LAST_VALUE(c.num|interval=P1M)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 61.0,
+        "LAST_VALUE(c.num|interval=P1M)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": -9.0,
+        "LAST_VALUE(c.num|interval=P1M)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 49.0,
+        "LAST_VALUE(c.num|interval=P1M)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 62.0,
+        "LAST_VALUE(c.num|interval=P1M)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 5,
+        "LAST_VALUE(c.num)": 75.0,
+        "LAST_VALUE(c.num|interval=P1M)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 1.0,
+        "LAST_VALUE(c.num|interval=P1M)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 14.0,
+        "LAST_VALUE(c.num|interval=P1M)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 27.0,
+        "LAST_VALUE(c.num|interval=P1M)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 40.0,
+        "LAST_VALUE(c.num|interval=P1M)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 53.0,
+        "LAST_VALUE(c.num|interval=P1M)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": -7.0,
+        "LAST_VALUE(c.num|interval=P1M)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 19.0,
+        "LAST_VALUE(c.num|interval=P1M)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P1M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P1M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P1M)": 6,
+        "LAST_VALUE(c.num)": 6.0,
+        "LAST_VALUE(c.num|interval=P1M)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P1M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 45.0,
+        "LAST_VALUE(c.num|interval=P1M)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 58.0,
+        "LAST_VALUE(c.num|interval=P1M)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P1M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P1M)": 4,
+        "LAST_VALUE(c.num)": 71.0,
+        "LAST_VALUE(c.num|interval=P1M)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|dense|timestamp|P3M": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 24.0,
+        "LAST_VALUE(c.num|interval=P3M)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 37.0,
+        "LAST_VALUE(c.num|interval=P3M)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 50.0,
+        "LAST_VALUE(c.num|interval=P3M)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 63.0,
+        "LAST_VALUE(c.num|interval=P3M)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -11.0,
+        "LAST_VALUE(c.num|interval=P3M)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 15.0,
+        "LAST_VALUE(c.num|interval=P3M)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 2.0,
+        "LAST_VALUE(c.num|interval=P3M)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 10,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 28.0,
+        "LAST_VALUE(c.num|interval=P3M)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 16.0,
+        "LAST_VALUE(c.num|interval=P3M)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 29.0,
+        "LAST_VALUE(c.num|interval=P3M)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 42.0,
+        "LAST_VALUE(c.num|interval=P3M)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 55.0,
+        "LAST_VALUE(c.num|interval=P3M)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -19.0,
+        "LAST_VALUE(c.num|interval=P3M)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -6.0,
+        "LAST_VALUE(c.num|interval=P3M)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 20.0,
+        "LAST_VALUE(c.num|interval=P3M)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 65.0,
+        "LAST_VALUE(c.num|interval=P3M)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 7.0,
+        "LAST_VALUE(c.num|interval=P3M)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 30.0,
+        "LAST_VALUE(c.num|interval=P3M)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 43.0,
+        "LAST_VALUE(c.num|interval=P3M)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 56.0,
+        "LAST_VALUE(c.num|interval=P3M)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 11,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 69.0,
+        "LAST_VALUE(c.num|interval=P3M)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 21.0,
+        "LAST_VALUE(c.num|interval=P3M)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 34.0,
+        "LAST_VALUE(c.num|interval=P3M)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 47.0,
+        "LAST_VALUE(c.num|interval=P3M)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 8.0,
+        "LAST_VALUE(c.num|interval=P3M)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -1.0,
+        "LAST_VALUE(c.num|interval=P3M)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -14.0,
+        "LAST_VALUE(c.num|interval=P3M)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 57.0,
+        "LAST_VALUE(c.num|interval=P3M)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 70.0,
+        "LAST_VALUE(c.num|interval=P3M)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 22.0,
+        "LAST_VALUE(c.num|interval=P3M)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 35.0,
+        "LAST_VALUE(c.num|interval=P3M)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 48.0,
+        "LAST_VALUE(c.num|interval=P3M)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 12,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 61.0,
+        "LAST_VALUE(c.num|interval=P3M)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": -9.0,
+        "LAST_VALUE(c.num|interval=P3M)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 49.0,
+        "LAST_VALUE(c.num|interval=P3M)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 62.0,
+        "LAST_VALUE(c.num|interval=P3M)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 5,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 5,
+        "LAST_VALUE(c.num)": 75.0,
+        "LAST_VALUE(c.num|interval=P3M)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 1.0,
+        "LAST_VALUE(c.num|interval=P3M)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 14.0,
+        "LAST_VALUE(c.num|interval=P3M)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 27.0,
+        "LAST_VALUE(c.num|interval=P3M)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 40.0,
+        "LAST_VALUE(c.num|interval=P3M)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 13,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 53.0,
+        "LAST_VALUE(c.num|interval=P3M)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": -7.0,
+        "LAST_VALUE(c.num|interval=P3M)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 19.0,
+        "LAST_VALUE(c.num|interval=P3M)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P3M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.cat|interval=P3M)": 6,
+        "COUNT(c.ts)": 14,
+        "COUNT(c.ts|interval=P3M)": 6,
+        "LAST_VALUE(c.num)": 6.0,
+        "LAST_VALUE(c.num|interval=P3M)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 32.0,
+        "LAST_VALUE(c.num|interval=P3M)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 45.0,
+        "LAST_VALUE(c.num|interval=P3M)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 58.0,
+        "LAST_VALUE(c.num|interval=P3M)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.cat|interval=P3M)": 4,
+        "COUNT(c.ts)": 9,
+        "COUNT(c.ts|interval=P3M)": 4,
+        "LAST_VALUE(c.num)": 71.0,
+        "LAST_VALUE(c.num|interval=P3M)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|dense|timestamp|all": [
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": -11.0,
+        "as_of_date": "2023-12-31",
+        "pid": 40
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 15.0,
+        "as_of_date": "2023-12-31",
+        "pid": 16
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 2.0,
+        "as_of_date": "2023-12-31",
+        "pid": 28
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 24.0,
+        "as_of_date": "2023-12-31",
+        "pid": 45
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 28.0,
+        "as_of_date": "2023-12-31",
+        "pid": 4
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 37.0,
+        "as_of_date": "2023-12-31",
+        "pid": 33
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 50.0,
+        "as_of_date": "2023-12-31",
+        "pid": 21
+      },
+      {
+        "COUNT(c.cat)": 10,
+        "COUNT(c.ts)": 10,
+        "LAST_VALUE(c.num)": 63.0,
+        "as_of_date": "2023-12-31",
+        "pid": 9
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": -19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 37
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": -6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 25
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 16.0,
+        "as_of_date": "2023-12-31",
+        "pid": 42
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 20.0,
+        "as_of_date": "2023-12-31",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 29.0,
+        "as_of_date": "2023-12-31",
+        "pid": 30
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 30.0,
+        "as_of_date": "2023-12-31",
+        "pid": 44
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 42.0,
+        "as_of_date": "2023-12-31",
+        "pid": 18
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 43.0,
+        "as_of_date": "2023-12-31",
+        "pid": 32
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 55.0,
+        "as_of_date": "2023-12-31",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 56.0,
+        "as_of_date": "2023-12-31",
+        "pid": 20
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 65.0,
+        "as_of_date": "2023-12-31",
+        "pid": 49
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 69.0,
+        "as_of_date": "2023-12-31",
+        "pid": 8
+      },
+      {
+        "COUNT(c.cat)": 11,
+        "COUNT(c.ts)": 11,
+        "LAST_VALUE(c.num)": 7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 13
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": -1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 10
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": -14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 22
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 21.0,
+        "as_of_date": "2023-12-31",
+        "pid": 27
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 22.0,
+        "as_of_date": "2023-12-31",
+        "pid": 41
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 34.0,
+        "as_of_date": "2023-12-31",
+        "pid": 15
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 35.0,
+        "as_of_date": "2023-12-31",
+        "pid": 29
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 47.0,
+        "as_of_date": "2023-12-31",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 48.0,
+        "as_of_date": "2023-12-31",
+        "pid": 17
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 57.0,
+        "as_of_date": "2023-12-31",
+        "pid": 46
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 61.0,
+        "as_of_date": "2023-12-31",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 70.0,
+        "as_of_date": "2023-12-31",
+        "pid": 34
+      },
+      {
+        "COUNT(c.cat)": 12,
+        "COUNT(c.ts)": 12,
+        "LAST_VALUE(c.num)": 8.0,
+        "as_of_date": "2023-12-31",
+        "pid": 39
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": -9.0,
+        "as_of_date": "2023-12-31",
+        "pid": 7
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 1.0,
+        "as_of_date": "2023-12-31",
+        "pid": 50
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 14.0,
+        "as_of_date": "2023-12-31",
+        "pid": 38
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 27.0,
+        "as_of_date": "2023-12-31",
+        "pid": 26
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 40.0,
+        "as_of_date": "2023-12-31",
+        "pid": 14
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 49.0,
+        "as_of_date": "2023-12-31",
+        "pid": 43
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 53.0,
+        "as_of_date": "2023-12-31",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 62.0,
+        "as_of_date": "2023-12-31",
+        "pid": 31
+      },
+      {
+        "COUNT(c.cat)": 13,
+        "COUNT(c.ts)": 13,
+        "LAST_VALUE(c.num)": 75.0,
+        "as_of_date": "2023-12-31",
+        "pid": 19
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": -7.0,
+        "as_of_date": "2023-12-31",
+        "pid": 47
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 19.0,
+        "as_of_date": "2023-12-31",
+        "pid": 23
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 11
+      },
+      {
+        "COUNT(c.cat)": 14,
+        "COUNT(c.ts)": 14,
+        "LAST_VALUE(c.num)": 6.0,
+        "as_of_date": "2023-12-31",
+        "pid": 35
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 32.0,
+        "as_of_date": "2023-12-31",
+        "pid": 48
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 45.0,
+        "as_of_date": "2023-12-31",
+        "pid": 36
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 58.0,
+        "as_of_date": "2023-12-31",
+        "pid": 24
+      },
+      {
+        "COUNT(c.cat)": 9,
+        "COUNT(c.ts)": 9,
+        "LAST_VALUE(c.num)": 71.0,
+        "as_of_date": "2023-12-31",
+        "pid": 12
+      }
+    ],
+    "last_value|edge|date|all": [
+      {
+        "COUNT(c.cat)": 1,
+        "COUNT(c.ts)": 1,
+        "LAST_VALUE(c.num)": 5.0,
+        "as_of_date": "2024-01-01",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": -2.0,
+        "as_of_date": "2024-01-01",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": 3.0,
+        "as_of_date": "2024-01-01",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": 4.0,
+        "as_of_date": "2024-01-01",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 3,
+        "COUNT(c.ts)": 3,
+        "LAST_VALUE(c.num)": 2.0,
+        "as_of_date": "2024-01-01",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 4,
+        "COUNT(c.ts)": 4,
+        "LAST_VALUE(c.num)": 16.0,
+        "as_of_date": "2024-01-01",
+        "pid": 4
+      }
+    ],
+    "last_value|edge|timestamp|all": [
+      {
+        "COUNT(c.cat)": 1,
+        "COUNT(c.ts)": 1,
+        "LAST_VALUE(c.num)": 5.0,
+        "as_of_date": "2024-01-01",
+        "pid": 1
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": -2.0,
+        "as_of_date": "2024-01-01",
+        "pid": 3
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": 3.0,
+        "as_of_date": "2024-01-01",
+        "pid": 2
+      },
+      {
+        "COUNT(c.cat)": 2,
+        "COUNT(c.ts)": 2,
+        "LAST_VALUE(c.num)": 4.0,
+        "as_of_date": "2024-01-01",
+        "pid": 5
+      },
+      {
+        "COUNT(c.cat)": 3,
+        "COUNT(c.ts)": 3,
+        "LAST_VALUE(c.num)": 2.0,
+        "as_of_date": "2024-01-01",
+        "pid": 6
+      },
+      {
+        "COUNT(c.cat)": 4,
+        "COUNT(c.ts)": 4,
+        "LAST_VALUE(c.num)": 16.0,
         "as_of_date": "2024-01-01",
         "pid": 4
       }

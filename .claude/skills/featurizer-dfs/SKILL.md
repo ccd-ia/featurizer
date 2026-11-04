@@ -233,7 +233,7 @@ Some feature families are **not** registry primitives:
 ## Feature-count budget (the explosion governor)
 
 Feature count ≈ `entities × variables × primitives × intervals`, compounded by
-`max_depth` traversal. There are **67 aggregations + 83 transformers (150
+`max_depth` traversal. There are **68 aggregations + 83 transformers (151
 primitives)** registered — requesting all of them at `max_depth: 3` across several
 intervals yields *thousands* of columns and an unusable matrix.
 
@@ -368,7 +368,7 @@ high-redundancy, low-importance features before training.
 
 ## Anti-patterns
 
-- ❌ Requesting all 150 primitives "to be safe" → thousands of useless columns.
+- ❌ Requesting all 151 primitives "to be safe" → thousands of useless columns.
   Start curated, add deliberately.
 - ❌ Inverting parent/child → empty or wrong features. Aggregation is child→parent.
 - ❌ Missing/incorrect `temporal_ix` → leakage or no windowed features.
