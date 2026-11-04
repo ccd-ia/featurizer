@@ -1330,7 +1330,7 @@ class LongestStreak(SubqueryAggregator):
 longest_streak = LongestStreak()
 
 
-class LastValue(SubqueryAggregator):
+class LastKnown(SubqueryAggregator):
     """The last known value of a numeric child column before the as-of date.
 
     For each parent, as-of date and interval window, the value on the child's
@@ -1350,7 +1350,7 @@ class LastValue(SubqueryAggregator):
     """
 
     def __init__(self):
-        super().__init__(name="last_value", input_types=["numeric"])
+        super().__init__(name="last_known", input_types=["numeric"])
 
     def __call__(self, parent, child, feature, interval=None, *, relationship=None):
         if feature.entity is None or feature.entity.temporal_ix is None:
@@ -1375,7 +1375,7 @@ class LastValue(SubqueryAggregator):
             f"from {ct} {where}"
         )
         return PreAggSpec(
-            family_key=f"last_value:{feature.name}",
+            family_key=f"last_known:{feature.name}",
             interval=interval,
             prepass_sql=prepass,
             reduction="MAX(val)",
@@ -1396,7 +1396,7 @@ class LastValue(SubqueryAggregator):
         )
 
 
-last_value = LastValue()
+last_known = LastKnown()
 
 
 # --- Phase 5: distributional & sequence reductions (all bounded via _causal_filter) ---
@@ -2538,7 +2538,7 @@ for _name, _agg in _SPATIAL_AGGREGATIONS.items():
 # and an existing config must keep rendering byte-identical SQL (ADR-0015).
 
 _OPT_IN_AGGREGATIONS = {
-    "last_value": last_value,
+    "last_known": last_known,
 }
 
 for _name, _agg in _OPT_IN_AGGREGATIONS.items():

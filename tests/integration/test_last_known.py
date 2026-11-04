@@ -1,4 +1,4 @@
-"""``last_value`` against a hand-computed answer, on both render paths.
+"""``last_known`` against a hand-computed answer, on both render paths.
 
 A small ``labs`` child, keyed ``lab_id`` and not by the parent key, so the
 ``MAX(labs.LAST(labs.glucose))`` recipe would fall into its trap here. The
@@ -24,7 +24,7 @@ import pytest
 import yaml
 
 from featurizer import Featurizer
-from featurizer.primitives.aggregations import LastValue
+from featurizer.primitives.aggregations import LastKnown
 
 pytestmark = pytest.mark.integration
 
@@ -53,8 +53,8 @@ LABS: list[tuple[int, int, str, Optional[float]]] = [
     (31, 4, "2024-05-30 08:00", None),
 ]
 
-WHOLE = '"LAST_VALUE(labs.glucose)"'
-WINDOW = '"LAST_VALUE(labs.glucose|interval=P30D)"'
+WHOLE = '"LAST_KNOWN(labs.glucose)"'
+WINDOW = '"LAST_KNOWN(labs.glucose|interval=P30D)"'
 
 # (patient_id, as_of_date) -> (whole history, last 30 days), by hand.
 EXPECTED: dict[tuple[int, str], tuple[Optional[float], Optional[float]]] = {
@@ -78,7 +78,7 @@ def _config(tmp_path: Path) -> str:
         "target": "patients",
         "max_depth": 2,
         "intervals": ["P30D"],
-        "aggregations": ["last_value"],
+        "aggregations": ["last_known"],
         "transformations": ["identity"],
         "entities": [
             {
@@ -111,7 +111,7 @@ def _query(tmp_path: Path, *, correlated: bool, monkeypatch) -> str:
     if correlated:
         # Turn the ADR-0010 opt-in off for this aggregator only: the feature's
         # definition becomes the correlated subquery over ``sub``.
-        monkeypatch.setattr(LastValue, "_build_preagg", lambda self, *a, **k: None)
+        monkeypatch.setattr(LastKnown, "_build_preagg", lambda self, *a, **k: None)
     query = Featurizer(_config(tmp_path)).query
     monkeypatch.undo()
     return query
@@ -141,7 +141,7 @@ def _matrix(pg_conn, query: str, rows: list) -> dict[tuple[int, str], tuple]:
 
 @pytest.mark.parametrize("correlated", [False, True], ids=["set-based", "correlated"])
 @pytest.mark.parametrize("order", ["as-listed", "reversed"])
-def test_last_value_matches_the_hand_computed_answer(
+def test_last_known_matches_the_hand_computed_answer(
     pg_conn, tmp_path, monkeypatch, correlated: bool, order: str
 ) -> None:
     query = _query(tmp_path, correlated=correlated, monkeypatch=monkeypatch)
