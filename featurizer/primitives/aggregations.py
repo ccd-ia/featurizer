@@ -1252,7 +1252,7 @@ class SequenceEntropy(SubqueryAggregator):
             f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
             f"FROM (SELECT sub.{_col(feature)} as curr, "
             f"LAG(sub.{_col(feature)}) OVER (ORDER BY "
-            f"{_timeline('sub', feature, child, relationship, _col(feature))}) as prev "
+            f"{_timeline('sub', feature, child, relationship)}) as prev "
             f"FROM {child_table} sub "
             f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
             f") transitions WHERE prev IS NOT NULL "
