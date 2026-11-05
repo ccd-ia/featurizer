@@ -1,0 +1,10 @@
+{
+  "dataset": "dirtyduck",
+  "rows": 22169,
+  "feature_columns": 1,
+  "moved_cells": 0,
+  "moved_entities": 0,
+  "moved_columns": 0,
+  "moved_cells_per_column": {},
+  "moved_columns_per_primitive": {}
+}
