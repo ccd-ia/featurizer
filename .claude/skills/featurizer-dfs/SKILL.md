@@ -26,7 +26,7 @@ user-invocable: true
      snapshots of the BODY (from the H1 down) live in ~/.claude/skills/ and in
      the claude-tips skills catalog; they keep their own frontmatter. -->
 
-# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.4.0
+# Featurizer — Deep Feature Synthesis (PostgreSQL) — v1.5.0
 
 Featurizer implements Deep Feature Synthesis for relational PostgreSQL data with
 first-class temporal semantics. You declare an entity graph once; it traverses
@@ -432,7 +432,7 @@ Docs hub: https://ccd-ia.github.io/featurizer/ (configuration reference,
 primitives explorer, bridge cookbook, FAQ, ADRs). Distribution is GitHub
 releases on `ccd-ia/featurizer` (no PyPI, deliberate); each release also
 attaches a `docs-site-vX.Y.Z.tar.gz` snapshot. Pin
-`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.4.0`
+`featurizer[parquet] @ git+https://github.com/ccd-ia/featurizer@v1.5.0`
 (extras: `parquet` for Arrow/Parquet output, `bridge` for φ-bridges, `viz` for
 `FeaturizerViz`, `tui` for the terminal cockpit — Python 3.12+ only, empty on
 3.10/3.11).
