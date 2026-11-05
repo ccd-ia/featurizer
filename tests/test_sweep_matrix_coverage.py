@@ -35,12 +35,17 @@ import tests.integration.test_cohort_child_read_sweeps as narrowed_child
 import tests.integration.test_degenerate_phase as degenerate_phase
 import tests.integration.test_tied_timestamps as tied_rows
 import tests.integration.test_future_row_aggregations as aggregation_future_row
+import tests.integration.test_null_state as null_state
 import tests.integration.test_transformer_selection as transformer_selection
 import tests.test_aggregation_quoting as aggregation_quoting
 import tests.test_identifier_roles_quoting as identifier_roles
 import tests.test_transformer_quoting as transformer_quoting
 from featurizer.primitives import abstractions
-from featurizer.primitives.utils import list_aggregations, list_transformations
+from featurizer.primitives.utils import (
+    get_aggregations,
+    list_aggregations,
+    list_transformations,
+)
 
 # Not configurable as a bare ``transformations:`` entry: ``identity`` is what a
 # sweep adds beside the transformer under test, ``in_array`` needs an argument.
@@ -104,6 +109,17 @@ NUMERIC_ONLY_SWEEPS = {
 }
 
 
+# The NULL-state sweep is over the aggregations with a CATEGORICAL input, the
+# only ones a NULL category reaches, minus the SQL aggregates ADR-0020 names
+# (their definitions ignore NULL inputs). A new categorical aggregation is
+# covered the day it is registered.
+CATEGORICAL_ONLY_SWEEPS = {
+    "a NULL category gives the value of an unused category": lambda: _first_values(
+        null_state._sentinel_cases()
+    ),
+}
+
+
 @pytest.mark.parametrize("sweep", sorted(TRANSFORMER_SWEEPS))
 def test_a_transformer_sweep_covers_the_whole_registry(sweep: str) -> None:
     covered = TRANSFORMER_SWEEPS[sweep]()
@@ -126,6 +142,24 @@ def test_a_numeric_aggregation_sweep_covers_every_numeric_aggregation(
     assert covered == numeric, (
         f"'{sweep}' skips {sorted(numeric - covered)} "
         f"and names unknown {sorted(covered - numeric)}"
+    )
+
+
+@pytest.mark.parametrize("sweep", sorted(CATEGORICAL_ONLY_SWEEPS))
+def test_a_categorical_aggregation_sweep_covers_every_categorical_aggregation(
+    sweep: str,
+) -> None:
+    covered = CATEGORICAL_ONLY_SWEEPS[sweep]()
+    categorical = {
+        name
+        for name, agg in get_aggregations(list_aggregations()).items()
+        if "categorical" in (getattr(agg, "input_types", None) or [])
+    }
+    excluded = set(null_state.SQL_AGGREGATES)
+    assert excluded <= categorical, f"stale exclusions {sorted(excluded - categorical)}"
+    assert covered == categorical - excluded, (
+        f"'{sweep}' skips {sorted(categorical - excluded - covered)} "
+        f"and names unknown {sorted(covered - categorical)}"
     )
 
 
