@@ -711,7 +711,7 @@ resolves to the most recent version, so it does not go stale:
 ```
 
 If your results depend on a specific version, cite that version's own DOI
-instead — v1.4.0 is [10.5281/zenodo.23957315](https://doi.org/10.5281/zenodo.23957315),
+instead — v1.5.0 is [10.5281/zenodo.23984112](https://doi.org/10.5281/zenodo.23984112),
 v1.1.1 is [10.5281/zenodo.22287186](https://doi.org/10.5281/zenodo.22287186),
 and each release page links its own. `CITATION.cff` carries the same metadata
 in machine-readable form; GitHub's **Cite this repository** button reads it.
