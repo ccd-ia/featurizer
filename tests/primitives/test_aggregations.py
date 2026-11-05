@@ -145,8 +145,8 @@ def test_preagg_under_an_interval_uses_the_shared_window() -> None:
     assert feature.preagg.interval == "P30D"
     prepass = feature.preagg.prepass_sql
     assert (
-        "where daterange((aod.as_of_date - interval 'P30D')::date, "
-        "aod.as_of_date::date, '[]') @> orders_transform.\"ordered_at\"::date"
+        "where (orders_transform.\"ordered_at\" >= aod.as_of_date - interval 'P30D' "
+        'and orders_transform."ordered_at" <= aod.as_of_date)'
     ) in prepass
     assert 'and orders_transform."amount" is not null' in prepass
 
@@ -172,8 +172,8 @@ def test_correlated_subquery_under_an_interval_uses_the_shared_window() -> None:
     _, (agg, child, relationship, feature) = _last_known()
     sql = agg._build_subquery_expression(feature, child, relationship, "P30D")
     assert (
-        "and daterange((aod.as_of_date - interval 'P30D')::date, "
-        "aod.as_of_date::date, '[]') @> sub.\"ordered_at\"::date"
+        "and (sub.\"ordered_at\" >= aod.as_of_date - interval 'P30D' "
+        'and sub."ordered_at" <= aod.as_of_date)'
     ) in sql
     assert f"order by {SUB_TIMELINE_DESC} limit 1)" in sql
 

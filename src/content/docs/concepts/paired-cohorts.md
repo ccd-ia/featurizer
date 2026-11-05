@@ -119,9 +119,11 @@ from games;
 Two decisions sit in that statement.
 
 **The as-of date is the day before the event.** With `as_of_boundary:
-inclusive` (the default) a child row dated on the as-of date is knowable, so
-pairing a game with its own date lets the teams' rows of that same day into
-the game's features. Paired with the day before, a game sees everything up to
+inclusive` (the default) a child row stamped at or before the as-of date is
+knowable. A `date` as-of date is 00:00 of its day, so on a `date` column every
+row of that day is knowable, and on a `timestamp` column only the rows stamped
+00:00 are. Pairing a game with its own date therefore lets the teams' rows of
+that same day into the game's features when the column is a `date`. Paired with the day before, a game sees everything up to
 and including the previous day, and its own day counts for the next game.
 
 **The target declares no `temporal_ix`.** A target with one is read as of the

@@ -118,8 +118,9 @@ def test_degree_windowed_per_configured_interval():
     assert '"DEGREE(contacts)"' in sql
     assert '"DEGREE(contacts|interval=P3M)"' in sql  # the house naming style
     cte = _segment(sql, f"{CTE} as (", "facilities_synth as (")
-    assert "daterange((aod.as_of_date - interval 'P3M')::date" in cte
-    assert "@> inc.ts::date" in cte
+    assert (
+        "(inc.ts >= aod.as_of_date - interval 'P3M' and inc.ts <= aod.as_of_date)"
+    ) in cte
 
 
 def test_neighbour_columns_default_to_declared_variable_types():

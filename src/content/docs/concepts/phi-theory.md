@@ -89,7 +89,7 @@ $$
 a_w(e, t) \;=\; a\bigl(\{\, g(x) : (\tau, x) \in H(e, t),\; \tau > t - w \,\}\bigr)
 $$
 
-  In SQL: an aggregate with a `FILTER (WHERE daterange(t − w, t) @> τ)`
+  In SQL: an aggregate with a `FILTER (WHERE τ >= t − w AND τ <= t)`
   clause in the relationship's aggregation CTE.
 
 **Deep Feature Synthesis** is closure under composition. With entities

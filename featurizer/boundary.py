@@ -14,8 +14,8 @@ This module defines the boundary *once*:
 
 * :data:`DEFAULT_BOUNDARY` / the ``inclusive`` vs ``exclusive`` modes,
 * :func:`causal_predicate` — the scalar ``<col> <op> aod.as_of_date`` fragment,
-* :func:`daterange_bound` — the matching ``daterange(..., <bound>)`` literal for
-  interval windows,
+* :func:`interval_window` — the interval window, whose upper bound is that same
+  causal predicate (ADR-0021),
 * :func:`cohort_predicate` — the optional cut that pairs each as-of date with
   its own entities, and :func:`as_of_dates_source`, the relation ``aod``
   ranges over (issue #10),
@@ -44,9 +44,12 @@ import contextlib
 from contextvars import ContextVar
 from typing import Iterator, Literal, Optional
 
-# ``inclusive`` keeps the pre-existing behaviour: an event dated exactly on the
-# as_of_date is knowable. ``exclusive`` treats such an event as not-yet-knowable
-# (it must be strictly before the cutoff).
+# The as-of date is an instant. A ``date`` as-of date is 00:00:00 of that day,
+# so ``inclusive`` makes a row stamped exactly then knowable and a row stamped
+# later that day knowable only from the next as-of date; on a ``date`` column
+# every row of the as-of day is stamped 00:00 and is knowable. ``exclusive``
+# requires the row to be strictly before the instant. A ``timestamptz`` column
+# or as-of date is read in the session ``TimeZone`` (ADR-0021, issue #87).
 AsOfBoundary = Literal["inclusive", "exclusive"]
 
 VALID_BOUNDARIES: tuple[AsOfBoundary, ...] = ("inclusive", "exclusive")
@@ -54,11 +57,6 @@ DEFAULT_BOUNDARY: AsOfBoundary = "inclusive"
 
 # Scalar comparison operator per mode.
 _OPERATOR: dict[AsOfBoundary, str] = {"inclusive": "<=", "exclusive": "<"}
-
-# Upper-bound inclusivity flag for a PostgreSQL ``daterange``. The lower bound is
-# always closed (``[``); only the upper bound tracks the boundary mode: closed
-# (``]``) when inclusive, open (``)``) when exclusive.
-_RANGE_BOUND: dict[AsOfBoundary, str] = {"inclusive": "[]", "exclusive": "[)"}
 
 
 _active_boundary: ContextVar[AsOfBoundary] = ContextVar(
@@ -110,7 +108,7 @@ def use_boundary(boundary: AsOfBoundary) -> Iterator[None]:
     same operator. Restores the previous value on exit (so nested or concurrent
     renders do not leak into one another).
     """
-    if boundary not in _RANGE_BOUND:
+    if boundary not in _OPERATOR:
         raise ValueError(
             f"Unknown as_of_boundary {boundary!r}; expected one of "
             f"{', '.join(VALID_BOUNDARIES)}."
@@ -217,28 +215,43 @@ def as_of_dates_source(*, paired: bool) -> str:
     return AS_OF_DATES_TABLE
 
 
-def daterange_bound(boundary: AsOfBoundary | None = None) -> str:
-    """Return the ``daterange`` upper-bound literal (``'[]'`` or ``'[)'``)."""
-    return _RANGE_BOUND[boundary or current_boundary()]
-
-
-def daterange_window(
-    interval: str,
-    *,
-    column: str | None = None,
-    boundary: AsOfBoundary | None = None,
+def interval_window(
+    interval: str, column: str, *, boundary: AsOfBoundary | None = None
 ) -> str:
-    """Render an interval ``daterange`` window anchored at ``aod.as_of_date``.
+    """Render the interval window on ``column``, anchored at ``aod.as_of_date``.
 
-    With ``column`` it returns the full containment test
-    ``daterange(...) @> <column>::date``; without it, just the ``daterange(...)``
-    expression. The upper-bound inclusivity follows the active boundary mode.
+    ``(<column> >= aod.as_of_date - interval '<W>' and <causal_predicate>)``.
+
+    Both bounds compare the column itself, on the as-of date's own instant
+    (ADR-0021, issue #87). The upper bound IS :func:`causal_predicate`, so a
+    window can never admit a row the whole-history cut drops: before, it was
+    ``daterange(..., aod.as_of_date::date, ...) @> <column>::date``, which on a
+    ``timestamp`` column admitted the rest of the as-of day and, under
+    ``exclusive`` with a ``timestamp`` as-of date, dropped the whole as-of day.
+
+    On a ``date`` as-of date with an interval of whole days, weeks, months or
+    years this selects the same rows the ``daterange`` form did, on a ``date``,
+    ``timestamp`` or ``timestamptz`` column: ``aod.as_of_date - interval`` is
+    then 00:00 of a day, and ``c >= <that day> 00:00`` is ``c::date >= <that
+    day>``. It differs only where the window has an instant of its own to
+    follow: a ``timestamp`` as-of date (``P1D`` is the last 24 hours, not the
+    as-of day and the day before) or an interval with a time part (``PT12H``).
     """
-    bound = daterange_bound(boundary)
-    window = (
-        f"daterange((aod.as_of_date - interval '{interval}')::date, "
-        f"aod.as_of_date::date, '{bound}')"
+    return (
+        f"({column} >= aod.as_of_date - interval '{interval}' and "
+        f"{causal_predicate(column, boundary=boundary)})"
     )
-    if column is not None:
-        return f"{window} @> {column}::date"
-    return window
+
+
+def interval_window_between(column: str, lower: str, upper: str) -> str:
+    """Render the half-open window ``[aod - lower, aod - upper)`` on ``column``.
+
+    For a window that ends before the as-of date (the two-window drift
+    baseline): its upper bound is structural, not the causal cut, so it is
+    open whatever the boundary mode. ``lower`` and ``upper`` are interval
+    expressions such as ``2 * interval 'P30D'``.
+    """
+    return (
+        f"({column} >= aod.as_of_date - {lower} and "
+        f"{column} < aod.as_of_date - {upper})"
+    )

@@ -15,7 +15,7 @@ not a case: the planner never asks for it.
 
 The fallback must return SQL, and every read of the child in it must carry the
 backward causal bound: ``<= aod.as_of_date`` over the whole history, or a
-``daterange`` window over the requested interval whose upper bound is the
+window over the requested interval whose upper bound is the causal cut on the
 as-of date (or, for the drift pair's baseline, the as-of date minus the
 interval).
 
@@ -106,12 +106,13 @@ def _cases() -> Iterator[Any]:
 
 
 def _window_bound(interval: str) -> re.Pattern[str]:
-    """A ``daterange`` over ``interval`` whose upper bound is at or before the
-    as-of date: ``aod.as_of_date``, or ``aod.as_of_date - interval '...'``."""
+    """A window over ``interval`` whose upper bound is at or before the as-of
+    date: ``<= aod.as_of_date`` (or ``<``), or the drift baseline's
+    ``< aod.as_of_date - interval '...'``."""
     literal = re.escape(f"interval '{interval}'")
     return re.compile(
-        rf"daterange\(\(aod\.as_of_date - [^)]*{literal}\)\)?::date, "
-        rf"\(?aod\.as_of_date\b"
+        rf">= aod\.as_of_date - \(?(?:2 \* )?{literal}\)? "
+        rf"and \S+ <=? aod\.as_of_date\b"
     )
 
 

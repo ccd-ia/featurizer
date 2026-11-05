@@ -223,11 +223,11 @@ orders_aggs_for_customers as (
   select
     orders_transform."customer_id",
     count("order_id") as "COUNT(orders.order_id)",
-    count("order_id") filter (where daterange((aod.as_of_date - interval 'P30D')::date,
-                                              aod.as_of_date::date, '[]') @> "ordered_at"::date)
+    count("order_id") filter (where ("ordered_at" >= aod.as_of_date - interval 'P30D'
+                                     and "ordered_at" <= aod.as_of_date))
       as "COUNT(orders.order_id|interval=P30D)",
     sum("amount") as "SUM(orders.amount)",
-    sum("amount") filter (where daterange(…) @> "ordered_at"::date)
+    sum("amount") filter (where ("ordered_at" >= … and "ordered_at" <= aod.as_of_date))
       as "SUM(orders.amount|interval=P30D)",
     sum("LAG_1(orders.amount)") as "SUM(orders.LAG_1(orders.amount))",
     …
@@ -237,9 +237,11 @@ orders_aggs_for_customers as (
 )
 ```
 
-An interval is a `filter (where …)` on the aggregate, over a `daterange` that
-ends at the as-of date and is closed or half-open according to
-`as_of_boundary`. That is why an aggregation yields `intervals + 1` columns:
+An interval is a `filter (where …)` on the aggregate. Both of its bounds
+compare the column itself: the lower one with the as-of date minus the
+interval, the upper one with the as-of date, using the same `<=` or `<` as the
+read's cut, so a window never holds a row the whole history does not
+([ADR-0021](/featurizer/engineering/adr/0021-an-interval-window-cuts-at-the-as-of-instant/)). That is why an aggregation yields `intervals + 1` columns:
 one aggregate call per interval plus the unfiltered one.
 
 Not every aggregation fits a `group by`. A transition matrix, an

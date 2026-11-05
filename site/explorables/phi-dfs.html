@@ -172,10 +172,10 @@ function renderFeatures() {
   document.getElementById("feattable").innerHTML =
     `<tr><th class="mono">column (serialized φ)</th><th>value at t = ${fmt(state.t)}</th></tr>` +
     rows.map(([n, v]) => `<tr><td class="mono">"${n}"</td><td class="mono">${round(v)}</td></tr>`).join("");
-  const cmp = state.inclusive ? "'[]'" : "'[)'";
+  const cmp = state.inclusive ? "<=" : "<";
   document.getElementById("sqlfrag").textContent =
-    `${a.sql("amount")} filter (where daterange((aod.as_of_date - interval 'P7D')::date,\n` +
-    `                                 aod.as_of_date::date, ${cmp}) @> order_date::date)\n` +
+    `${a.sql("amount")} filter (where (order_date >= aod.as_of_date - interval 'P7D'\n` +
+    `                                  and order_date ${cmp} aod.as_of_date))\n` +
     `  as "${name(7)}"  -- restriction τ ${state.inclusive ? "≤" : "<"} t, rendered as SQL`;
 }
 

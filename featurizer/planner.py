@@ -29,7 +29,7 @@ from .boundary import (
     causal_predicate,
     cohort_ids,
     cohort_predicate,
-    daterange_window,
+    interval_window,
     use_boundary,
     use_timeline,
 )
@@ -1235,7 +1235,7 @@ class FeaturePlanner:
                     (
                         self._graph_rel_feature_name("DEGREE", spec, interval=interval),
                         "count(*) filter (where "
-                        f"{daterange_window(interval, column='inc.ts')})",
+                        f"{interval_window(interval, column='inc.ts')})",
                     )
                 )
 

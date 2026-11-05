@@ -51,7 +51,9 @@ def test_two_windows_both_backward(name, col):
     assert result is not None and result.preagg is not None
     prepass = result.preagg.prepass_sql
     # recent + baseline windows (each referenced in its FILTER and the WHERE)
-    assert prepass.count("daterange") >= 2
+    assert prepass.count(">= aod.as_of_date - ") >= 2
+    # the baseline's upper bound is structural and open, whatever the mode
+    assert "< aod.as_of_date - interval 'P1W')" in prepass
     # baseline window is the doubled-back range; both reference the as-of date
     assert "2 * interval 'P1W'" in prepass
     assert "aod.as_of_date" in prepass

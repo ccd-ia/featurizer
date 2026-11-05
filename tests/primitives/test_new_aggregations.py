@@ -472,7 +472,7 @@ class TestGapMean:
         assert "LAG" in full
         assert "AVG" in full
 
-    def test_with_interval_sql_contains_daterange(self):
+    def test_with_interval_sql_contains_the_window(self):
         parent, child = _make_parent_entity(), _make_child_entity()
         rel = _make_relationship(parent, child)
         feature = child.temporal_ix
@@ -480,7 +480,7 @@ class TestGapMean:
         result = agg(parent, child, feature, interval="P1W", relationship=rel)
         assert isinstance(result, Feature)
         full = self._full_sql(result)
-        assert "daterange" in full
+        assert ">= aod.as_of_date - interval '" in full
         assert "P1W" in full
 
 

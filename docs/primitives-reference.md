@@ -147,7 +147,7 @@ Most basic aggregations support temporal intervals (e.g., `P7D`, `P30D`). When a
 
 ```sql
 -- Example: SUM with P7D interval
-SUM(amount) FILTER (WHERE daterange((aod.as_of_date - interval 'P7D')::date, aod.as_of_date::date, '[]') @> order_date)
+SUM(amount) FILTER (WHERE (order_date >= aod.as_of_date - interval 'P7D' AND order_date <= aod.as_of_date))
 ```
 
 ---

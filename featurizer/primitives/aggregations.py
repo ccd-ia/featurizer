@@ -27,7 +27,12 @@ temporal_ix defined. This allows computing aggregates over specific time windows
 (e.g., "sum of orders in the last 7 days").
 """
 
-from ..boundary import causal_predicate, current_timeline, daterange_window
+from ..boundary import (
+    causal_predicate,
+    current_timeline,
+    interval_window,
+    interval_window_between,
+)
 from .abstractions import Feature, SpatialIx, pg_identifier, quote_if_bare
 from .preagg import PreAggSpec, causal_where
 from .utils import register_aggregation
@@ -163,7 +168,7 @@ class Aggregator:
     SQL Generation:
         The aggregator generates SQL like:
         - Basic: `SUM(amount)` or `AVG(price)`
-        - With interval: `SUM(amount) FILTER (WHERE daterange(...) @> date)`
+        - With interval: `SUM(amount) FILTER (WHERE (ts >= aod - W and ts <= aod))`
         - With DISTINCT: `COUNT(DISTINCT category)`
     """
 
@@ -231,7 +236,7 @@ class Aggregator:
         if interval:
             # filter by clause
             event_date = _tix(feature)
-            window = daterange_window(interval, column=event_date)
+            window = interval_window(interval, column=event_date)
             aggregate_expression.append(f" filter (where {window}) ")
         return " ".join(aggregate_expression)
 
@@ -269,6 +274,19 @@ class Aggregator:
 # (``avg(abs(x - avg(x)))`` nests aggregates, which PostgreSQL forbids).
 
 
+def _window_filter(feature, interval) -> str:
+    """`` filter (where <interval window>)`` for one aggregate call, or "".
+
+    For an aggregator whose expression combines several aggregate calls, each
+    call needs its own filter. Before #87 the four that build such expressions
+    (skewness, kurtosis, harmonic_mean, geometric_mean) took ``interval`` and
+    applied none, so every ``|interval=W`` column repeated the whole history.
+    """
+    if not interval:
+        return ""
+    return f" filter (where {interval_window(interval, column=_tix(feature))})"
+
+
 class Skewness(Aggregator):
     """Skewness aggregation - measure of distribution asymmetry.
 
@@ -286,12 +304,12 @@ class Skewness(Aggregator):
         # Population skewness m3 / m2^1.5 via raw moments — pure aggregates only
         # (the old ``(x - avg(x)) / stddev(x)**3`` referenced a bare, un-grouped
         # column and used ``**``, which PostgreSQL rejects). m2 = var_pop.
-        col = _col(feature)
+        col, w = _col(feature), _window_filter(feature, interval)
         m3 = (
-            f"avg(power({col},3)) - 3*avg({col})*avg(power({col},2)) "
-            f"+ 2*power(avg({col}),3)"
+            f"avg(power({col},3)){w} - 3*avg({col}){w}*avg(power({col},2)){w} "
+            f"+ 2*power(avg({col}){w},3)"
         )
-        return f"({m3}) / NULLIF(power(var_pop({col}), 1.5), 0)"
+        return f"({m3}) / NULLIF(power(var_pop({col}){w}, 1.5), 0)"
 
 
 class Kurtosis(Aggregator):
@@ -311,12 +329,13 @@ class Kurtosis(Aggregator):
         # Population kurtosis m4 / m2^2 via raw moments — pure aggregates only
         # (the old form referenced a bare, un-grouped column and used ``**``).
         # A normal distribution gives 3.
-        col = _col(feature)
+        col, w = _col(feature), _window_filter(feature, interval)
         m4 = (
-            f"avg(power({col},4)) - 4*avg({col})*avg(power({col},3)) "
-            f"+ 6*power(avg({col}),2)*avg(power({col},2)) - 3*power(avg({col}),4)"
+            f"avg(power({col},4)){w} - 4*avg({col}){w}*avg(power({col},3)){w} "
+            f"+ 6*power(avg({col}){w},2)*avg(power({col},2)){w} "
+            f"- 3*power(avg({col}){w},4)"
         )
-        return f"({m4}) / NULLIF(power(var_pop({col}), 2), 0)"
+        return f"({m4}) / NULLIF(power(var_pop({col}){w}, 2), 0)"
 
 
 class HarmonicMean(Aggregator):
@@ -341,10 +360,10 @@ class HarmonicMean(Aggregator):
         # division-by-zero regardless of the guard — hence ``1.0/NULLIF(x,0)``
         # (a zero contributes NULL, ignored by sum); the outer ``min(x) > 0`` then
         # nulls the whole result whenever any non-positive value was present.
-        col = _col(feature)
+        col, w = _col(feature), _window_filter(feature, interval)
         return (
-            f"case when min({col}) > 0 "
-            f"then count({col}) / NULLIF(sum(1.0/NULLIF({col}, 0)), 0) "
+            f"case when min({col}){w} > 0 "
+            f"then count({col}){w} / NULLIF(sum(1.0/NULLIF({col}, 0)){w}, 0) "
             f"else null end"
         )
 
@@ -375,9 +394,9 @@ class GeometricMean(Aggregator):
         # (ln 1 = 0) for those rows; the outer ``min(col) > 0`` guard then nulls
         # the whole result whenever any non-positive value was present, so the
         # placeholder never contaminates a returned value.
-        col = _col(feature)
+        col, w = _col(feature), _window_filter(feature, interval)
         safe = f"case when {col} > 0 then {col} else 1 end"
-        return f"case when min({col}) > 0 then exp(avg(ln({safe}))) else null end"
+        return f"case when min({col}){w} > 0 then exp(avg(ln({safe})){w}) else null end"
 
 
 sum = Aggregator(name="sum")
@@ -481,7 +500,7 @@ class OrderedSetAggregator(Aggregator):
             filters.append(f"{_col(feature)} = {feature.specials}")
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filters.append(daterange_window(interval, column=event_date))
+            filters.append(interval_window(interval, column=event_date))
         if filters:
             aggregate_expression.append(f" filter (where {' and '.join(filters)})")
         return " ".join(aggregate_expression)
@@ -522,7 +541,7 @@ class IQR(Aggregator):
         p25 = f"percentile_cont(0.25) within group(order by {_col(feature)})"
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
             p75 += filt
             p25 += filt
         return f"({p75}) - ({p25})"
@@ -541,7 +560,7 @@ class CoefficientOfVariation(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return f"stddev({_col(feature)}){filt} / NULLIF(avg({_col(feature)}){filt}, 0)"
 
 
@@ -558,7 +577,7 @@ class Range(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return f"max({_col(feature)}){filt} - min({_col(feature)}){filt}"
 
 
@@ -582,7 +601,7 @@ class EventRate(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         span_days = _epoch_day_span(
             f"max({_col(feature)}){filt}", f"min({_col(feature)}){filt}"
         )
@@ -609,7 +628,7 @@ class TimeSpan(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return _epoch_day_span(
             f"max({_col(feature)}){filt}", f"min({_col(feature)}){filt}"
         )
@@ -641,7 +660,7 @@ class Recency(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return f"(aod.as_of_date::date - (max({_col(feature)}){filt})::date)"
 
 
@@ -665,7 +684,7 @@ class Tenure(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return f"(aod.as_of_date::date - (min({_col(feature)}){filt})::date)"
 
 
@@ -689,7 +708,7 @@ class InterEventHazard(Aggregator):
         filt = ""
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = _tix(feature)
-            filt = f" filter (where {daterange_window(interval, column=event_date)})"
+            filt = f" filter (where {interval_window(interval, column=event_date)})"
         return (
             f"(count(*){filt})::float / "
             f"NULLIF((aod.as_of_date::date - (min({_col(feature)}){filt})::date), 0)"
@@ -764,7 +783,7 @@ class SubqueryAggregator(Aggregator):
 
         Returns a SQL fragment beginning with ' and ' that bounds the subquery
         to rows at or before the as-of date:
-        - with an interval: the daterange window (upper bound aod.as_of_date);
+        - with an interval: the interval window (upper bound the causal cut);
         - without an interval: a plain ``<= aod.as_of_date``;
         - empty when the entity has no temporal_ix (no time axis to bound).
 
@@ -777,7 +796,7 @@ class SubqueryAggregator(Aggregator):
             return ""
         col = f"{alias}.{_tix(feature)}"
         if interval:
-            return f" and {daterange_window(interval, column=col)}"
+            return f" and {interval_window(interval, column=col)}"
         return causal_predicate(col, prefix="and")
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
@@ -2051,13 +2070,12 @@ class TwoWindowDriftAggregator(SubqueryAggregator):
     def _windows(feature, interval):
         ts = _tix(feature)
         # The recent window's upper bound IS the as-of cut, so it follows the
-        # boundary mode. The baseline window's '[)' upper bound is structural —
-        # it tiles against the recent window's lower bound at t0-W and must stay
-        # half-open to avoid double-counting that day, independent of the mode.
-        recent = f"{daterange_window(interval, column=f'sub.{ts}')}"
-        baseline = (
-            f"daterange((aod.as_of_date - (2 * interval '{interval}'))::date, "
-            f"(aod.as_of_date - interval '{interval}')::date, '[)') @> sub.{ts}::date"
+        # boundary mode. The baseline window's upper bound is structural: it
+        # tiles against the recent window's closed lower bound at t0-W and must
+        # stay open to avoid counting that instant twice, independent of the mode.
+        recent = interval_window(interval, column=f"sub.{ts}")
+        baseline = interval_window_between(
+            f"sub.{ts}", f"(2 * interval '{interval}')", f"interval '{interval}'"
         )
         return recent, baseline
 

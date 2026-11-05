@@ -63,7 +63,7 @@ def test_sequence_fires_and_is_causally_bounded(name):
 
 
 @pytest.mark.parametrize("name", SEQUENCE)
-def test_sequence_interval_variant_uses_daterange(name):
+def test_sequence_interval_variant_uses_the_window(name):
     parent, child, rel = _setup()
     agg = get_aggregations([name])[name]
     result = agg(
@@ -71,9 +71,9 @@ def test_sequence_interval_variant_uses_daterange(name):
     )
     assert result is not None
     full = _full_sql(result)
-    assert "daterange" in full and "P1W" in full
+    assert ">= aod.as_of_date - interval '" in full and "P1W" in full
     # Bug #7 guard: the event column inside the window is date-cast.
-    assert "@>" in full and '"ts"::date' in full
+    assert '"ts" >= aod.as_of_date - interval' in full
 
 
 @pytest.mark.parametrize("name", SEQUENCE)

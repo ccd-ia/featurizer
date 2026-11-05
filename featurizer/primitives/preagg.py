@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from ..boundary import causal_predicate, current_timeline, daterange_window
+from ..boundary import causal_predicate, current_timeline, interval_window
 from .abstractions import quote_if_bare
 
 if TYPE_CHECKING:
@@ -71,5 +71,5 @@ def causal_where(
         column if column is not None else current_timeline() or quote_if_bare(tix.name)
     )
     if interval:
-        return f"where {daterange_window(interval, column=col)}"
+        return f"where {interval_window(interval, column=col)}"
     return causal_predicate(col, prefix="where")
