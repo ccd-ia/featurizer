@@ -5,7 +5,8 @@ These demonstrate the current primitive API and emit PostgreSQL-valid SQL:
 - An **aggregation** subclasses ``Aggregator`` (or a richer base such as
   ``OrderedSetAggregator``) and overrides ``_build_aggregate_expression`` to
   return the SQL aggregate; the base wraps it into a ``Feature``. Interval
-  variants pass ``interval`` so the expression can add the ``daterange`` filter.
+  variants pass ``interval`` so the expression can add the window filter, which
+  ``featurizer.boundary.interval_window`` renders (it follows ``as_of_boundary``).
 - A **transformation** subclasses ``Transformer`` and overrides
   ``_build_transformer_call`` to return a scalar SQL expression over the
   current row; the base wraps it into a ``Feature``.
@@ -14,6 +15,7 @@ Register *instances* (not classes) via ``register_aggregation`` /
 ``register_transformer``, then select them by name in ``config.yaml``.
 """
 
+from featurizer.boundary import interval_window
 from featurizer.primitives.aggregations import Aggregator, OrderedSetAggregator
 from featurizer.primitives.transformations import Transformer
 from featurizer.primitives.utils import register_aggregation, register_transformer
@@ -37,11 +39,7 @@ class Range(Aggregator):
         expr = f"{fn}({feature.name})"
         if interval and feature.entity and feature.entity.temporal_ix:
             event_date = feature.entity.temporal_ix.name
-            daterange = (
-                f"daterange((aod.as_of_date - interval '{interval}')::date, "
-                f"aod.as_of_date::date, '[]')"
-            )
-            expr += f" filter (where {daterange} @> {event_date}::date)"
+            expr += f" filter (where {interval_window(interval, event_date)})"
         return expr
 
     def _build_aggregate_expression(self, feature, interval=None):
