@@ -4,6 +4,75 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
+## [1.5.0] - 2026-11-05
+
+A minor release that changes values. Two accepted decisions, ADR-0020 and
+ADR-0021, each make a frozen column name hold what it says, and both ship
+without a deprecation cycle, on the reasoning ADR-0020 records. Column names,
+the config schema and the `Featurizer` surface do not change. A config with a
+`date` as-of date, whole-day intervals and no NULL categories renders the same
+rows for every aggregation outside the thirteen listed below.
+
+Measured on the three triage-pg databases at their latest knowledge date, with
+two runs of the 1.4.0 engine as the control (0 cells moved on each):
+
+| change | dirtyduck | donorschoose | chicago311 |
+|---|---|---|---|
+| ADR-0020, sequence primitives | 16,781 cells | 932 cells | 0 |
+| #90, interval columns of four aggregations | 0 (no numeric child) | 117,306 cells | 0 (no numeric child) |
+
+### Changed
+
+- **A NULL category is a state in the sequence primitives (#86, ADR-0020).**
+  A step into or out of a NULL now counts as a transition, and "no previous
+  row" comes from a row number, not from `LAG` returning NULL. Nine
+  aggregations move: `sequence_entropy`, `markov_conditional_entropy`,
+  `max_transition_prob`, `state_volatility`, `transition_matrix_summary`,
+  `rework_count`, `ngram_2_freq`, `ngram_3_freq` and `time_in_current_state`.
+  On real data most of the move is `ngram_3_freq` on a two-row series, which
+  counted one trigram and is now NULL whether or not a NULL is present:
+  16,773 of dirtyduck's 16,781 moved cells and all 932 of donorschoose's. The
+  other eight sit on dirtyduck's four NULL `inspections.risk` rows.
+- **An interval window cuts at the as-of instant (#87, ADR-0021).** Both
+  bounds of a window now compare the column itself, and the upper bound is the
+  same `<=` (or `<`) cut the read applies, so a window cannot hold a row the
+  whole history drops. With a `date` as-of date and intervals of whole days,
+  weeks, months or years nothing moves. Values move in two shapes. With a
+  `timestamp` as-of date, which is now supported, an interval reaches back from
+  its time (`P1D` is the 24 hours before it). Before, `exclusive` dropped every
+  row of the as-of day from the interval columns (P30D counted 1 row where the
+  whole history counted 3), and the lower bound reached back to midnight. And
+  an interval with a time part (`PT12H`) is no longer rounded down to a day.
+- **`skewness`, `kurtosis`, `harmonic_mean` and `geometric_mean` filter their
+  interval columns (#90).** They applied no window, so every
+  `|interval=W` column repeated the whole-history value. All four are in the
+  default set, so a config that omits `aggregations:` and has an interval over
+  a numeric child column moves: on donorschoose, 117,306 cells on 2,901 of
+  3,000 entities, in all 84 such columns.
+
+### Fixed
+
+- `sequence_entropy`'s correlated-subquery fallback raised `TypeError` (#83).
+  No config reached it, because the planner takes the set-based path. It now
+  shares the transition-matrix reduction with `markov_conditional_entropy` and
+  `max_transition_prob`. A registry-wide sweep checks that every fallback
+  gives the pre-pass's values.
+- The correlated fallbacks of `state_volatility`, `transition_matrix_summary`
+  and `rework_count` gave 0 for a key with history but an empty window, where
+  the pre-pass gives NULL. They now give NULL (#86).
+
+### Documentation
+
+- The docs now describe the as-of date as an instant: a `date` is 00:00 of its
+  day, so on a `timestamp` column a row stamped later that day is knowable
+  from the next as-of date (configuration reference, paired cohorts, how a
+  feature is computed, `CONTEXT.md`, the featurizer-dfs skill).
+- Tutorials 01, 03 and 04 are re-executed with the new window SQL. Example
+  04's custom `Range` primitive renders its filter with
+  `featurizer.boundary.interval_window` instead of spelling it by hand.
+- ADR-0020 and ADR-0021. The measurement scripts are
+  `benchmarks/null_state_impact.py` and `benchmarks/interval_window_impact.py`.
+
 ## [1.4.0] - 2026-11-04
 
 An additive release. Every config that runs on 1.3.1 renders the same SQL and
