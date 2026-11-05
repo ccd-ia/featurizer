@@ -315,6 +315,10 @@ Point-in-time correctness is *why* Featurizer exists over a naive join. Guard it
   (nearest, within `grace`) parent row — verify, don't assume.
 - The matrix is `(as_of_date, <entity_id>)`-indexed. **NULLs are signal**
   (no events in window), not errors — do not blanket-impute upstream.
+- A NULL *category* is a state (ADR-0020, 1.5.0): the sequence primitives
+  count `a → NULL → b` as two transitions and `NULL → NULL` as a repeat, and
+  `ngram_3_freq` is NULL on a series shorter than three rows. `count`,
+  `nunique` and `mode` keep SQL's skip-NULL semantics.
 - Since 1.3.0 every entity with a `temporal_ix` is cut on the as-of date where
   it is READ, the target included (ADR-0016, ADR-0017), so no window can see an
   unknowable row whatever its frame. Before that, `percent_rank`, `ntile`,
