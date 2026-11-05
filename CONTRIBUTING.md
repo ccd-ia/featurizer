@@ -67,6 +67,7 @@ run over the **whole registry**:
 | a config that validates runs | `tests/integration/test_valid_config_runs.py`, `test_transformer_selection.py` |
 | a paired cohort gives the dense matrix's values on its pairs, on the target and over every child it narrows | `tests/test_cohort_pairs.py`, `tests/test_cohort_child_reads.py`, `tests/integration/test_cohort_child_read_sweeps.py` |
 | a value does not depend on the physical order of the rows, and a reduction over a degenerate series is NULL rather than rounding noise | `tests/integration/test_tied_timestamps.py`, `tests/integration/test_degenerate_phase.py` |
+| a NULL category is a state: a value equals the value with each NULL replaced by an unused category (ADR-0020) | `tests/integration/test_null_state.py` |
 
 **A new primitive, a new config key that names a column, or a new render path
 lands with its row in the matrix.** `tests/test_sweep_matrix_coverage.py`
