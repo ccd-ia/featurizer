@@ -1,0 +1,17 @@
+{
+  "dataset": "donorschoose",
+  "rows": 3000,
+  "feature_columns": 44,
+  "moved_cells": 932,
+  "moved_entities": 464,
+  "moved_columns": 4,
+  "moved_cells_per_column": {
+    "NGRAM_3_FREQ(resources.project_resource_type)": 464,
+    "NGRAM_3_FREQ(resources.project_resource_type|interval=P12M)": 264,
+    "NGRAM_3_FREQ(resources.project_resource_type|interval=P1M)": 22,
+    "NGRAM_3_FREQ(resources.project_resource_type|interval=P6M)": 182
+  },
+  "moved_columns_per_primitive": {
+    "ngram_3_freq": 4
+  }
+}

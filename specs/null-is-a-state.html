@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: A NULL category is a state (#86)</title>
+<style>
+  :root {
+    --paper:      #fcfbf8;
+    --paper-2:    #f2f0ea;
+    --ink:        #191c20;
+    --ink-soft:   #596472;
+    --line:       #dcd7cc;
+    --accent:     #1d5f7a;   /* fix / action */
+    --accent-2:   #7a4a1d;   /* report / finding */
+    --verify:     #1f6f4a;   /* counted / proven */
+    --stale:      #9a6b12;
+    --alert:      #a2352a;   /* dropped / wrong */
+    --code-bg:    #efece6;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:    #14171a;
+      --paper-2:  #1c2025;
+      --ink:      #e9e7e2;
+      --ink-soft: #99a4b0;
+      --line:     #2d333a;
+      --accent:   #63b0cd;
+      --accent-2: #d09a5e;
+      --verify:   #55b585;
+      --stale:    #d8a445;
+      --alert:    #e07060;
+      --code-bg:  #1e2329;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:    #14171a;
+    --paper-2:  #1c2025;
+    --ink:      #e9e7e2;
+    --ink-soft: #99a4b0;
+    --line:     #2d333a;
+    --accent:   #63b0cd;
+    --accent-2: #d09a5e;
+    --verify:   #55b585;
+    --stale:    #d8a445;
+    --alert:    #e07060;
+    --code-bg:  #1e2329;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 16px 120px; }
+  h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; letter-spacing: -0.01em; margin: 56px 0 16px;
+       padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 32px 0 8px; }
+  h4 { font-size: 0.95rem; margin: 24px 0 8px; color: var(--ink-soft);
+       text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.86em;
+         background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 14px 16px; overflow-x: auto;
+        font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  header .meta { margin: 20px 0 0; font-size: 0.86rem; }
+  header .meta summary { cursor: pointer; color: var(--ink-soft);
+    font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.04em;
+    text-transform: uppercase; }
+  header .meta dl { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px;
+    margin: 14px 0 0; padding: 14px 16px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  header .meta dt { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+  header .meta dd { margin: 0; font-size: 0.82rem; word-break: break-word; }
+  figure { margin: 28px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  figcaption { margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft);
+    font-style: italic; max-width: 640px; margin-left: auto; margin-right: auto; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 6px; border-radius: 3px; vertical-align: 2px; margin-right: 6px; }
+  .tag.existing { background: var(--paper-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  .tag.new { background: var(--accent); color: var(--paper); }
+  .files ul { list-style: none; padding: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .phase { margin: 32px 0; padding: 4px 22px 22px; background: var(--paper-2);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--radius); }
+  .phase h3 { margin-top: 22px; }
+  .status { font-family: var(--mono); background: transparent; color: var(--ink-soft); padding: 0 4px 0 0; }
+  ul.checklist { list-style: none; padding: 0; margin: 10px 0; }
+  ul.checklist li { padding: 5px 0 5px 2px; font-size: 0.9rem; border-bottom: 1px dashed var(--line); }
+  .loop { margin: 18px 0 0; padding: 11px 14px; font-size: 0.86rem;
+    background: var(--paper); border: 1px solid var(--line);
+    border-left: 3px solid var(--stale); border-radius: var(--radius); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+  td code { font-size: 0.82em; }
+  td.ok { color: var(--verify); font-weight: 600; }
+  td.red { color: var(--alert); font-weight: 600; }
+  td.open { color: var(--stale); font-weight: 600; }
+  #definition-of-done { padding: 22px 24px 8px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  #definition-of-done h2 { margin-top: 6px; border-bottom-color: var(--verify); }
+  details { margin: 8px 0; padding: 10px 14px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  details summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+  details .qa-answer { margin: 10px 0 2px; font-size: 0.89rem; color: var(--ink-soft); }
+  .callout { padding: 12px 16px; margin: 18px 0; font-size: 0.89rem;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--alert); border-radius: var(--radius); }
+  .muted { color: var(--ink-soft); }
+  .svg-mono { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+  .svg-label { font-family: var(--sans); font-size: 12px; fill: var(--ink-soft); }
+  .svg-title { font-family: var(--sans); font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .svg-ok { fill: var(--verify); }
+  .svg-red { fill: var(--alert); }
+  .stroke-ok { stroke: var(--verify); }
+  .stroke-red { stroke: var(--alert); }
+  .stroke-line { stroke: var(--line); }
+  .node { fill: var(--paper-2); stroke: var(--ink-soft); stroke-width: 1.5; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: A NULL category is a state (#86)</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-11-04T23:25:00-06:00</dd>
+        <dt>modified</dt>     <dd>2026-11-04T23:59:00-06:00</dd>
+        <dt>commits</dt>      <dd>49c1791, 29c88e4, 681b06a, d740f7a, 642c963</dd>
+        <dt>agent name</dt>   <dd>claude-opus-5-5</dd>
+        <dt>session id</dt>   <dd>77fa44e0-98fe-4017-8adb-f88a227c2b54</dd>
+        <dt>back refs</dt>    <dd>issue #86 (body amended 2026-11-04 with the <code>ngram_3_freq</code> partial trigram), issue #83, PR #85 (<code>tests/integration/test_correlated_fallback_parity.py</code>), docs/adr/0015-v1-api-stability-commitment.md, docs/adr/0016-leak-fixes-are-not-breaking.md, docs/adr/0018-a-value-does-not-depend-on-the-physical-order-of-the-rows.md, specs/remaining-issues-and-the-sweep-matrix.html (the sweep matrix)</dd>
+        <dt>forward refs</dt> <dd>—</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 760 230" role="img" aria-label="The sequence a, NULL, b: today one transition is counted and one dropped; after the fix both are counted">
+      <text x="20" y="48" class="svg-title">today</text>
+      <text x="20" y="158" class="svg-title">after #86</text>
+      <!-- row 1 -->
+      <circle cx="210" cy="44" r="24" class="node"/>
+      <circle cx="390" cy="44" r="24" class="node"/>
+      <circle cx="570" cy="44" r="24" class="node"/>
+      <text x="210" y="48" text-anchor="middle" class="svg-mono">a</text>
+      <text x="390" y="48" text-anchor="middle" class="svg-mono">NULL</text>
+      <text x="570" y="48" text-anchor="middle" class="svg-mono">b</text>
+      <line x1="236" y1="44" x2="358" y2="44" class="stroke-ok" stroke-width="2.5"/>
+      <polygon points="364,44 354,39 354,49" class="svg-ok"/>
+      <line x1="416" y1="44" x2="538" y2="44" class="stroke-red" stroke-width="2.5" stroke-dasharray="6 5"/>
+      <polygon points="544,44 534,39 534,49" class="svg-red"/>
+      <text x="300" y="84" text-anchor="middle" class="svg-label">counted</text>
+      <text x="480" y="84" text-anchor="middle" class="svg-label">dropped</text>
+      <text x="680" y="48" class="svg-title">1 transition</text>
+      <line x1="20" y1="112" x2="740" y2="112" class="stroke-line" stroke-width="1"/>
+      <!-- row 2 -->
+      <circle cx="210" cy="154" r="24" class="node"/>
+      <circle cx="390" cy="154" r="24" class="node"/>
+      <circle cx="570" cy="154" r="24" class="node"/>
+      <text x="210" y="158" text-anchor="middle" class="svg-mono">a</text>
+      <text x="390" y="158" text-anchor="middle" class="svg-mono">NULL</text>
+      <text x="570" y="158" text-anchor="middle" class="svg-mono">b</text>
+      <line x1="236" y1="154" x2="358" y2="154" class="stroke-ok" stroke-width="2.5"/>
+      <polygon points="364,154 354,149 354,159" class="svg-ok"/>
+      <line x1="416" y1="154" x2="538" y2="154" class="stroke-ok" stroke-width="2.5"/>
+      <polygon points="544,154 534,149 534,159" class="svg-ok"/>
+      <text x="300" y="194" text-anchor="middle" class="svg-label">counted</text>
+      <text x="480" y="194" text-anchor="middle" class="svg-label">counted</text>
+      <text x="680" y="158" class="svg-title">2 transitions</text>
+    </svg>
+    <figcaption>The sequence a, NULL, b. Today the transition sweep counts the step into the NULL state and drops the step out of it. After the fix both steps count.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Give every categorical aggregation that reads a value as a category one rule for NULL: <strong>a NULL is a state</strong>. A primitive must give the same value on a series with NULLs as on the same series with each NULL replaced by a category that appears nowhere else. Close #86 under that rule, including the <code>ngram_3_freq</code> partial trigram folded into it. Ship it in a 1.x minor (1.5.0) under a new ADR-0020 that names every primitive and case whose values move.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>The sequence primitives build <code>(prev, curr)</code> pairs with <code>LAG(x)</code>. <code>LAG</code> returns NULL in two different situations: the row has no previous row (it is the first in its window), or the previous row's value is NULL. Five transition primitives and the two n-grams filter <code>prev IS NOT NULL</code> (or <code>lag_1 IS NOT NULL</code>) to drop the first row. That filter also drops every step out of a NULL state. <code>rework_count</code> compares with <code>prev = curr</code>, so a NULL never repeats. <code>ngram_3_freq</code> checks <code>lag_1</code> but not <code>lag_2</code>, so it counts the second row of every series as a trigram, NULLs or not.</p>
+    <p>Measured on PostgreSQL 16 on 2026-11-04, these values are wrong under both candidate rules, NULL as a state and NULL as missing data:</p>
+    <div class="table-wrap"><table>
+      <tr><th>sequence</th><th>primitive</th><th>today</th><th>NULL is a state</th><th>NULL is missing</th></tr>
+      <tr><td><code>a, NULL, b</code></td><td>transitions kept</td><td class="red"><code>a→NULL</code></td><td><code>a→NULL, NULL→b</code></td><td><code>a→b</code></td></tr>
+      <tr><td><code>a, NULL, NULL, a</code></td><td><code>rework_count</code></td><td class="red">0</td><td>1</td><td>1</td></tr>
+      <tr><td><code>a, NULL, NULL, a</code></td><td><code>state_volatility</code></td><td class="red">1</td><td>2</td><td>0</td></tr>
+      <tr><td><code>a, b</code></td><td><code>ngram_3_freq</code></td><td class="red">1</td><td>NULL (no trigram)</td><td>NULL</td></tr>
+    </table></div>
+    <figure>
+      <svg viewBox="0 0 760 210" role="img" aria-label="Two different rows both show NULL in the LAG column, and the filter prev IS NOT NULL drops both">
+        <text x="60" y="30" class="svg-title">ts</text>
+        <text x="140" y="30" class="svg-title">x</text>
+        <text x="240" y="30" class="svg-title">LAG(x)</text>
+        <text x="460" y="30" class="svg-title">WHERE prev IS NOT NULL</text>
+        <line x1="40" y1="42" x2="720" y2="42" class="stroke-line" stroke-width="1"/>
+        <text x="60" y="74" class="svg-mono">1</text><text x="140" y="74" class="svg-mono">a</text><text x="240" y="74" class="svg-mono">NULL</text>
+        <text x="320" y="74" class="svg-label">no previous row</text>
+        <text x="460" y="74" class="svg-mono svg-red">dropped</text><text x="540" y="74" class="svg-label">(meant)</text>
+        <text x="60" y="122" class="svg-mono">2</text><text x="140" y="122" class="svg-mono">NULL</text><text x="240" y="122" class="svg-mono">a</text>
+        <text x="460" y="122" class="svg-mono svg-ok">kept</text><text x="540" y="122" class="svg-label">a → NULL</text>
+        <text x="60" y="170" class="svg-mono">3</text><text x="140" y="170" class="svg-mono">b</text><text x="240" y="170" class="svg-mono">NULL</text>
+        <text x="320" y="170" class="svg-label">previous value is NULL</text>
+        <text x="460" y="170" class="svg-mono svg-red">dropped</text><text x="540" y="170" class="svg-label">NULL → b, by accident</text>
+      </svg>
+      <figcaption>One NULL in the LAG column, two meanings. The filter that drops the first row also drops the step out of a NULL state.</figcaption>
+    </figure>
+    <p>The same engine already treats NULL as a state elsewhere. <code>entropy</code>, <code>hhi</code> and <code>kl_drift</code> group by the value, so NULL is a category. <code>longest_streak</code> and <code>time_in_current_state</code> compare with <code>IS DISTINCT FROM</code>. <code>recurrence_interval</code> partitions by the value. The inconsistent primitives disagree with these on the same rows.</p>
+    <p class="muted">Correction to the issue thread: the registry dict <code>featurizer.primitives.aggregations.DEFAULT_AGGREGATIONS</code> holds every primitive. The selection an omitted <code>aggregations:</code> key applies is <code>featurizer/featurizer.py:38</code>, ten basic aggregations with no sequence primitive in it. A consumer computes the affected primitives only by naming them, and triage-pg's example configs name none (checked 2026-11-04).</p>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Tell the two meanings apart with a row number from <strong>the same window as the LAG</strong>. <code>rn = 1</code> means "no previous row". <code>rn &gt; 1</code> with <code>prev</code> NULL means "the previous state is NULL". Replace each <code>prev IS NOT NULL</code> filter with <code>rn &gt; 1</code> (<code>rn &gt;= n</code> for an n-gram), and each <code>prev = curr</code> with <code>prev IS NOT DISTINCT FROM curr</code>. Both paths change together: the set-based pre-pass and the correlated fallback. A shared window means one sort, the pattern <code>longest_streak</code> already uses (ADR-0018). The row number is computed after the as-of cut, inside the same SELECT, so it numbers only rows the feature may read.</p>
+    <figure>
+      <svg viewBox="0 0 760 210" role="img" aria-label="With a row number from the same window, rn equals 1 marks the row with no predecessor, and the filter rn greater than 1 keeps both real transitions">
+        <text x="60" y="30" class="svg-title">rn</text>
+        <text x="140" y="30" class="svg-title">x</text>
+        <text x="240" y="30" class="svg-title">LAG(x)</text>
+        <text x="460" y="30" class="svg-title">WHERE rn &gt; 1</text>
+        <line x1="40" y1="42" x2="720" y2="42" class="stroke-line" stroke-width="1"/>
+        <text x="60" y="74" class="svg-mono">1</text><text x="140" y="74" class="svg-mono">a</text><text x="240" y="74" class="svg-mono">NULL</text>
+        <text x="320" y="74" class="svg-label">no previous row</text>
+        <text x="460" y="74" class="svg-mono svg-red">dropped</text><text x="540" y="74" class="svg-label">the only one</text>
+        <text x="60" y="122" class="svg-mono">2</text><text x="140" y="122" class="svg-mono">NULL</text><text x="240" y="122" class="svg-mono">a</text>
+        <text x="460" y="122" class="svg-mono svg-ok">kept</text><text x="540" y="122" class="svg-label">a → NULL</text>
+        <text x="60" y="170" class="svg-mono">3</text><text x="140" y="170" class="svg-mono">b</text><text x="240" y="170" class="svg-mono">NULL</text>
+        <text x="320" y="170" class="svg-label">previous state NULL</text>
+        <text x="460" y="170" class="svg-mono svg-ok">kept</text><text x="540" y="170" class="svg-label">NULL → b</text>
+      </svg>
+      <figcaption>The row number, from the window that computes the LAG, carries "is there a previous row". The LAG keeps carrying only the previous value.</figcaption>
+    </figure>
+    <p>The order of work puts the decision first. ADR-0020 is drafted as Proposed before any engine change (Phase 1). Two sweeps then show today's values failing the rule, landed as strict xfails that name #86 (Phase 2). The engine change turns them green (Phase 3), the live databases measure what moves (Phase 4), and the ADR is completed with those numbers and signed before the PR merges (Phase 5).</p>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/aggregations.py</code>: <code>_transitions_inner</code> (:1126), <code>_transmatrix_prepass</code> (:1141), <code>NgramFrequency</code> (:1155), <code>LongestStreak</code> (:1221), <code>_SequenceReduction._transitions</code> (:1518), <code>StateVolatility</code> (:1532), <code>TransitionMatrixSummary</code> (:1563), <code>ReworkCount</code> (:1588), <code>TimeInCurrentState</code> (:1611), <code>RecurrenceInterval</code> (:1663) and <code>_TransitionMatrixReduction</code> (:1715), which since PR #85 owns <code>_build_preagg</code> and the fallback for the three transmatrix primitives.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/cli.py</code>: <code>description</code> metadata for each primitive (:314 onward). The generated docs reference prints it, so the rule appears there.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_correlated_fallback_parity.py</code>: the PR #85 parity sweep. Its rows already carry NULL categoricals, and it must stay 30/30.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_tied_timestamps.py</code>, <code>tests/integration/test_future_row_aggregations.py</code>: the ADR-0018 and point-in-time sweeps. Neither may move.</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_aggregation_quoting.py</code>: <code>_config</code> (adds <code>PREDICATES</code> to a categorical variable), <code>_input_type</code>, <code>SQL_TYPE</code>. Reused, not copied.</li>
+      <li><span class="tag existing">existing</span> <code>benchmarks/_db.py</code>: <code>values_equal</code> (row count first, float tolerance).</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_sweep_matrix_coverage.py</code>: <code>NUMERIC_ONLY_SWEEPS</code> is the model for a type-scoped closure.</li>
+      <li><span class="tag existing">existing</span> <code>CONTRIBUTING.md</code>: "The sweep matrix" table gets a row.</li>
+      <li><span class="tag existing">existing</span> <code>benchmarks/final_matrix.py</code>: helpers to reuse (<code>load_feature_config</code>, <code>build_variant</code>, <code>connect</code>, <code>latest_knowledge_date</code>). Read-only, rolled-back connection.</li>
+      <li><span class="tag existing">existing</span> <code>site/gen.py</code>: <code>ADR_THEMES</code> (:490). "0020" goes under "Correctness &amp; leakage".</li>
+      <li><span class="tag existing">existing</span> <code>docs/adr/0015-*.md</code>, <code>0016-*.md</code>, <code>0018-*.md</code>: the freeze and the two precedents ADR-0020 argues from.</li>
+      <li><span class="tag existing">existing</span> <code>.claude/skills/featurizer-dfs/SKILL.md</code>: one line on the NULL rule if it lists sequence primitives.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>docs/adr/0020-a-null-category-is-a-state.md</code>: the rule, its scope, the version argument, the measured list of moving cases.</li>
+      <li><span class="tag new">new</span> <code>tests/_sequence_reference.py</code>: a pure-Python reference of the 11 sequence primitives under the rule, over an already-windowed, ordered list of <code>(ts, value)</code>.</li>
+      <li><span class="tag new">new</span> <code>tests/test_sequence_reference.py</code>: DB-free, hand-checked values for the reference itself.</li>
+      <li><span class="tag new">new</span> <code>tests/primitives/test_sequence_null_marker.py</code>: DB-free. No rendered sequence SQL, on either path, uses a LAG output's NULL to mean "has a previous row".</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_null_state.py</code>: the sentinel sweep (every categorical aggregation) and the reference sweep (11 sequence primitives, both paths).</li>
+      <li><span class="tag new">new</span> <code>benchmarks/null_state_impact.py</code>: before/after cell diff on the three live databases, plus NULL prevalence per categorical child column.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Record the decision — ADR-0020, Proposed</h3>
+      <p>The rule and the version path were settled with the maintainer on 2026-11-04 (Questionables Q5 and Q6). Write them down before any code moves, so the sweeps in Phase 2 test a recorded rule rather than an intention.</p>
+
+      <h4>1. Branch</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git switch master &amp;&amp; git pull --ff-only &amp;&amp; git switch -c fix/null-is-a-state</code>. Master must contain PR #85 (<code>08738de</code>).</li>
+      </ul>
+
+      <h4>2. Draft the ADR</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Dispatch the <code>adr-writer</code> agent for <code>docs/adr/0020-a-null-category-is-a-state.md</code>, <strong>Status: Proposed</strong>, Deciders: Adolfo De Unánue.</li>
+        <li><code class="status">[x]</code> Context: #86, the two meanings of <code>LAG</code>'s NULL, the measured table from Problem, and the 20 categorical aggregations classified as in the Notes audit table.</li>
+        <li><code class="status">[x]</code> Decision: a NULL is a state for every categorical aggregation that reads a value as a category. The SQL aggregates whose definition ignores NULL inputs (<code>count</code>, <code>nunique</code>, <code>mode</code>) keep SQL semantics and are named. "No previous row" is a row number from the window that computes the LAG, never the LAG's NULL.</li>
+        <li><code class="status">[x]</code> Version: a 1.x minor without a deprecation cycle. It extends ADR-0016 and ADR-0018: a value that is wrong under every reading of the primitive (both NULL rules) was never part of the contract. It names, as the one exception, the value that is coherent under another reading and still moves: <code>time_in_current_state</code> on a window whose rows are all NULL (NULL today, days since the window's first row under the rule). The "moving cases" and "measured on" sections are left as placeholders for Phase 5.</li>
+        <li><code class="status">[x]</code> Alternatives: NULL as missing data, which also moves the six coherent primitives; opt-in in 1.x with a flip in 2.0, rejected for #27, #49 and #66; 2.0 only; and an additive per-variable <code>nulls: skip</code> key, recorded as possible future work and not built.</li>
+      </ul>
+
+      <h4>3. ADR index</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>site/gen.py</code> <code>ADR_THEMES</code>: append <code>"0020"</code> to "Correctness &amp; leakage".</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>The ADR is prose. Check that the site generator files it under a theme and that the links resolve.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv sync --group docs &amp;&amp; uv run python site/gen.py</code>: output has no line containing <code>extend ADR_THEMES</code>.</li>
+        <li><code class="status">[x]</code> The ADR's relative links (<code>0015</code>, <code>0016</code>, <code>0018</code>) name files that exist under <code>docs/adr/</code>.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: The executable audit — sweeps that fail today, landed as strict xfails</h3>
+      <p>CONTRIBUTING.md's rule for a newly found class of defect: land the sweep with a strict <code>xfail</code> that names the issue. The xfail list this phase measures <em>is</em> the audit: it replaces the code-reading expectations in the Notes table with measurements. No engine change in this phase.</p>
+
+      <h4>1. The reference</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/_sequence_reference.py</code>: one function per primitive over <code>list[tuple[date, str | None]]</code> already windowed and in timeline order. Transitions are consecutive pairs from position 2 on, NULL included as a value. Covers <code>sequence_entropy</code> (joint entropy of the pair counts), <code>markov_conditional_entropy</code>, <code>max_transition_prob</code>, <code>state_volatility</code> (pairs with <code>prev IS DISTINCT FROM curr</code>), <code>transition_matrix_summary</code> (distinct pairs), <code>rework_count</code> (pairs with <code>prev IS NOT DISTINCT FROM curr</code>), <code>ngram_2_freq</code> / <code>ngram_3_freq</code> (max count over complete n-grams, NULL when there is none), <code>longest_streak</code>, <code>time_in_current_state</code> (as-of date minus the date of the last row that starts a run, the first row included) and <code>recurrence_interval</code> (mean day gap between consecutive rows of the same value, NULL a value).</li>
+        <li><code class="status">[x]</code> <code>tests/test_sequence_reference.py</code>: hand-checked cases, written out in the test: <code>a,NULL,b</code>; <code>a,NULL,NULL,a</code> (rework 1, volatility 2); all-NULL; one row; <code>a,b</code> (<code>ngram_3_freq</code> NULL); a NULL run at the start and at the end.</li>
+      </ul>
+
+      <h4>2. The integration sweeps — <code>tests/integration/test_null_state.py</code></h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Data, <code>pg_temp</code>-qualified TEMP tables seeded once per test (the PR #85 pattern). Series cover: a NULL first row, a NULL last row, a NULL run of two, a window whose rows are all NULL, NULL inside a tied timestamp, one-row and two-row series, a series with no rows, rows after each of two as-of dates. <strong>Timestamps at midnight only</strong>; see the timestamp-bound note. <code>event_id</code>s unique and against insertion order, loaded forwards then backwards.</li>
+        <li><code class="status">[x]</code> Sentinel sweep: every aggregation with <code>"categorical"</code> in <code>input_types</code> (20 today, from the registry), minus <code>SQL_AGGREGATES = {count, nunique, mode}</code>. Each is named with its reason, and if one gives equal values under the sentinel, it is removed from the set. The config comes from <code>tests.test_aggregation_quoting._config(..., vtype="categorical", intervals=("P30D",))</code>. Run once with the NULLs and once with every NULL replaced by <code>'__null__'</code>, a value absent from the data and from <code>PREDICATES</code>. Compare with <code>values_equal</code>, plus a guard that no feature column is NULL everywhere.</li>
+        <li><code class="status">[x]</code> Reference sweep: the 11 sequence primitives × {set-based, correlated fallback}. The fallback comes from patching the class's <code>_build_preagg</code> to <code>None</code>, as the parity sweep does. Whole history and P30D at both as-of dates are compared cell by cell with <code>tests/_sequence_reference.py</code>, floats with <code>math.isclose(rel_tol=1e-9, abs_tol=1e-12)</code>.</li>
+        <li><code class="status">[x]</code> Every case that fails gets a strict <code>xfail</code> in a <code>MISMATCHES</code> dict: <code>{name: "#86: &lt;what was measured&gt;"}</code>. Expected from reading the code: the five transition primitives, <code>rework_count</code>, both n-grams and <code>time_in_current_state</code> (9). Record the <em>measured</em> list in the Amendments section of this plan.</li>
+      </ul>
+
+      <h4>3. The DB-free guard</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/primitives/test_sequence_null_marker.py</code>: for each sequence primitive that reads a LAG, render <code>_build_preagg(...).prepass_sql</code> + <code>reduction</code> and <code>_build_subquery_expression(...)</code>. On the result, case-insensitive <code>\b(prev|lag_\d+)\s+is\s+not\s+null\b</code> must not match, and each must contain a row number from the same <code>WINDOW</code> as its LAG. Use the entity builder from <code>tests/primitives/test_correlated_fallback.py</code>. Strict xfail today where it matches.</li>
+      </ul>
+
+      <h4>4. The sweep matrix</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>CONTRIBUTING.md</code>: new row, "a NULL category is a state: a value equals the value with each NULL replaced by an unused category", sweep <code>tests/integration/test_null_state.py</code>.</li>
+        <li><code class="status">[x]</code> <code>tests/test_sweep_matrix_coverage.py</code>: <code>CATEGORICAL_ONLY_SWEEPS</code>, shaped like <code>NUMERIC_ONLY_SWEEPS</code>. It asserts that the sentinel sweep covers every aggregation with a categorical input type except the named <code>SQL_AGGREGATES</code>, so a categorical primitive registered later is covered the day it lands.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>pytest on both tiers. The new sweeps must run, and fail exactly where the xfails say. A strict xfail that passes is an error, so the list cannot be longer than reality.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest -q tests/test_sequence_reference.py tests/primitives/test_sequence_null_marker.py tests/test_sweep_matrix_coverage.py</code>: the reference is right on the hand cases, and the guard and the closure hold.</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; PGOPTIONS="-c jit=off" DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -rxX tests/integration/test_null_state.py</code>: every case passes or xfails strictly. The <code>-rxX</code> summary is the measured audit.</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> and <code>just test-integration</code>: nothing else moves.</li>
+        <li><code class="status">[x]</code> Commit (tests only): <code>test: a NULL category is a state — sweeps with strict xfails naming #86</code>.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Tell "no previous row" from "a NULL value" on both paths</h3>
+      <p>The engine change. Each edit below lands on the set-based pre-pass and on the correlated fallback together. The family keys, CTE names and output names do not change (ADR-0015 frozen names). <code>transitions:{name}</code> is shared by <code>state_volatility</code>, <code>transition_matrix_summary</code> and <code>rework_count</code>, so those three switch in one commit.</p>
+
+      <h4>1. The marker</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>_transitions_inner</code>: <code>lag(x) over w as prev, row_number() over w as rn … window w as (partition by &lt;ck&gt; order by &lt;_timeline&gt;)</code>.</li>
+        <li><code class="status">[x]</code> <code>_SequenceReduction._transitions</code>: <code>LAG(x) OVER w AS prev, ROW_NUMBER() OVER w AS rn … WINDOW w AS (ORDER BY &lt;_timeline&gt;)</code>.</li>
+      </ul>
+<pre><code>-- before                                   -- after
+lag(x) over (partition by k                 lag(x) over w as prev,
+  order by &lt;timeline&gt;) as prev              row_number() over w as rn
+...                                         ... window w as (partition by k
+where prev is not null                                       order by &lt;timeline&gt;)
+                                            where rn &gt; 1</code></pre>
+
+      <h4>2. The reductions</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>_transmatrix_prepass</code>: <code>where rn &gt; 1</code>. <code>_TransitionMatrixReduction._matrix</code>: <code>WHERE t.rn &gt; 1</code>. That covers <code>sequence_entropy</code>, <code>markov_conditional_entropy</code> and <code>max_transition_prob</code>. <code>row_total</code>'s <code>partition by k, prev</code> already groups a NULL <code>prev</code>.</li>
+        <li><code class="status">[x]</code> <code>state_volatility</code>: <code>FILTER (WHERE rn &gt; 1 AND prev IS DISTINCT FROM curr)</code> and the same predicate in the fallback. Keep the unfiltered pre-pass row so an empty group still gives 0.</li>
+        <li><code class="status">[x]</code> <code>transition_matrix_summary</code>: <code>count(DISTINCT (prev, curr)) FILTER (WHERE rn &gt; 1)</code>. Verified 2026-11-04: <code>count(distinct (p, c))</code> counts rows with NULL fields, so <code>(a,NULL), (NULL,b), (NULL,b), (NULL,NULL)</code> gives 3.</li>
+        <li><code class="status">[x]</code> <code>rework_count</code>: <code>FILTER (WHERE rn &gt; 1 AND prev IS NOT DISTINCT FROM curr)</code>, both paths.</li>
+        <li><code class="status">[x]</code> <code>time_in_current_state</code>: add <code>rn</code> to its own pre-pass and fallback window. The change filter becomes <code>rn = 1 OR prev IS DISTINCT FROM curr</code>.</li>
+        <li><code class="status">[x]</code> <code>NgramFrequency</code>: add <code>row_number() over w</code> to the window that computes the <code>lag_i</code> columns, and replace <code>lag_1 IS NOT NULL</code> with <code>rn &gt;= n</code>, both paths. That fixes the NULL asymmetry and the partial trigram together.</li>
+        <li><code class="status">[x]</code> <code>longest_streak</code>, <code>recurrence_interval</code>, <code>entropy</code>, <code>hhi</code>, <code>kl_drift</code>, <code>first_passage_time</code>, <code>right_censoring_indicator</code> and <code>cross_type_latency</code> stay unchanged, unless Phase 2 measured one of them failing. Then fix it here and add it to ADR-0020's list.</li>
+      </ul>
+
+      <h4>3. Documentation in the code</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> One sentence in each changed docstring: "A NULL value is a state (ADR-0020)."</li>
+        <li><code class="status">[x]</code> <code>featurizer/cli.py</code>: append "; NULL counts as a state" to the <code>description</code> of the 11 sequence primitives, so the generated reference and the explorer carry the rule.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>The strict xfails force their own removal: once the fix lands, each one passes and fails the run until its <code>MISMATCHES</code> entry is deleted. Then confirm nothing outside the 11 moved, and run the red-green check from <code>verify-before-done</code>.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Delete every <code>MISMATCHES</code> entry and DB-free xfail. <code>PGOPTIONS="-c jit=off" DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q tests/integration/test_null_state.py tests/primitives/test_sequence_null_marker.py</code> must give all passed, 0 xfailed.</li>
+        <li><code class="status">[x]</code> <code>… uv run pytest -q tests/integration/test_correlated_fallback_parity.py tests/integration/test_tied_timestamps.py tests/integration/test_future_row_aggregations.py</code>: the pre-pass and the fallback agree (30/30), tied rows move nothing, and a row after the as-of date moves nothing.</li>
+        <li><code class="status">[x]</code> Render digest: run the PR #85 script (Notes) for every registered aggregation on master and on the branch. The digests may differ only for the 11 sequence primitives. Compute the digest per name, and require equality for the other 57 names (68 registered on 2026-11-04).</li>
+        <li><code class="status">[x]</code> Red-green: <code>git stash push featurizer/primitives/aggregations.py</code>, then the sweeps fail on the 9 measured cases. <code>git stash pop</code>, then green.</li>
+        <li><code class="status">[x]</code> <code>just fmt-check &amp;&amp; just lint &amp;&amp; just typecheck &amp;&amp; just test-fast &amp;&amp; just test-integration</code>.</li>
+        <li><code class="status">[x]</code> Commit: <code>fix(aggregations): a NULL category is a state in the sequence primitives (#86)</code>. Run <code>/simplify</code> on the diff first (global rule for source commits).</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4: Consumer impact — the live databases and triage-pg</h3>
+      <p>Measure how often the change matters on real data, the way ADR-0018 counted moved columns and entities. These are the figures ADR-0020 cites.</p>
+
+      <h4>1. triage-pg, static</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git -C ~/projects/triage-pg grep -n -E 'sequence_entropy|markov_conditional_entropy|max_transition_prob|state_volatility|transition_matrix_summary|rework_count|ngram_[23]_freq|time_in_current_state|longest_streak|recurrence_interval'</code>. Expected: no match, as on 2026-11-04. List any config that sets <code>aggregations:</code> explicitly.</li>
+      </ul>
+
+      <h4>2. The impact script</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>benchmarks/null_state_impact.py</code>, committed (the harness policy since v1.0.0). For each dataset it reuses <code>final_matrix</code>'s <code>load_feature_config</code>, <code>connect</code> and <code>latest_knowledge_date</code>, and builds the triage entity graph with <code>aggregations</code> set to the 11 sequence primitives and <code>transformations: [identity]</code>.</li>
+        <li><code class="status">[x]</code> <code>--out FILE</code> writes canonical rows: the key columns plus every feature column, as JSON. <code>--diff BEFORE AFTER</code> prints moved cells per column, moved entities, and moved columns per primitive.</li>
+        <li><code class="status">[x]</code> <code>--nulls</code> prints, per categorical child column the config declares, <code>count(*)</code> and <code>count(*) filter (where col is null)</code> within the as-of bound.</li>
+        <li><code class="status">[x]</code> It is read-only: one connection, its transaction rolled back. The pre-tool hook rejects Bash text containing SQL that drops a table, so use <code>on commit drop</code> or a rollback, never an explicit drop.</li>
+      </ul>
+
+      <h4>3. Run it</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>docker start dirtyduck-food_db-1 chicago311-chi311_db-1 donorschoose-donors_db-1</code>. They were stopped on 2026-11-04, and their data persists.</li>
+        <li><code class="status">[x]</code> Before: <code>git worktree add ../featurizer-before master</code>, then run the script from there with <code>--out specs/null-is-a-state/raw/&lt;db&gt;-before.json</code>. After: run it from the branch with <code>&lt;db&gt;-after.json</code>.</li>
+        <li><code class="status">[x]</code> <code>--diff</code> per database, and <code>--nulls</code> per database. Record the tables in Amendments.</li>
+        <li><code class="status">[x]</code> Regression: <code>uv run python benchmarks/final_matrix.py --variant all-agg</code> on the branch runs on all three databases.</li>
+        <li><code class="status">[f]</code> Clean up: <code>git worktree remove ../featurizer-before</code>, and <code>docker stop</code> the three containers.</li> <em>(2026-11-05: worktree removed; the containers were left running, because another process started them before this session needed them — see Amendments.)</em>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>A diff tool that cannot report zero proves nothing, so run a control first.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>--diff &lt;db&gt;-before.json &lt;db&gt;-before.json</code>: 0 moved cells (control).</li>
+        <li><code class="status">[x]</code> Every moved cell is in a column of one of the changed primitives. Its entity has a NULL in that categorical within the window (the <code>--nulls</code> counts), or it is an <code>ngram_3_freq</code> cell on a series with fewer than three rows.</li>
+        <li><code class="status">[x]</code> <code>just lint &amp;&amp; just typecheck</code> with the script in place.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[]</code> Phase 5: Complete and sign ADR-0020, open the PR</h3>
+      <p>The ADR gets its measured list and its numbers, the maintainer signs it, and the change goes up for review. The release (CHANGELOG, version, tag) is a separate release PR, per the protected-master rules.</p>
+
+      <h4>1. Complete the ADR</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Fill "moving cases" from the Phase 2 measured list, and "measured on" from the Phase 4 tables (moved cells, entities and columns per database, and NULL prevalence). Follow ADR-0016's three duties: a test that shows each value moved before and not after, a demonstration that nothing else moved (the render digest), and every moving primitive named for the release CHANGELOG.</li>
+        <li><code class="status">[]</code> Ask the maintainer to sign. Only then set <strong>Status: Accepted</strong> and the date. If the all-NULL dwell is refused at signing, see the [unresolved] Questionable.</li>
+      </ul>
+
+      <h4>2. Skill and docs</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>.claude/skills/featurizer-dfs/SKILL.md</code>: one line near the sequence primitives. If the skill has no sequence section, add the line to its NULL bullet (:316). Re-vendoring to other copies is a separate task (<code>just revendor-skill</code>).</li>
+      </ul>
+
+      <h4>3. Pull request</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git push -u origin fix/null-is-a-state</code>, then <code>gh pr create</code>. The body gives the rule, the moving primitives and cases, the hand examples before and after, the live-DB tables, the render-digest result, the red-green output, and <code>Closes #86</code>. Do not edit CHANGELOG.md, the version, <code>uv.lock</code> or workflows.</li>
+        <li><code class="status">[wip]</code> Eight green checks. Rebase-merge only on the maintainer's explicit word.</li>
+        <li><code class="status">[x]</code> Hand-off for the 1.5.0 release PR: CHANGELOG lines naming every primitive whose values move, and ADR-0020.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>The CI matrix (Python 3.10–3.13 × PostgreSQL 14/16/17) is the final gate. The docs site must still generate and link-check.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run python site/gen.py</code>: no <code>extend ADR_THEMES</code> line, and the primitives reference count-parity test passes in <code>just test-fast</code>.</li>
+        <li><code class="status">[]</code> <code>gh pr checks &lt;PR&gt;</code>: 8 pass.</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== DEFINITION OF DONE ===== -->
+  <section id="definition-of-done">
+    <h2>Definition of Done</h2>
+
+    <p>Every categorical aggregation in the registry, except the three SQL aggregates <code>count</code>, <code>nunique</code> and <code>mode</code>, gives the same value on a series with NULLs as on the same series with each NULL replaced by an unused category. That holds on the set-based path and on the correlated fallback. The 11 sequence primitives match a Python reference on hand-built sequences, and <code>ngram_3_freq</code> no longer counts an incomplete trigram. ADR-0020 is Accepted and names every value that moved. The PR that closes #86 is merged.</p>
+    <p>The evidence. The sentinel sweep covers 17 aggregations (20 categorical in the registry on 2026-11-04, minus the 3 SQL aggregates). The reference sweep covers 11 primitives × 2 paths. Strict xfails go from the Phase 2 count (expected 9 primitives) to 0. Hand examples: <code>rework_count</code> on <code>a,NULL,NULL,a</code> goes 0 → 1, <code>state_volatility</code> 1 → 2, and <code>ngram_3_freq</code> on <code>a,b</code> 1 → NULL, from <code>tests/test_sequence_reference.py</code> and the sweep. Rendered SQL for the 57 aggregations outside the 11 (68 registered) is byte-identical to master, by per-name digest. The fallback parity sweep stays 30/30, and the tied-row and future-row sweeps show 0 moves. On the three live databases, moved cells, entities and columns per primitive are recorded in ADR-0020 next to the NULL prevalence that explains them, with a self-diff control of 0. triage-pg: 0 configs name an affected primitive, re-checked in Phase 4.</p>
+    <p>Not included: SQL NULL semantics of <code>count</code> / <code>nunique</code> / <code>mode</code>; NULLs in numeric inputs; a <code>nulls: skip</code> opt-in key; the timestamp whole-history versus window bound mismatch (Notes); the 2.0 parent-alias rename; removing the unreachable correlated fallbacks (#85 review, F9); the triage-pg pin bump; and the 1.5.0 release PR itself.</p>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>just fmt-check &amp;&amp; just lint &amp;&amp; just typecheck</code> — format, lint and basedpyright are clean.</li>
+      <li><code class="status">[]</code> <code>just test-fast</code> — DB-free tier, including the reference, the SQL-shape guard, the sweep-matrix closure and the docs count-parity.</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — integration tier, no xfail left for #86.</li>
+      <li><code class="status">[]</code> <code>PGOPTIONS="-c jit=off" DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -rxX tests/integration/test_null_state.py tests/integration/test_correlated_fallback_parity.py tests/integration/test_tied_timestamps.py tests/integration/test_future_row_aggregations.py</code> — the rule holds, the two paths agree, and no tie or future row moves anything.</li>
+      <li><code class="status">[]</code> The per-name render digest on master and on the branch differs only for the 11 sequence primitives.</li>
+      <li><code class="status">[]</code> <code>uv run python benchmarks/null_state_impact.py --diff &lt;db&gt;-before.json &lt;db&gt;-before.json</code> — control shows 0. The before/after diffs are recorded in ADR-0020.</li>
+      <li><code class="status">[]</code> <code>uv run python site/gen.py</code> — ADR-0020 filed under a theme.</li>
+      <li><code class="status">[]</code> <code>gh pr checks &lt;PR&gt;</code> — eight checks pass.</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <details>
+      <summary>[asked] Plan first, or settle the decision and go straight to an ADR?</summary>
+      <p class="qa-answer">The maintainer chose a full plan (2026-11-04), so the decision, the code and the triage-pg check sit in one place.</p>
+    </details>
+    <details>
+      <summary>[asked] Q5. Which NULL rule: state, missing, or state plus an opt-in skip?</summary>
+      <p class="qa-answer"><strong>NULL is a state.</strong> It matches the six primitives that are already coherent, and moves only values that are wrong under both rules, plus the all-NULL dwell.</p>
+    </details>
+    <details>
+      <summary>[asked] Q6. Version path: minor under ADR-0020, opt-in then flip in 2.0, or 2.0 only?</summary>
+      <p class="qa-answer"><strong>Minor (1.5.0) under ADR-0020</strong>, following ADR-0016 and ADR-0018.</p>
+    </details>
+    <details>
+      <summary>[asked] Q7. The <code>ngram_3_freq</code> partial trigram: new issue, fold into #86, or a later PR?</summary>
+      <p class="qa-answer"><strong>Folded into #86.</strong> The issue body was amended on 2026-11-04 with the measurement, and it is fixed by the same <code>rn &gt;= n</code> marker.</p>
+    </details>
+    <details>
+      <summary>[asked] Q8. Consumer impact: live databases plus triage-pg, or triage-pg configs only?</summary>
+      <p class="qa-answer"><strong>Live databases plus triage-pg</strong> (Phase 4).</p>
+    </details>
+    <details>
+      <summary>[decided] <code>count</code>, <code>nunique</code> and <code>mode</code> keep SQL NULL semantics</summary>
+      <p class="qa-answer">Their definitions come from SQL (<code>count(x)</code>, <code>count(distinct x)</code>, <code>mode() within group</code> ignore NULL inputs). Changing them is a semantic change outside #86. The sweep names them, and drops a name if its values turn out equal under the sentinel.</p>
+    </details>
+    <details>
+      <summary>[decided] The marker is a row number from the LAG's own window</summary>
+      <p class="qa-answer">Not a LAG over a sentinel value, which could collide with real data, and not a second window, which would mean a second sort (ADR-0018's <code>longest_streak</code> lesson). One <code>WINDOW w</code> carries both columns.</p>
+    </details>
+    <details>
+      <summary>[decided] Two oracles, not one</summary>
+      <p class="qa-answer">The sentinel sweep covers the whole categorical registry cheaply, but it cannot see the partial trigram: the trigram exists with and without the sentinel. The Python reference sees it, and checks the 11 sequence primitives against the rule directly instead of against themselves.</p>
+    </details>
+    <details>
+      <summary>[decided] Sweep timestamps at midnight only</summary>
+      <p class="qa-answer">That keeps #86 separate from the timestamp-bound mismatch in Notes. The tied and NULL cases do not need a time of day.</p>
+    </details>
+    <details>
+      <summary>[decided] <code>longest_streak</code> and <code>recurrence_interval</code> are left alone unless measured</summary>
+      <p class="qa-answer">From reading the code, both already treat NULL as a state: <code>IS DISTINCT FROM</code>, and partitioning by the value. Phase 2 decides. A failing case moves the primitive into Phase 3 and into ADR-0020's list.</p>
+    </details>
+    <details>
+      <summary>[decided] The impact script is committed under <code>benchmarks/</code></summary>
+      <p class="qa-answer">Since v1.0.0 the live-DB harness is committed, so its measurements can be reproduced. Its raw output goes to <code>specs/null-is-a-state/raw/</code>, which is gitignored.</p>
+    </details>
+    <details>
+      <summary>[unresolved] Does the all-NULL dwell belong in a minor?</summary>
+      <p class="qa-answer">ADR-0016 and ADR-0018 justify a minor for values that were never reliable. Every other value that moves here is wrong under both rules. <code>time_in_current_state</code> on a window whose rows are all NULL is NULL today, which is coherent under "NULL is missing", and it becomes days since the window's first row. Assumption in force: the "one rule" argument carries it, and ADR-0020 names it. If the maintainer refuses it at signing, the fallback is to keep that one case NULL and say so in the ADR. At risk: Phase 3 task 2 (one predicate) and Phase 5 task 1.</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Audit by reading the code (2026-11-04) — Phase 2 replaces this with measurements</h3>
+    <div class="table-wrap"><table>
+      <tr><th>aggregation</th><th>how it treats a NULL today</th><th>change</th></tr>
+      <tr><td><code>sequence_entropy</code>, <code>markov_conditional_entropy</code>, <code>max_transition_prob</code></td><td><code>prev is not null</code> after LAG: X→NULL counted, NULL→Y dropped</td><td class="red">fix</td></tr>
+      <tr><td><code>state_volatility</code></td><td>X→NULL is a change, NULL→Y dropped (<code>a,NULL,NULL,a</code> = 1)</td><td class="red">fix</td></tr>
+      <tr><td><code>transition_matrix_summary</code></td><td>pair (X,NULL) counted, (NULL,Y) dropped</td><td class="red">fix</td></tr>
+      <tr><td><code>rework_count</code></td><td><code>prev = curr</code>: NULL never repeats (<code>a,NULL,NULL,a</code> = 0)</td><td class="red">fix</td></tr>
+      <tr><td><code>ngram_2_freq</code></td><td><code>lag_1 is not null</code>: an n-gram after a NULL dropped</td><td class="red">fix</td></tr>
+      <tr><td><code>ngram_3_freq</code></td><td>the same, and <code>lag_2</code> unchecked: a partial trigram in every series (<code>a,b</code> = 1)</td><td class="red">fix</td></tr>
+      <tr><td><code>time_in_current_state</code></td><td><code>IS DISTINCT FROM</code> (a state), but a NULL first row is not a change: all-NULL window = NULL</td><td class="open">fix, the one coherent value that moves</td></tr>
+      <tr><td><code>longest_streak</code></td><td><code>IS DISTINCT FROM</code> over one window: a NULL run is a streak</td><td class="ok">none expected</td></tr>
+      <tr><td><code>recurrence_interval</code></td><td>LAG partitioned by the value: NULL is its own partition</td><td class="ok">none expected</td></tr>
+      <tr><td><code>entropy</code>, <code>hhi</code>, <code>kl_drift</code></td><td><code>GROUP BY</code> the value: NULL is a category</td><td class="ok">none expected</td></tr>
+      <tr><td><code>first_passage_time</code>, <code>right_censoring_indicator</code>, <code>cross_type_latency</code></td><td>predicates: NULL matches no predicate, and a NULL row is still an event</td><td class="ok">none expected</td></tr>
+      <tr><td><code>count</code>, <code>nunique</code>, <code>mode</code></td><td>SQL aggregates: NULL inputs ignored</td><td class="muted">outside the rule, named</td></tr>
+    </table></div>
+
+    <h3>The render digest (from PR #85's review session)</h3>
+    <p>Run from the repo root, once on master and once on the branch. For Phase 3, change it to print one digest per name.</p>
+<pre><code>from featurizer import Featurizer
+from featurizer.primitives.utils import list_aggregations
+from tests.test_aggregation_quoting import SPATIAL, _config, _input_type
+# for each name: vtype = _input_type(name), with "index" mapped to "numeric";
+# latlon = ("lat", "lon") if name in SPATIAL else None
+# sha256(Featurizer(_config(dir, "x", [name], vtype, latlon=latlon),
+#                   validate=False).query)</code></pre>
+
+    <div class="callout">
+      <strong>Out of scope, worth its own issue: the timestamp bound.</strong> On a <code>timestamp</code> temporal index, the whole-history bound is <code>ts &lt;= aod.as_of_date</code>, which casts the date to midnight. The interval window is <code>daterange(…, aod.as_of_date::date, '[]') @&gt; ts::date</code>, which takes the whole as-of day. Verified 2026-11-04 on PostgreSQL 16: a row at <code>2024-06-01 12:00</code> is outside the whole history and inside the P30D window for as-of <code>2024-06-01</code>. If the as-of date means its own midnight, the window reads up to a day ahead, which is a point-in-time question. The future-row sweep uses <code>date</code> columns and cannot see it. It is not filed, and this plan's sweeps avoid it by using midnight timestamps.
+    </div>
+
+    <h3>Practicalities</h3>
+    <ul>
+      <li>Protected master: PR, eight green checks, rebase merge. <code>gh pr merge</code> only on the maintainer's explicit word. PRs never edit CHANGELOG.md.</li>
+      <li>Integration runs need <code>PGOPTIONS="-c jit=off"</code> (<code>just test-integration</code> sets it). The test database is <code>just db-up</code>, URL from <code>just --evaluate pg_url</code>.</li>
+      <li>The parity sweep from PR #85 already has NULL categoricals in its rows. If it moves during Phase 3, the two paths diverged and the fix is incomplete.</li>
+      <li>Under this rule an all-NULL series has a defined dwell, entropy and streak. Downstream models that relied on NULL there will see numbers. The live-DB NULL prevalence in Phase 4 sizes that.</li>
+    </ul>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <h3>2026-11-05 — measured during the build</h3>
+    <ul>
+      <li><strong>Phase 2, the measured list.</strong> The nine primitives the code reading predicted, on both paths: 9 sentinel, 18 reference and 18 DB-free guard cases. <code>longest_streak</code>, <code>recurrence_interval</code>, <code>entropy</code>, <code>hhi</code>, <code>kl_drift</code> and the three predicate primitives give equal values under the sentinel. Each of <code>count</code>, <code>nunique</code> and <code>mode</code> moves under the sentinel, so their exclusion is needed.</li>
+      <li><strong>A finding the plan did not expect.</strong> The correlated fallbacks of <code>state_volatility</code>, <code>transition_matrix_summary</code> and <code>rework_count</code> gave 0 on an empty window of a key with history, where the pre-pass gives NULL. The PR #85 parity sweep had no such key. Fixed in Phase 3 with <code>HAVING count(*) &gt; 0</code> on the fallback, now owned by a <code>_TransitionCount</code> base (the /simplify pass).</li>
+      <li><strong>Render digest.</strong> 59 of 68 names are byte-identical, not 57: <code>longest_streak</code> and <code>recurrence_interval</code> did not need to change.</li>
+      <li><strong>The frozen golden.</strong> <code>tests/integration/test_preagg_value_equality.py</code> failed for <code>ngram_3_freq|edge|{date,timestamp}|all</code>. The edge fixture's two-row groups 2, 3 and 5 held the partial trigram. The test overrides those cells by name (<code>_MOVED_BY_ADR</code>), and a test checks that each override differs from the golden. The JSON is untouched. The <code>rework_count</code> fragment in <code>test_phase5_aggregations.py</code> became <code>prev IS NOT DISTINCT FROM curr</code>.</li>
+      <li><strong>Phase 4.</strong> The first diff keyed rows on the non-feature columns and collapsed them, so dirtyduck showed 169 of 22,169 rows and phantom moves in <code>longest_streak</code>. The key is now the frame's <code>(as_of_date, target id)</code> index, with a uniqueness assert. The control is two independent <code>master</code> runs, not a file diffed with itself, and it gives 0 cells. Results: dirtyduck 16,781 cells, 4,452 entities, 18 columns (16,773 partial trigrams; 8 on the 4 entities that hold the 4 NULL <code>risk</code> rows); donorschoose 932 cells, 464 entities, all partial trigrams; chicago311 0. Raw files are in <code>specs/null-is-a-state/raw/</code>.</li>
+      <li><strong>Containers.</strong> The three live databases were already running when Phase 4 began (started 14–22 minutes earlier, not by this session), so they were not stopped. The <code>final_matrix --variant all-agg</code> regression overwrites <code>specs/live-db-revalidation-v100/raw/*-all-agg.json</code>, so those v1.0.0 records were backed up and restored.</li>
+    </ul>
+  </section>
+
+</main>
+</body>
+</html>

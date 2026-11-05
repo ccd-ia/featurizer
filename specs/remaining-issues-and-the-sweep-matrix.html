@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: The remaining issues, and the sweep matrix that ends the series</title>
+<style>
+  :root {
+    --paper:      #fcfbf8;
+    --paper-2:    #f2f0ea;
+    --ink:        #191c20;
+    --ink-soft:   #596472;
+    --line:       #dcd7cc;
+    --accent:     #1d5f7a;   /* fix / action */
+    --accent-2:   #7a4a1d;   /* report / finding */
+    --verify:     #1f6f4a;   /* proven */
+    --stale:      #9a6b12;
+    --alert:      #a2352a;
+    --code-bg:    #efece6;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:    #14171a;
+      --paper-2:  #1c2025;
+      --ink:      #e9e7e2;
+      --ink-soft: #99a4b0;
+      --line:     #2d333a;
+      --accent:   #63b0cd;
+      --accent-2: #d09a5e;
+      --verify:   #55b585;
+      --stale:    #d8a445;
+      --alert:    #e07060;
+      --code-bg:  #1e2329;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 16px 120px; }
+  h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; letter-spacing: -0.01em; margin: 56px 0 16px;
+       padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 32px 0 8px; }
+  h4 { font-size: 0.95rem; margin: 24px 0 8px; color: var(--ink-soft);
+       text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.86em;
+         background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 14px 16px; overflow-x: auto;
+        font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  header .meta { margin: 20px 0 0; font-size: 0.86rem; }
+  header .meta summary { cursor: pointer; color: var(--ink-soft);
+    font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.04em;
+    text-transform: uppercase; }
+  header .meta dl { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px;
+    margin: 14px 0 0; padding: 14px 16px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  header .meta dt { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+  header .meta dd { margin: 0; font-size: 0.82rem; word-break: break-word; }
+  figure { margin: 28px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  figcaption { margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft);
+    font-style: italic; max-width: 640px; margin-left: auto; margin-right: auto; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 6px; border-radius: 3px; vertical-align: 2px; margin-right: 6px; }
+  .tag.existing { background: var(--paper-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  .tag.new { background: var(--accent); color: var(--paper); }
+  .files ul { list-style: none; padding: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .phase { margin: 32px 0; padding: 4px 22px 22px; background: var(--paper-2);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--radius); }
+  .phase h3 { margin-top: 22px; }
+  .status { font-family: var(--mono); background: transparent; color: var(--ink-soft); padding: 0 4px 0 0; }
+  ul.checklist { list-style: none; padding: 0; margin: 10px 0; }
+  ul.checklist li { padding: 5px 0 5px 2px; font-size: 0.9rem; border-bottom: 1px dashed var(--line); }
+  .loop { margin: 18px 0 0; padding: 11px 14px; font-size: 0.86rem;
+    background: var(--paper); border: 1px solid var(--line);
+    border-left: 3px solid var(--stale); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+  td code { font-size: 0.82em; }
+  #definition-of-done { padding: 22px 24px 8px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  #definition-of-done h2 { margin-top: 6px; border-bottom-color: var(--verify); }
+  details { margin: 8px 0; padding: 10px 14px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  details summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+  details .qa-answer { margin: 10px 0 2px; font-size: 0.89rem; color: var(--ink-soft); }
+  .callout { padding: 12px 16px; margin: 18px 0; font-size: 0.89rem;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--alert); border-radius: var(--radius); }
+  .muted { color: var(--ink-soft); }
+  .svg-mono { font-family: var(--mono); font-size: 11px; }
+  .svg-label { font-family: var(--sans); font-size: 12px; }
+  .svg-title { font-family: var(--sans); font-size: 13px; font-weight: 600; }
+  .cell-ok { fill: var(--verify); }
+  .cell-red { fill: var(--alert); }
+  .cell-open { fill: none; stroke: var(--ink-soft); stroke-width: 1.5; }
+  .cell-clean { fill: var(--stale); }
+  .svg-ink { fill: var(--ink); }
+  .svg-soft { fill: var(--ink-soft); }
+  td.ok { color: var(--verify); font-weight: 600; }
+  td.red { color: var(--alert); font-weight: 600; }
+  td.open { color: var(--stale); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <h1>Plan: The remaining issues, and the sweep matrix that ends the series</h1>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-09-20T00:40:00-06:00</dd>
+        <dt>modified</dt>     <dd>2026-09-20T00:40:00-06:00, 2026-09-20T03:55:00-06:00, 2026-09-20T19:20:00-06:00, 2026-09-20T20:40:00-06:00, 2026-09-20T22:50:00-06:00</dd>
+        <dt>commits</dt>      <dd>f17b91d, 90fdd2d, 8e1222e, 5c648e6, f35cb95, 438ee01, e0e03a6, 9d18581, b72da03, 52d9409, 7cd6326, 60ff3a1, da53c6d, da99fd4</dd>
+        <dt>agent name</dt>   <dd>claude-fable-5-1</dd>
+        <dt>session id</dt>   <dd>e8f206ee-8312-48c2-8512-ed72f0468314</dd>
+        <dt>back refs</dt>    <dd>specs/consumer-reported-issues.html, specs/todo-audit-and-cockpit-fixes.html, docs/adr/0006-temp-table-materialization.md, docs/adr/0007-direct-categorical-fixed-vocabulary.md, docs/adr/0015-v1-api-stability-commitment.md, docs/adr/0016-leak-fixes-are-not-breaking.md (on PR #43), issues #27 #36 #37 #38, PR #43</dd>
+        <dt>forward refs</dt> <dd>—</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 760 250" role="img" aria-label="The sweep matrix: seventeen cells, seven backed by the suite today">
+      <text x="20" y="26" class="svg-title svg-ink">17 cells · 7 swept today</text>
+      <g class="svg-label svg-soft">
+        <text x="20" y="72">executes</text>
+        <text x="20" y="112">odd names</text>
+        <text x="20" y="152">future row</text>
+        <text x="20" y="192">paths agree</text>
+        <text x="20" y="232">valid ⇒ runs</text>
+      </g>
+      <g>
+        <rect x="150" y="54" width="26" height="26" rx="4" class="cell-ok"/><rect x="186" y="54" width="26" height="26" rx="4" class="cell-ok"/><rect x="222" y="54" width="26" height="26" rx="4" class="cell-ok"/>
+        <rect x="150" y="94" width="26" height="26" rx="4" class="cell-ok"/><rect x="186" y="94" width="26" height="26" rx="4" class="cell-red"/><rect x="222" y="94" width="26" height="26" rx="4" class="cell-ok"/><rect x="258" y="94" width="26" height="26" rx="4" class="cell-red"/><rect x="294" y="94" width="26" height="26" rx="4" class="cell-open"/>
+        <rect x="150" y="134" width="26" height="26" rx="4" class="cell-ok"/><rect x="186" y="134" width="26" height="26" rx="4" class="cell-clean"/><rect x="222" y="134" width="26" height="26" rx="4" class="cell-open"/><rect x="258" y="134" width="26" height="26" rx="4" class="cell-clean"/>
+        <rect x="150" y="174" width="26" height="26" rx="4" class="cell-ok"/><rect x="186" y="174" width="26" height="26" rx="4" class="cell-open"/><rect x="222" y="174" width="26" height="26" rx="4" class="cell-red"/>
+        <rect x="150" y="214" width="26" height="26" rx="4" class="cell-open"/><rect x="186" y="214" width="26" height="26" rx="4" class="cell-red"/>
+      </g>
+      <g class="svg-label svg-ink">
+        <rect x="420" y="58" width="18" height="18" rx="3" class="cell-ok"/><text x="448" y="72">swept in the suite</text>
+        <rect x="420" y="98" width="18" height="18" rx="3" class="cell-clean"/><text x="448" y="112">measured clean, no test</text>
+        <rect x="420" y="138" width="18" height="18" rx="3" class="cell-open"/><text x="448" y="152">never measured</text>
+        <rect x="420" y="178" width="18" height="18" rx="3" class="cell-red"/><text x="448" y="192">measured failing</text>
+      </g>
+    </svg>
+    <figcaption>Every issue of the last two weeks came out of a cell that had no executing test. The plan fills all seventeen and makes the coverage itself a test.</figcaption>
+  </figure>
+
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Close every open defect in <code>ccd-ia/featurizer</code> — <strong>#27</strong> and <strong>#36</strong> (PR #43, waiting for the merge word), <strong>#38</strong>, <strong>#37</strong>, and two classes measured while this plan was written that have no issue yet — and stop the series. The defects are not arriving at random: each one sits in a combination of features that no test executes. The plan names those combinations as a matrix of seventeen cells, fills every cell with a registry-wide executing sweep, and adds a coverage test so that the next primitive, identifier role or render path cannot land outside it.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p><strong>Why the count is growing.</strong> The tracker is two weeks old. Issue #2 is dated 2026-09-06, the day <code>master</code> became protected and "issue first" became the rule; before that date a defect became a commit, a <code>TODO.org</code> line or a paragraph in a session summary, so the earlier count is zero by construction. Twenty-two issues have been filed since. Nine are chores, docs or a feature request. Thirteen are defects, and they arrived in two bursts.</p>
+    <table>
+      <thead><tr><th>burst</th><th>defects</th><th>how they were found</th></tr></thead>
+      <tbody>
+        <tr><td>2026-09-07</td><td>#7 #9 #12 #13</td><td>The first consumer. <code>triage-pg</code> ran the library on shapes its author had not chosen: a wide table whose columns are named like featurizer output, a <code>temporal:</code> block on the other orientation, per-variable intervals.</td></tr>
+        <tr><td>2026-09-18 → 20</td><td>#14 #18 #21 #23 #27 #29 #36 #37 #38</td><td>Us, measuring. #23 and #29 came from the first sweeps that <em>execute</em> every registered primitive (83 transformers, 67 aggregations). #27 was measured before switching <code>cdf</code> on. #36, #37 and #38 were found while proving that the #27 fix holds on every render path. None was reported by a consumer.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Why they surface only now.</strong> None of the thirteen was introduced recently. Every one reproduces on the commit below its fix (<code>3e1790d</code>, <code>de03142</code>), in code that dates from 0.5 to 0.9. They stayed invisible because of how the suite is built. The testing guideline says to assert on SQL fragments and CTE names, and 762 of the 1,242 tests do exactly that: they render and never execute. The 480 that execute were each written for the shape their feature was designed around — plain lower-case column names, <code>identity</code> always in the transformer list, one as-of date, no interval on a materialized chain, a forced threshold of 1 in place of a real 1,664-column width. Every feature works on its own shape. The defects are all in the products: a primitive × a name shape, a whole-partition window × a child entity × a row after the as-of date, the TEMP-table path × two as-of dates × an interval. The golden-value and snapshot suites that enforce ADR-0015 pin what the engine <em>does</em>, so they pinned these too.</p>
+    <p><strong>Why fixing one finds two.</strong> A fix to an invariant has to be shown to hold on all three render paths (single query, column groups, TEMP tables), and two of those paths had only narrow tests. Proving #27 on the TEMP-table path is what exposed #36 and #37. That is the instrument working, and it is also discovery by accident: which cell gets opened next depends on which bug happens to be under repair.</p>
+    <p><strong>And one fix overshot.</strong> Since v1.2.0, #13, #24 and #29 quote a declared name byte for byte. Measured tonight: a config that spells a column <code>totalAmount</code> against a table created with unquoted DDL (PostgreSQL stores <code>totalamount</code>) runs on the <code>v1.2.0</code> tag and fails on master <code>c2c21a7</code> with <code>column "totalAmount" does not exist</code>. It is unreleased, and it has to be settled before any tag.</p>
+    <figure>
+      <svg viewBox="0 0 760 210" role="img" aria-label="Issues filed per day since the tracker was born">
+        <text x="20" y="24" class="svg-title svg-ink">issues filed per day</text>
+        <line x1="60" y1="170" x2="720" y2="170" stroke="var(--line)" stroke-width="1.5"/>
+        <g class="cell-ok" style="fill: var(--accent-2)">
+          <rect x="90"  y="130" width="56" height="40" rx="3"/>
+          <rect x="200" y="50"  width="56" height="120" rx="3"/>
+          <rect x="420" y="90"  width="56" height="80" rx="3"/>
+          <rect x="530" y="70"  width="56" height="100" rx="3"/>
+          <rect x="640" y="70"  width="56" height="100" rx="3"/>
+        </g>
+        <g class="svg-mono svg-soft" text-anchor="middle">
+          <text x="118" y="190">09-06</text><text x="228" y="190">09-07</text><text x="448" y="190">09-18</text><text x="558" y="190">09-19</text><text x="668" y="190">09-20</text>
+        </g>
+        <g class="svg-label svg-ink" text-anchor="middle">
+          <text x="118" y="122">2</text><text x="228" y="42">6</text><text x="448" y="82">4</text><text x="558" y="62">5</text><text x="668" y="62">5</text>
+        </g>
+        <text x="118" y="206" class="svg-label svg-soft" text-anchor="middle">tracker born</text>
+        <text x="228" y="206" class="svg-label svg-soft" text-anchor="middle">first consumer</text>
+        <text x="558" y="206" class="svg-label svg-soft" text-anchor="middle">executing sweeps begin</text>
+      </svg>
+      <figcaption>Twenty-two issues in two weeks, none before. Two triggers: a consumer on 09-07, registry-wide executing sweeps from 09-18. The defects themselves are months old.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Treat the untested products as a finite list and work through it on purpose. Five invariants the engine promises — a primitive <em>executes</em>; it executes when a declared identifier is <em>not a bare name</em>; a row dated <em>after the as-of date moves nothing</em>; the three render <em>paths agree</em>; a config that <em>validates runs</em> — crossed with the things that vary: the transformer registry, the aggregation registry, the planner passes, the render paths, the identifier roles. That is seventeen cells. Seven are swept by the suite once PR #43 lands. Four are measured failing, two are measured clean with no test to keep them so, four have never been measured.</p>
+    <p>Each phase below is one class. It opens with its sweep, written first and watched red with a count; the fix follows; the sweep stays in the suite. Order is set by two constraints. A change to rendered SQL moves the same three pinned artifacts, so those phases are serialized and each one lands before the next is pushed. And the name rule (Phase 2) changes <code>quote_if_bare</code>, which every later quoting site goes through, so it goes first. The last engineering phase fills the cells that have no known failure, adds a test that each sweep parametrizes over the <em>whole</em> registry, and writes the rule into <code>CONTRIBUTING.md</code>. When a sweep turns up a class nobody has seen, the phase says what to do with it, so the plan cannot stall on its own success.</p>
+    <figure>
+      <svg viewBox="0 0 760 130" role="img" aria-label="Each phase: sweep, red count, fix, green, coverage test">
+        <defs><marker id="arr" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ink-soft)"/></marker></defs>
+        <g class="svg-label svg-ink" text-anchor="middle">
+          <rect x="20"  y="40" width="120" height="50" rx="6" fill="var(--paper-2)" stroke="var(--line)"/><text x="80" y="70">write the sweep</text>
+          <rect x="170" y="40" width="120" height="50" rx="6" fill="var(--paper-2)" stroke="var(--alert)"/><text x="230" y="70">count the red</text>
+          <rect x="320" y="40" width="120" height="50" rx="6" fill="var(--paper-2)" stroke="var(--accent)"/><text x="380" y="70">fix the class</text>
+          <rect x="470" y="40" width="120" height="50" rx="6" fill="var(--paper-2)" stroke="var(--verify)"/><text x="530" y="70">sweep stays</text>
+          <rect x="620" y="40" width="120" height="50" rx="6" fill="var(--paper-2)" stroke="var(--verify)"/><text x="680" y="70">coverage test</text>
+        </g>
+        <g stroke="var(--ink-soft)" stroke-width="1.5" marker-end="url(#arr)">
+          <line x1="140" y1="65" x2="168" y2="65"/><line x1="290" y1="65" x2="318" y2="65"/><line x1="440" y1="65" x2="468" y2="65"/><line x1="590" y1="65" x2="618" y2="65"/>
+        </g>
+      </svg>
+      <figcaption>The shape of every phase. The sweep is the deliverable that outlives the fix.</figcaption>
+    </figure>
+  </section>
+
+  <section id="matrix">
+    <h2>The matrix</h2>
+    <p>State on 2026-09-20, master <code>173dc0d</code> plus PR #43. "Measured" means executed against PostgreSQL 16 tonight, with the script kept in the session scratchpad; the phases turn each script into a committed test.</p>
+    <table>
+      <thead><tr><th>#</th><th>invariant</th><th>crossed with</th><th>state</th><th>evidence</th><th>phase</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td rowspan="3">executes on plain names</td><td>83 transformers</td><td class="ok">swept</td><td><code>tests/test_transformer_quoting.py</code>, <code>tests/primitives/test_transformer_defects.py</code></td><td>—</td></tr>
+        <tr><td>2</td><td>67 aggregations</td><td class="ok">swept</td><td><code>tests/integration/test_all_aggregators_execution.py</code></td><td>—</td></tr>
+        <tr><td>3</td><td>planner passes (as-of lookup, peer, spatial, graph)</td><td class="ok">swept</td><td>their own integration files</td><td>—</td></tr>
+        <tr><td>4</td><td rowspan="5">executes when a declared identifier is not a bare name</td><td>transformers × variable</td><td class="ok">swept</td><td>#24</td><td>—</td></tr>
+        <tr><td>5</td><td>transformers × temporal index, entity id</td><td class="red">fails</td><td><code>Event Date</code>, <code>Event Id</code>: <code>syntax error at or near …</code></td><td>3</td></tr>
+        <tr><td>6</td><td>aggregations × variable, temporal index</td><td class="ok">swept</td><td>#29 (PR #35)</td><td>—</td></tr>
+        <tr><td>7</td><td>relationship keys, target id</td><td class="red">fails</td><td><code>Series Id</code>, <code>Series Ref</code>: 2 of 2 fail</td><td>3</td></tr>
+        <tr><td>8</td><td>planner passes × their columns (edges table, peer categorical, lat/lon, right entity)</td><td class="open">never measured</td><td>raw interpolation at <code>planner.py</code> ~825, 857, 1038, 1251, 1792</td><td>3</td></tr>
+        <tr><td>9</td><td rowspan="4">a row dated after the as-of date moves nothing</td><td>transformers on a child</td><td class="ok">swept (PR #43)</td><td>169 executing tests; 16 red with the cut removed</td><td>1</td></tr>
+        <tr><td>10</td><td>aggregations</td><td class="open">clean, no test</td><td>67 of 67 clean, one interval plus whole history</td><td>6</td></tr>
+        <tr><td>11</td><td>planner passes</td><td class="open">never measured</td><td>each carries its own <code>causal_predicate</code>; none has a future-row test</td><td>6</td></tr>
+        <tr><td>12</td><td><code>as_of_boundary: exclusive</code>, row dated ON the as-of date</td><td class="open">clean, no test</td><td>160 of 160 clean on the PR #43 branch</td><td>6</td></tr>
+        <tr><td>13</td><td rowspan="3">the three render paths agree</td><td>forced threshold, two as-of dates, interval, windows</td><td class="ok">swept (PR #43)</td><td>3 tests; 96 of 512 and 224 cells differed before</td><td>1</td></tr>
+        <tr><td>14</td><td>curated default primitives, two as-of dates</td><td class="open">never measured</td><td>every equality test before #43 used <code>identity</code> / <code>abs</code></td><td>6</td></tr>
+        <tr><td>15</td><td>a real &gt;1,664 width</td><td class="red">fails</td><td>#37: preamble statement 9, <code>target lists can have at most 1664 entries</code></td><td>5</td></tr>
+        <tr><td>16</td><td rowspan="2">a config that validates runs</td><td>shipped configs, executed in CI</td><td class="open">validated only</td><td><code>test.yml</code> validates <code>examples/0*/config.yaml</code>; only <code>just examples</code> executes them, locally</td><td>6</td></tr>
+        <tr><td>17</td><td>generated config shapes</td><td class="red">fails</td><td>#38: 104 of 162 runs without <code>identity</code>; the case-fold regression: 1 of 1</td><td>2, 4</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/abstractions.py</code> — <code>quote_if_bare</code>, the one function Phase 2 changes; every quoting site added by #13, #24 and #29 goes through it.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> — <code>_build_transformations</code> / <code>_build_transform_cte</code> (#38: <code>_built_features</code> is documented as "what this entity's transform actually projects" and is not); the raw identifier sites of Phase 3 (relationship keys in <code>_build_aggregations_cte</code>, the as-of lookup, the peer, spatial and graph passes).</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/transformations.py</code> — <code>_temporal_ordering</code> and the <code>partition by {parent.id.name}</code> sites (29 lines): the temporal index and the entity id are interpolated raw.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> — <code>MaterializationPlanner</code>: <code>_rejoin_subquery</code> is the <code>select *</code> of #37; <code>_asof_select</code> / <code>_current_date_source</code> arrive with PR #43; <code>estimate_heap_row_width</code> and <code>HEAP_ROW_BUDGET_BYTES</code> already exist and only <code>to_tables</code> uses them; <code>using (…)</code> clauses take the join key raw.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/validation.py</code> — unchanged by #38 (the maintainer chose the planner fix); gains nothing unless Phase 6's valid-implies-runs sweep finds a shape that should be rejected.</li>
+      <li><span class="tag existing">existing</span> <code>tests/utils/render_baseline.py</code>, <code>tests/fixtures/render_baseline_pre_cohort.json</code>, <code>tests/snapshots/sample_featurizer.sql</code>, <code>tests/__snapshots__/test_tui_screens/test_sql_screen.svg</code> — the three artifacts that pin rendered SQL. Every phase that changes rendered text re-captures them in its own commit, with the move read as text and the lineage appended.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_asof_bounded_child_read.py</code> (PR #43), <code>tests/test_aggregation_quoting.py</code> (#29), <code>tests/test_transformer_quoting.py</code> (#24) — the three sweeps whose fixtures the new ones reuse.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_sharding.py</code> — <code>_assert_materialized_equals_single</code> (PR #43) is the path-equality helper Phases 5 and 6 extend.</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/test.yml</code> — the integration legs (PostgreSQL 14 / 16 / 17); Phase 6 measures what the sweeps add to each.</li>
+      <li><span class="tag existing">existing</span> <code>CONTRIBUTING.md</code>, <code>src/content/docs/reference/configuration.md</code>, <code>src/content/docs/faq.md</code> — the matrix rule, the name rule, the pandas-column FAQ.</li>
+      <li><span class="tag existing">existing</span> <code>specs/reduce-child-stream-fanout-p3.html</code>, <code>specs/wide-primitive-sql-fixes-and-per-db-artifacts.html</code>, <code>specs/feature-materialization-performance.html</code> — the three old plans the index still lists as open (Phase 7).</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/test_declared_name_rule.py</code> — the name rule as a table, plus the executing case-fold config (Phase 2).</li>
+      <li><span class="tag new">new</span> <code>tests/test_identifier_roles_quoting.py</code> — identifier role × name shape, value parity against plain names (Phase 3).</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_transformer_selection.py</code> — every transformer selected alone, without <code>identity</code>, over an aggregated child (Phase 4).</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_materialization_real_width.py</code> — default threshold, &gt;1,664 columns, non-null <code>float8</code> data, two as-of dates (Phase 5).</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_future_row_aggregations.py</code>, <code>tests/integration/test_future_row_planner_passes.py</code> — cells 10 and 11 (Phase 6).</li>
+      <li><span class="tag new">new</span> <code>tests/integration/test_path_equivalence_defaults.py</code>, <code>tests/integration/test_valid_config_runs.py</code> — cells 14, 16 and 17 (Phase 6).</li>
+      <li><span class="tag new">new</span> <code>tests/test_sweep_matrix_coverage.py</code> — asserts each sweep parametrizes over the whole registry, so a new primitive cannot land unswept (Phase 6).</li>
+    </ul>
+  </section>
+
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works. Phase 1 was under way when the plan was written, and its markers say so.</p>
+    <div class="callout">
+      <strong>Rules that hold in every phase</strong> (from <code>CONTRIBUTING.md</code> and the repo's memory): issue first; one worktree per need, off <code>origin/master</code>, named <code>&lt;area&gt;/&lt;need&gt;</code>; PRs never edit <code>CHANGELOG.md</code>; eight green contexts, read from the check-runs of the <em>head SHA</em>; <code>gh pr merge</code> only on the maintainer's explicit word, with the worktree removed first. <strong>Phases 2, 3 and 5 change rendered SQL and therefore move the same three pinned artifacts: they are strictly serial, and a phase's first push happens only after the previous one has merged</strong> (a second push after a rebase needs the gated force-push). Phase 4 must leave the artifacts byte-identical and may overlap with any of them.
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Land PR #43 — the as-of cut on every child read (#27) and the TEMP-table path that can carry it (#36)</h3>
+      <p>The work is done and verified locally: integration 773 succeeded / 57 skipped / 0 failed on the rebased branch, fast tier 834 / 0 failed, all six examples run, the leak sweep is also clean under <code>as_of_boundary: exclusive</code>. What is left is CI on the pushed head and the merge word. <em>depends-on: nothing. owner: main session.</em></p>
+
+      <h4>1. Green, merged, closed</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Land #35 (#29) first, because it moves the same three artifacts; rebase <code>planner/asof-bound-child-read</code> on the merged master; re-capture the artifacts in their own commit with the move read as text (eight of nine baseline cases: one added <code>where</code> per temporal child synth, nothing removed; <code>generated/chain</code> moves by design; <code>n_groups</code> unchanged in all nine).</li>
+        <li><code class="status">[x]</code> First push and PR #43, head <code>f205ff8</code> on master <code>173dc0d</code>.</li>
+        <li><code class="status">[x]</code> Eight contexts green on <code>f205ff8</code>: <code>gh api repos/ccd-ia/featurizer/commits/&lt;sha&gt;/check-runs</code>.</li>
+        <li><code class="status">[x]</code> On the maintainer's word: <code>git worktree remove .worktrees/asof-bound-child-read</code>, then <code>gh pr merge 43 --rebase --delete-branch</code>.</li>
+        <li><code class="status">[x]</code> <code>gh issue view 27</code> and <code>gh issue view 36</code> read CLOSED; <code>git pull --ff-only</code> in the main checkout.</li>
+        <li><code class="status">[x]</code> Project <code>CLAUDE.md</code> (local, gitignored): "15 records" becomes 16 now that ADR-0016 is on master.</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>Nothing new to write; the phase is proven by re-running the tiers on merged master, where the leak sweep and the two-date materialization tests now live.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — fast tier green on merged master.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q tests/integration/test_asof_bounded_child_read.py tests/integration/test_sharding.py</code> — cells 9 and 13 are in the suite.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: A declared name means what it means in PostgreSQL</h3>
+      <p>An unreleased regression, decided by the maintainer on 2026-09-20. Byte-for-byte quoting (#13, #24, #29) breaks a config that ran on <code>v1.2.0</code> whenever the declared spelling and the stored column differ in case. The rule becomes PostgreSQL's own: a name that is a valid bare identifier is folded to lower case and then quoted (which also makes reserved words work); anything else is quoted byte for byte; a name the config already wraps in double quotes is taken exactly. One function changes. <em>depends-on: Phase 1 merged (shared artifacts). owner: one worktree, <code>planner/declared-name-rule</code>.</em></p>
+<pre><code>declared        rendered         v1.2.0   master   after
+totalAmount  -> "totalamount"     runs     FAILS    runs
+order        -> "order"           fails    runs     runs
+Amount USD   -> "Amount USD"      fails    runs     runs
+'"entityId"' -> "entityId"        fails    runs     runs   (the YAML carries the quotes)</code></pre>
+
+      <h4>1. Issue, then the rule as a failing table</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> File the issue with the measurement: the config, <code>v1.2.0</code> (<code>011aaf2</code>) runs and returns the column as <code>region</code>; master <code>c2c21a7</code> fails with <code>column "totalAmount" does not exist</code>.</li>
+        <li><code class="status">[x]</code> <code>tests/test_declared_name_rule.py</code>, DB-free: one parametrized table over <code>quote_if_bare</code> — <code>totalAmount</code>, <code>Order</code>, <code>order</code>, <code>_x9$</code>, <code>Año</code> (ASCII letters fold, the rest is kept: PostgreSQL's <code>downcase_identifier</code>), <code>Amount USD</code>, <code>MEAN(games.goals)</code>, <code>he"llo</code>, <code>"entityId"</code>, a generated <code>"MEAN(orders.amount)"</code>. Watch the fold rows fail.</li>
+        <li><code class="status">[x]</code> Same file, <code>@pytest.mark.integration</code>: the case-fold config against unquoted DDL runs, and its result columns equal what <code>v1.2.0</code> returned (<code>region</code>, <code>MAX(events.totalAmount)</code>). A second table created by quoted DDL with a genuinely mixed-case column runs when the YAML carries the quotes.</li>
+        <li><code class="status">[x]</code> Measure, then pin: for a mixed-case declared target variable, what does <code>feature_manifest</code> report as the column, on <code>v1.2.0</code> and after? Whatever ran on <code>v1.2.0</code> stays; a mismatch that already existed there is recorded in the issue and left alone.</li>
+      </ul>
+
+      <h4>2. The rule</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>featurizer/primitives/abstractions.py</code>, <code>quote_if_bare</code>: already delimited → unchanged; a valid bare identifier (first character a letter, an underscore or any non-ASCII character; then those, digits and <code>$</code>) → ASCII-lowercase, then quote; otherwise quote byte for byte. Rewrite its docstring: "byte for byte" is no longer the whole truth.</li>
+        <li><code class="status">[x]</code> A pre-quoted declared name reaches the name builders (<code>Aggregator</code> name / label, <code>_name_label</code>, <code>pg_identifier</code>) with its quotes on. Test that the ADR-0007 output name carries no embedded quotes and that validation accepts the key; fix only what the test shows.</li>
+        <li><code class="status">[x]</code> The three pinned artifacts must <strong>not</strong> move: every shipped and generated baseline config is lower-case. If a digest moves, something other than the rule changed — stop and find it.</li>
+      </ul>
+
+      <h4>3. Say it where a user looks</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>src/content/docs/reference/configuration.md</code>: a short "Column names" paragraph under <code>entities</code> — bare names fold as in SQL, anything else is quoted for you, wrap a name in double quotes to take it exactly.</li>
+        <li><code class="status">[x]</code> <code>src/content/docs/faq.md</code>: "My column was created by pandas and featurizer says it does not exist" — pandas quotes what it creates; write <code>'"entityId"'</code>.</li>
+        <li><code class="status">[x]</code> <code>TODO.org</code>, the CHANGELOG-owed list: the release notes describe the final rule only (the byte-for-byte interval never shipped).</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>pytest, both tiers. The edge cases are the table rows: non-ASCII letters, an embedded quote, a reserved word in mixed case, a name that is already delimited, a generated name.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_declared_name_rule.py -q</code> — the rule, DB-free.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/test_declared_name_rule.py tests/test_transformer_quoting.py tests/test_aggregation_quoting.py tests/test_synth_quoting.py -q</code> — the fold config runs, and nothing #13 / #24 / #29 gained is lost.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_cohort_pairs.py tests/test_sql_snapshot.py tests/test_tui_screens.py -q</code> — the artifacts did not move.</li>
+        <li><code class="status">[x]</code> <code>uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code></li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: Quote every declared identifier, not only variables</h3>
+      <p>#13, #24 and #29 each quoted the site their reporter hit. Measured on master <code>c2c21a7</code>: a variable with a space, a reserved word or mixed case now runs (3 of 3), and every <em>other</em> identifier role still fails (4 of 4): a temporal index under a window transformer, a child id, a target id used as parent key, a child foreign key. The planner passes have never been tried. This phase sweeps identifier <em>role</em> × name shape, so the class closes and not the next site. <em>depends-on: Phase 2 merged (it changes what quoting means). owner: one worktree, <code>planner/identifier-roles-quoting</code>.</em></p>
+
+      <h4>1. Issue, then the sweep, red</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> File the issue with tonight's table (the control runs; <code>Event Date</code>, <code>Event Id</code>, <code>Series Id</code>, <code>Series Ref</code> fail with <code>syntax error at or near …</code>).</li>
+        <li><code class="status">[x]</code> <code>tests/test_identifier_roles_quoting.py</code>. Roles: entity <code>id</code>, <code>temporal_ix</code>, <code>spatial_ix</code> lat / lon, relationship <code>parent.key</code> and <code>child.key</code>, a carried <code>type: index</code> variable, the as-of lookup's <code>child_timestamp</code>, the <code>peer_groups</code> categorical, <code>graph_relationships.edges.{source,target,timestamp}</code> and the <code>right</code> entity's columns. Shapes: a space (<code>Event Date</code>), a reserved word (<code>order</code>), aggregate-shaped (<code>MEAN(games.goals)</code>). Config: curated default transformations and <code>max</code>, <code>count</code>, <code>recency</code>, one interval, so window <code>order by</code> / <code>partition by</code> and the interval filter are all exercised.</li>
+        <li><code class="status">[x]</code> The assertion is value parity against the same data under plain names (the #29 method), not only "it runs".</li>
+        <li><code class="status">[x]</code> Record the red count per role in the issue before touching code.</li>
+      </ul>
+
+      <h4>2. Quote at the emission sites, keep the metadata as it is</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>featurizer/primitives/transformations.py</code>: <code>_temporal_ordering</code> and every <code>partition by {parent.id.name}</code> (29 lines) go through one local helper, as <code>_col</code> does for the wrapped column; the rolling-percentile subquery's correlation (<code>{synth}.{partition} = {ego}.{partition}</code>) too.</li>
+        <li><code class="status">[x]</code> <code>featurizer/planner.py</code>: relationship keys in <code>_build_aggregations_cte</code> (select list, <code>group by</code>, the <code>join … on</code>), the direct / as-of lookup builder (~1792–1850), and the peer (~825, 857), spatial (~1038) and graph (~1169, 1251) passes.</li>
+        <li><code class="status">[x]</code> <code>featurizer/sharding.py</code>: <code>using (…)</code> in <code>_rejoin_subquery</code>, <code>_shard_keys</code>, and the as-of correlation — the join key reaches SQL raw.</li>
+        <li><code class="status">[x]</code> <strong>Two forms, as <code>_build_synth_cte</code> already does.</strong> SQL gets the quoted reference. Metadata does not move: <code>ShardableCTE.key_columns</code>, <code>MaterializationKey.join_key</code>, <code>GroupedQueries.key_columns</code> and the group tables' leading columns are frozen by ADR-0015. Pin them with a test that compares against master.</li>
+        <li><code class="status">[x]</code> Not quoted, on purpose: <code>table</code>. It is a possibly schema-qualified relation (<code>analytics.visits</code>); quoting it whole would name no table. Say so in the configuration reference.</li>
+      </ul>
+
+      <h4>3. Artifacts</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Re-capture the three artifacts in their own commit. The move must be quoting only: for every part of every baseline case, master's text and the branch's are identical once every double quote is stripped, and <code>n_groups</code> is unchanged. Append the lineage to <code>tests/utils/render_baseline.py</code> and a key to the JSON.</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>pytest with the executing sweep as the proof; the DB-free half asserts fragments so the fast tier also guards each site. Edge cases: a primary key that doubles as a foreign key (deduplicated in <code>_identifier_columns</code>), an id-less entity, the exclusive boundary.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/test_identifier_roles_quoting.py -q</code> — every role × shape runs with value parity.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -m integration</code> — nothing else moved, the materialized path included.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q &amp;&amp; uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code></li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4: #38 — a transformer list without <code>identity</code> carries its raw inputs as helpers</h3>
+      <p>Decided by the maintainer on 2026-09-20. <code>planner.py</code> already documents the invariant this restores: <code>_built_features</code> is "what this entity's transform actually projects", and the aggregation pass reads it. It is really a copy of <code>_features</code>, which keeps the raw variables whether or not a transformer projects them, so without <code>identity</code> the aggregation reads a column its source does not have. The planned feature set and the manifest are already right; only the SQL is short one projection. <em>depends-on: nothing (must leave the artifacts byte-identical). owner: one worktree, <code>planner/transformer-selection</code>; can run beside Phase 2 or 3.</em></p>
+<pre><code>events_transform as (
+  select "event_id", "ts",
+         "x" as "x",                 -- helper, new: the parent aggregates it
+         abs("x") as "ABS(events.x)"
+  from events_synth _ego
+)</code></pre>
+
+      <h4>1. The sweep, red</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_transformer_selection.py</code>: for every registered transformer <code>t</code>, <code>transformations: [t]</code> alone, <code>series &lt;- events</code>, <code>max</code> / <code>min</code> / <code>count</code>; the query runs and its result columns equal <code>feature_manifest</code>'s columns. Measured on <code>de03142</code> with the scratch version: 104 of 162 runs fail with <code>column "x" does not exist</code> — every transformer that does not hand its input through.</li>
+        <li><code class="status">[x]</code> DB-free, in <code>tests/test_planner_sql_validity.py</code>: for every non-target entity, every name in <code>_built_features[alias]</code> (index and key types aside) is a column the entity's transform CTE projects. This one fails at plan time, so the fast tier guards the class.</li>
+      </ul>
+
+      <h4>2. The fix</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>FeaturePlanner._build_transformations</code>: for an entity that is <strong>not</strong> the target, hand <code>_build_transform_cte</code> the entity's whole feature set after the update, not only the transformers' outputs. <code>_build_transform_cte</code> already renders a name that is a synth column as a pass-through.</li>
+        <li><code class="status">[x]</code> The target is untouched: its transform's select list <em>is</em> the output matrix, and without <code>identity</code> the raw columns stay out of it, as today. Pin it.</li>
+        <li><code class="status">[x]</code> With <code>identity</code> present the rendered SQL is byte-identical: the helpers are already there. The three artifacts must not move.</li>
+        <li><code class="status">[x]</code> <code>src/content/docs/reference/configuration.md</code>, the <code>transformations</code> row: one sentence on what leaving <code>identity</code> out does and does not drop.</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>pytest. Edge cases: <code>transformations: []</code> (documented as identical to <code>[identity]</code>), a depth-3 chain where the middle entity is both child and parent, a child whose only variable is categorical, the materialized path (the helpers widen a child transform).</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/integration/test_transformer_selection.py -q</code> — every transformer runs selected alone.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_planner_sql_validity.py tests/test_cohort_pairs.py tests/test_sql_snapshot.py -q</code> — the closure holds at plan time; the artifacts did not move.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -m integration &amp;&amp; uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code></li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 5: #37 — the TEMP-table path at the width it exists for</h3>
+      <p>The path is for a child chain wider than 1,664 columns, and it has only ever been tested with a forced threshold of 1 on narrow configs. At a real width the first statement that <em>reads</em> a materialized CTE fails, because <code>_rejoin_subquery</code> re-joins every shard with <code>select *</code> and a materialized CTE is by definition over the limit. The limit applies to a FROM subquery, a CTE, a <code>materialized</code> CTE and a lateral alike (checked with two 1,000-column tables). <em>depends-on: Phase 3 merged (shared artifacts and <code>sharding.py</code>). owner: one worktree, <code>sharding/real-width-rejoin</code>.</em></p>
+
+      <h4>1. A real-width test, red</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_materialization_real_width.py</code>: <code>stores &lt;- orders &lt;- items</code>, <code>items</code> with 150 numeric variables, <code>intervals: [P30D, P90D]</code>, five aggregations, <strong>default threshold</strong>, two as-of dates. Widths measured: <code>items_aggs_for_orders</code> 1,810, <code>orders_synth</code> and <code>orders_transform</code> 1,813. Red today at preamble statement 9.</li>
+        <li><code class="status">[x]</code> <strong>Non-null <code>float8</code> data in all 150 variables.</strong> The scratch probe used NULLs, which take no room. See task 3.</li>
+        <li><code class="status">[x]</code> The oracle, since the single query cannot run at this width: a narrow config over the same tables with three of the 150 variables runs as one query, and every column the two results share must be equal.</li>
+      </ul>
+
+      <h4>2. Re-join only what the reader needs</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>_pruned_rejoin(shards, needed)</code>: the as-of date when the shards are as-of-keyed, the first shard's identifier columns, the needed feature columns; join only the shards that carry a needed column, plus shard 0 for the identifiers.</li>
+        <li><code class="status">[x]</code> A transform chunk's <code>needed</code> is the union of its columns' <code>ColumnSpec.depends_on</code> — the metadata column-group sharding already prunes with. The rolling percentiles' by-name re-scan is covered, because the scan that fills <code>depends_on</code> reads the projection text.</li>
+        <li><code class="status">[x]</code> An agg chunk and a group body have no <code>depends_on</code>: find the needed names by the same literal-name scan (<code>FeaturePlanner._synth_deps</code>: quoted names verbatim, bare names on word boundaries), promoted to a shared helper and run over the chunk's projections plus the tail. Callers: <code>_rewrite_from_sources</code>, <code>_asof_reexposed</code> / <code>_current_date_source</code> (PR #43), <code>rewrite_group_body</code>.</li>
+        <li><code class="status">[x]</code> When <code>needed</code> plus the keys is itself over <code>PG_MAX_TARGET_LIST</code> (a chunk of 1,400 two-input aggregations can ask for 2,800 columns), halve the chunk until it fits.</li>
+      </ul>
+
+      <h4>3. The second limit behind the first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Measure: does a 1,400-column <code>float8</code> shard fail <code>create temp table … as</code> with <code>row is too big: size …, maximum size 8160</code>? Expected yes (1,400 × 8 bytes = 11,200). #23 showed the pattern: a second defect waits behind the first.</li>
+        <li><code class="status">[x]</code> If it does: file it as its own issue with the measurement, and size TEMP shards by <code>estimate_heap_row_width(…) &lt;= HEAP_ROW_BUDGET_BYTES</code> — the estimator and the budget already exist in <code>sharding.py</code> and only <code>to_tables</code> uses them (issue #11).</li>
+      </ul>
+
+      <h4>4. Artifacts and the record</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Only <code>generated/chain</code>'s <code>ddl</code> and <code>groups</code> digests may move (explicit select lists in place of <code>select *</code>). Read the move as text, re-capture in its own commit, append the lineage.</li>
+        <li><code class="status">[x]</code> <code>docs/adr/0006-temp-table-materialization.md</code>: an amendment paragraph. The "provably identical" consequence was proven at a forced threshold; say what is now proven at a real width, and that the as-of LATERAL residual still raises.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>pytest, integration tier. Edge cases: a CTE with one shard, a transform chunk whose columns all depend on one synth column, a two-input aggregation at the chunk boundary, the paired cohort (<code>as_of_dates.id_column</code>) through the preamble.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/integration/test_materialization_real_width.py -q</code> — runs end to end at 1,813 columns with non-null data; shared columns equal the narrow single query.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/integration/test_sharding.py tests/integration/test_impute_with_materialization.py tests/integration/test_relationship_topologies.py -q</code> — the forced-threshold equalities of PR #43 still hold.</li>
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -m integration &amp;&amp; uv run pytest -m "not integration" -q &amp;&amp; uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code></li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 6: Fill the rest of the matrix, and make its coverage a test</h3>
+      <p>Phases 2 to 5 close the four cells measured failing. Six cells remain with no known failure: two measured clean tonight with nothing in the suite to keep them so (10, 12), four never measured (8 is taken by Phase 3; 11, 14, 16 here). This phase turns each into a committed executing sweep, then adds the test that keeps the matrix closed and the rule that makes it policy. Tests only, so it moves no artifact and can be split into several small PRs. <em>depends-on: Phase 1 merged (it extends the leak sweep); otherwise free. owner: one worktree per PR, <code>tests/&lt;cell&gt;</code>.</em></p>
+      <div class="callout">
+        <strong>When a sweep finds a class nobody has seen.</strong> That is the sweep doing its job, not the plan failing. File it with the measurement (config, commit, PostgreSQL version, red count, the control that runs). If it is the same class as a phase of this plan, fix it there. If it is new, land the sweep with a strict <code>xfail</code> that names the issue, so the cell is recorded as "measured failing" and the suite turns red the day someone fixes it without removing the mark; then add a phase by amendment. Do not widen a PR to absorb it.
+      </div>
+
+      <h4>1. A row after the as-of date moves nothing — aggregations, the boundary, the passes (cells 10, 11, 12)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_future_row_aggregations.py</code>: every registered aggregation, one interval plus the whole history, two rows after the as-of date (one the day after, one months later), reusing the fixture of <code>tests/test_aggregation_quoting.py</code> (input types, predicates, lat / lon). Measured on <code>c2c21a7</code>: 67 of 67 clean.</li>
+        <li><code class="status">[x]</code> Parametrize the transformer leak sweep (<code>tests/integration/test_asof_bounded_child_read.py</code>) over <code>as_of_boundary</code>: under <code>exclusive</code> the extra row is dated ON the as-of date. Measured on the PR #43 branch: 160 of 160 clean.</li>
+        <li><code class="status">[x]</code> <code>tests/integration/test_future_row_planner_passes.py</code>: <code>peer_groups</code>, <code>spatial_relationships</code> (co-location, nearest, KDE), <code>graph_relationships</code> (degree, neighbour mean, neighbour share) and the as-of lookup, each run with and without rows (and edges) dated after the as-of date. Never measured; each pass carries its own <code>causal_predicate</code>, so the expectation is clean.</li>
+        <li><code class="status">[x]</code> Measure, do not decide: a <strong>target</strong> that has a temporal index and several rows per id, with a row after the as-of date, under <code>percent_rank</code> and <code>cross_entity_zscore</code> at the target level. PR #43 leaves the target unbounded on purpose (its rows are the cohort). Record what moves in the issue tracker and bring the numbers to the maintainer — see Questionables.</li>
+      </ul>
+
+      <h4>2. The three render paths agree on the defaults (cell 14)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_path_equivalence_defaults.py</code>: the curated <code>DEFAULT_AGGREGATIONS</code> × <code>DEFAULT_TRANSFORMATIONS</code>, one interval, two as-of dates, a depth-3 chain. The single query, the column groups (a low <code>max_columns_per_group</code>) and the TEMP tables (a low <code>materialize_threshold</code>) return the same matrix, NULLs included. Build on <code>_assert_materialized_equals_single</code>.</li>
+        <li><code class="status">[x]</code> The same under the paired cohort (<code>as_of_dates: {id_column}</code>), which reads <code>as_of_dates</code> in all three paths.</li>
+      </ul>
+
+      <h4>3. A config that validates runs (cells 16, 17)</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_valid_config_runs.py</code>, part one: every shipped example is seeded (<code>create_data.py</code>) and executed in the integration tier, so CI runs what <code>just examples</code> runs locally. Example 04 registers its primitives first, as its <code>run_example.py</code> does.</li>
+        <li><code class="status">[x]</code> Part two, generated shapes over one small fixture: depth 1 to 3; no <code>intervals</code>; a child without a temporal index; <code>aggregations: []</code>; <code>transformations: []</code>; a transformer list without <code>identity</code>; an as-of lookup in both orientations (the inert one must warn, per #25); a primary key that doubles as a foreign key; mixed-case declared names. The assertion is one line: <code>ConfigValidator().validate(config).is_valid</code> implies the rendered query executes.</li>
+        <li><code class="status">[x]</code> A shape that validates and cannot run is either a planner defect (fix it) or a shape to reject (a validation error with a fix-it message). Apply the callout above.</li>
+      </ul>
+
+      <h4>4. Keep the matrix closed</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/test_sweep_matrix_coverage.py</code>, DB-free: for each sweep module, the set of primitives it parametrizes over, plus its documented exclusions, equals the registry (<code>list_transformations()</code>, <code>list_aggregations()</code>). The pattern is <code>test_the_sweeps_cover_the_whole_registry</code> from #29. A primitive registered without a row fails the fast tier.</li>
+        <li><code class="status">[x]</code> The same for identifier roles: the role list of <code>tests/test_identifier_roles_quoting.py</code> is checked against <code>Entity</code>'s index and key attributes and the keys <code>ConfigValidator</code> accepts for the three planner-pass blocks, so a new config key that names a column cannot land unquoted.</li>
+        <li><code class="status">[x]</code> <code>CONTRIBUTING.md</code>, beside the six change rules: a new primitive, a new config key that names a column, or a new render path lands with its row in the matrix — executing, registry-wide, value-checked. Mirror it as one line in the project <code>CLAUDE.md</code> testing guidelines (local file).</li>
+        <li><code class="status">[x]</code> Measure the integration leg before and after on CI (PostgreSQL 16 leg, wall-clock of the pytest step). Budget: no more than 4 minutes added per leg. The leak sweep costs 57 s for 169 cases locally. If the budget is exceeded, thin the shapes per role before thinning the registry.</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>pytest; the phase <em>is</em> tests. Each new file is proven able to fail before it is trusted: revert the fix its cell depends on (the as-of cut for cells 10 to 12, PR #43's lateral for cell 14, Phase 4's projection for cell 17) and watch the sweep turn red, then restore.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest tests/integration/test_future_row_aggregations.py tests/integration/test_future_row_planner_passes.py tests/integration/test_path_equivalence_defaults.py tests/integration/test_valid_config_runs.py -q</code> — cells 10, 11, 14, 16, 17.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_sweep_matrix_coverage.py -q</code> — every sweep covers the whole registry.</li>
+        <li><code class="status">[x]</code> <code>gh run view --log</code> on the merged PR's PostgreSQL 16 leg — the added wall-clock is inside the budget.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 7: Bring the plan index back to the truth</h3>
+      <p>The session briefing of 2026-09-19 reported one stale plan because it counted from a five-row listing. The full index has three more that read as open work: <code>reduce-child-stream-fanout-p3.html</code> (in progress, 2 of 4 phases, 72 days), <code>wide-primitive-sql-fixes-and-per-db-artifacts.html</code> (not started, 0 of 3, 74 days) and <code>feature-materialization-performance.html</code> (no metadata). Work from that period shipped — ADR-0010's set-based pre-aggregation, the wide-primitive fixes of 0.5.x — so these are probably records that were never closed, not work that was never done. Find out. <em>depends-on: nothing. owner: one worktree, <code>docs/plan-index</code>; tracked files, so a PR like #40.</em></p>
+
+      <h4>1. One verdict per plan, from git</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> For each open phase of the three plans, look for the commits that did it (<code>git log --grep</code>, <code>CHANGELOG.md</code>, the ADRs). Three outcomes: landed (mark <code>[x]</code>, append the SHAs to <code>commits</code>), superseded (an Amendment naming what replaced it), or genuinely open (a <code>TODO.org</code> entry that points at the plan, so <code>link-tasks.sh</code> joins them).</li>
+        <li><code class="status">[x]</code> Mark this plan's own phases as they land; it should read <code>landed</code> when Phase 6 merges.</li>
+      </ul>
+
+      <h4>2. Testing Strategy</h4>
+      <p>The plan indexer is the test. Count from the full listing, never the five-row one.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>bash ~/.claude/skills/session-start/scripts/index-plans.sh specs --porcelain | grep -v '^landed'</code> — prints only plans that are truly open, each with a <code>TODO.org</code> entry.</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong> If any command fails, fix the cause and re-run — loop until all pass.</div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 8: #48 — an as-of lookup on a child that is then aggregated</h3>
+      <p>Added by amendment on 2026-09-20. Found by Phase 3's sweep on plain names, then twice more by Phase 6: a child that receives an as-of lookup cannot be aggregated under <code>count</code> (the lookup's index columns are listed among the child's features and never transferred), nor under any interval (the filter reads the <em>source's</em> temporal index, the aggregation-side twin of #21), and a <code>child_timestamp</code> naming an undeclared column validates and does not run. Working decision, on the implementer's recommendation, which the maintainer asked for: fix now, design the transfer later (#60). <em>depends-on: nothing. Merge needs the maintainer's word: this phase was not in the plan the merge authorization covered.</em></p>
+      <h4>1. The sweep first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Remove the strict <code>xfail</code> of <code>tests/integration/test_valid_config_runs.py</code> (<code>lookup-on-a-child-interval-and-count</code>) and watch it fail; add the curated default aggregations over a lookup on a child, and a <code>child_timestamp</code> that names an undeclared column.</li>
+        <li><code class="status">[x]</code> Extend the DB-free closure check of <code>tests/test_planner_sql_validity.py</code> to a config with a lookup: it should fail at plan time for <code>rate_id</code>.</li>
+        <li><code class="status">[x]</code> Give <code>tests/integration/test_future_row_planner_passes.py</code> its interval back for the lookup config, so the as-of lookup is leak-tested under an interval too.</li>
+      </ul>
+      <h4>2. The fix</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>FeaturePlanner._build_direct</code>: the receiving entity's feature set takes only what the pull transfers (no <code>index</code> / <code>key</code> features of the source).</li>
+        <li><code class="status">[x]</code> Interval filters and causal bounds of an aggregation over a transferred feature are cut on the aggregated entity's temporal index (<code>source.temporal_ix</code> in the aggregator call), not on <code>feature.entity</code>'s. 33 <code>_tix</code> sites in <code>aggregations.py</code>; find the choke point before editing them one by one.</li>
+        <li><code class="status">[x]</code> <code>child_timestamp</code>: the planner carries the named column through the lookup's synth and transform (it already carries <code>type: index</code> variables the same way); no new validation error for a config that can be made to run.</li>
+        <li><code class="status">[x]</code> Artifacts: the sample config has an as-of lookup on its <em>target</em>, which this does not touch; if a digest moves, read it as text before re-capturing.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just test-integration</code> — no <code>xfail</code> left that names #48.</li>
+        <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q &amp;&amp; uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code></li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong></div>
+    </div>
+
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 9: #49 — cut the target's read too, and say so in an ADR</h3>
+      <p>Added by amendment on 2026-09-20; decided by the maintainer the same day. Measured on <code>8e1222e</code>: on an event-like target a row dated after the as-of date is <em>emitted</em> under that date, and it moves <code>cross_entity_zscore</code> on 5 of 5 knowable rows, <code>cusum</code> and <code>last</code> on 3 of 5, <code>percent_rank</code> on 2 of 5. The fix is one condition in <code>_causal_where</code>; the weight is in what it changes: which rows a date returns, a return shape ADR-0015 freezes. <em>depends-on: nothing, but it moves the pinned artifacts only if a pinned config has a target with a temporal index (check first). Merge needs the maintainer's word.</em></p>
+      <h4>1. The sweep first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_asof_bounded_target_read.py</code>: every registered transformer on an event-like target, run with and without a target row after the as-of date. Red today for the four whole-partition families; also assert the later row is not emitted under the earlier date and IS emitted from the first as-of date on or after it.</li>
+        <li><code class="status">[x]</code> A target <em>without</em> a temporal index returns exactly what it returned: pin with the existing suites and one explicit test. Every <code>triage-pg</code> config is this shape.</li>
+        <li><code class="status">[x]</code> The paired cohort (<code>as_of_dates.id_column</code>) with a population-level transformer: the post-filter path still sees only knowable rows.</li>
+      </ul>
+      <h4>2. The change and its record</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>FeaturePlanner._causal_where</code>: drop the "not the target" condition; the cohort predicate and the causal cut combine with <code>and</code> when both apply.</li>
+        <li><code class="status">[x]</code> <code>docs/adr/0017-…</code>: extends ADR-0016's exemption from "a value that depended on unknowable rows" to "an unknowable row". Dispatch the <code>adr-writer</code> agent or write it in the house form; extend <code>ADR_THEMES</code> in <code>site/gen.py</code>.</li>
+        <li><code class="status">[x]</code> Docs: the configuration reference (what a <code>temporal_ix</code> on the target now means), the internals page (the sentence "the target's own read carries no guard" becomes false), the peer-group note if it overlaps.</li>
+        <li><code class="status">[x]</code> <code>TODO.org</code> CHANGELOG-owed list: the release notes must name this as a change in returned rows for targets with a temporal index.</li>
+      </ul>
+      <h4>3. Testing Strategy</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just test-integration</code> and the fast tier; <code>just examples</code> (example 02's target has a temporal index: read what changes in its output before accepting it).</li>
+      </ul>
+      <div class="loop">🔁 <strong>Do not exit this phase until every box above is checked.</strong></div>
+    </div>
+  </section>
+
+  <section id="definition-of-done">
+    <h2>Definition of Done</h2>
+    <figure>
+      <svg viewBox="0 0 760 120" role="img" aria-label="Matrix cells backed by a suite sweep: seven of seventeen today, seventeen of seventeen when done">
+        <g class="svg-label svg-ink">
+          <text x="20" y="38">today</text><text x="20" y="88">done</text>
+          <rect x="90" y="20" width="620" height="26" rx="4" fill="none" stroke="var(--line)"/>
+          <rect x="90" y="20" width="255" height="26" rx="4" class="cell-ok"/>
+          <rect x="90" y="70" width="620" height="26" rx="4" class="cell-ok"/>
+          <text x="352" y="38" class="svg-soft">7 of 17 cells swept</text>
+          <text x="600" y="88" fill="var(--paper)">17 of 17</text>
+        </g>
+      </svg>
+      <figcaption>Done is a full matrix and an empty defect list, not a count of merged PRs.</figcaption>
+    </figure>
+    <p>There is no open defect in <code>ccd-ia/featurizer</code>, and the next one of a known class cannot arrive unnoticed. A config that ran on <code>v1.2.0</code> runs on master with the same output names. A declared identifier of any role may contain a space, a reserved word or an aggregate-shaped name. A transformer can be selected without <code>identity</code>. The TEMP-table path runs at the width it was built for, with real data in every column. A row dated after the as-of date moves no transformer, no aggregation and no planner pass, under either boundary mode, on any render path. Registering a primitive without adding it to the sweeps fails the fast tier.</p>
+    <p>The numbers, and where each comes from. Open defect issues: 4 today (#27, #36, #37, #38, from <code>gh issue list --state open</code>) plus 2 measured and not yet filed (the name rule, the identifier roles) → 0. Matrix cells backed by an executing sweep in the suite: 7 of 17 once PR #43 merges → 17 of 17 (the table in "The matrix"; the coverage test enforces the registry-wide part). Known red counts that must reach zero: 4 of 4 non-variable identifier shapes (master <code>c2c21a7</code>); 104 of 162 transformer-selection runs (<code>de03142</code>); preamble statement 9 at 1,813 columns (#37); the case-fold config, which runs on <code>v1.2.0</code> and fails on master. Counts that must stay at zero and gain a test: 67 of 67 aggregations and 160 of 160 exclusive-boundary runs unmoved by a future row. CI: the PostgreSQL 16 integration leg grows by no more than 4 minutes.</p>
+    <p>Not included: a release (the maintainer deferred that discussion until the issues are closed; the CHANGELOG-owed lists keep accumulating in <code>TODO.org</code>), the <code>triage-pg</code> pin bump and its inert <code>temporal:</code> block, pushing the paired cohort into the child reads (the #10 follow-up, which needs its own per-primitive argument), materializing an as-of LATERAL (ADR-0006's residual still raises), and any decision about bounding the <em>target's</em> read — Phase 6 measures it and stops.</p>
+  </section>
+
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[x]</code> <code>gh issue list --state open --json number,title</code> — no defect issue is open; #27, #36, #37, #38 and the two filed in Phases 2 and 3 read CLOSED.</li>
+      <li><code class="status">[x]</code> <code>uv run pytest -m "not integration" -q</code> — fast tier green, including the name-rule table, the plan-time closure check and <code>tests/test_sweep_matrix_coverage.py</code>.</li>
+      <li><code class="status">[x]</code> <code>DATABASE_URL=$(just --evaluate pg_url) uv run pytest -q -m integration</code> — every sweep of the matrix green against PostgreSQL 16, with no <code>xfail</code> left that names an issue of this plan.</li>
+      <li><code class="status">[x]</code> <code>just examples</code> — all six shipped examples run end to end.</li>
+      <li><code class="status">[x]</code> <code>uv run basedpyright &amp;&amp; just fmt-check &amp;&amp; just lint</code> — 0 errors, formatted, lint clean.</li>
+      <li><code class="status">[x]</code> <code>uv sync --group docs &amp;&amp; uv run python site/gen.py &amp;&amp; npm ci &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — the docs build with ADR-0016 themed, the name rule and the FAQ entry in place, 0 broken links.</li>
+      <li><code class="status">[x]</code> <code>gh run list --workflow test.yml --branch master --limit 1</code> — the eight contexts green on the final master.</li>
+      <li><code class="status">[x]</code> <code>bash ~/.claude/skills/session-start/scripts/index-plans.sh specs --porcelain | grep -v '^landed'</code> — nothing left that is not truly open.</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <section id="questionables">
+    <h2>Questionables</h2>
+    <details open>
+      <summary>[asked] #38 — what does a <code>transformations:</code> list without <code>identity</code> mean?</summary>
+      <p class="qa-answer"><strong>Carry raw inputs as helpers.</strong> A non-target transform also projects the raw columns its parent aggregates, so the SQL matches the feature set the planner and the manifest already produce. Rejected: aggregating only what was selected (planned features would leave the manifest), and rejecting the shape in validation (the shape stays unsupported). Phase 4.</p>
+    </details>
+    <details open>
+      <summary>[asked] What does a declared column name mean, now that byte-for-byte quoting broke a config that ran on v1.2.0?</summary>
+      <p class="qa-answer"><strong>PostgreSQL's own rule.</strong> A valid bare identifier folds to lower case and is then quoted; anything else is quoted byte for byte; a name already in double quotes is taken exactly. Every config that ran on <code>v1.2.0</code> runs again with the same output names. The cost, accepted: a genuinely mixed-case column (pandas creates them) needs <code>'"entityId"'</code> in the YAML; it worked unquoted on master for the few days between #13 and this phase, and on no release. Rejected: keeping byte-for-byte and announcing a behaviour change. Phase 2.</p>
+    </details>
+    <details open>
+      <summary>[asked] Does the plan end by cutting a release?</summary>
+      <p class="qa-answer"><strong>Not decided here, by the maintainer's choice:</strong> "Let's finish the issues and then we will have this discussion." The plan stops at master. Two things keep until then: ADR-0016 obliges the release notes to name the seven primitives whose values move, and three CHANGELOG-owed lists (09-18, 09-19, 09-20) are queued in <code>TODO.org</code>. Nothing here reaches <code>triage-pg</code> before a tag exists.</p>
+    </details>
+    <details open>
+      <summary>[unresolved] Should the target's own read be cut on the as-of date when the target has a temporal index?</summary>
+      <p class="qa-answer">Assumption in force: <strong>no</strong> — PR #43 cuts every non-target read and leaves the target alone, because its rows are the cohort and which of them a date emits is the caller's choice (<code>as_of_dates.id_column</code>). But an event-like target with several rows per id has the same whole-partition windows reading rows after the as-of date, and cutting it would change which rows a date returns, which is a return shape ADR-0015 freezes. Nobody can decide this without numbers, so Phase 6 task 1 measures it and stops. Puts Phase 6 at risk of growing a phase by amendment.</p>
+    </details>
+    <details>
+      <summary>[decided] Order: the name rule before the identifier roles, real width last</summary>
+      <p class="qa-answer">Phase 2 changes <code>quote_if_bare</code>, which every site Phase 3 adds goes through; doing them the other way round would write Phase 3's parity tests against a rule about to change. Phase 5 goes after Phase 3 because both edit <code>sharding.py</code> and both move the pinned artifacts. Phase 4 moves no artifact and floats.</p>
+    </details>
+    <details>
+      <summary>[decided] Table names are not quoted</summary>
+      <p class="qa-answer">A <code>table</code> value is a relation reference that may carry a schema (<code>analytics.visits</code>, <code>ontology.entities</code> in every triage-pg config). Quoting it whole names no table, and splitting on the dot guesses. Left as written, and documented.</p>
+    </details>
+    <details>
+      <summary>[decided] New classes found by a sweep land as strict <code>xfail</code>, not as a wider PR</summary>
+      <p class="qa-answer">Tonight's session is the argument: fixing #27 grew into #36 inside the same PR because the fix could not hold without it, and that was right; #37 and #38 were filed and left, and that was also right. The rule in Phase 6's callout writes the distinction down: same class, fix it here; new class, record it red and amend the plan.</p>
+    </details>
+    <details>
+      <summary>[decided] Phase 6 is split into small test-only PRs</summary>
+      <p class="qa-answer">It moves no artifact, so nothing forces it to be serial, and a test-only PR is the cheapest thing to review under the eight-context gate. One PR per task group (future-row, path equivalence, valid-implies-runs, coverage plus the CONTRIBUTING rule).</p>
+    </details>
+    <details>
+      <summary>[decided] The measurement scripts are re-written as tests, not committed as scripts</summary>
+      <p class="qa-answer">They live in the session scratchpad and will not survive it. Each phase's first task re-creates its measurement as the committed sweep and re-counts the red before any fix; the counts in this plan are what those re-counts should reproduce on the named commits.</p>
+    </details>
+  </section>
+
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Is the series converging?</h3>
+    <p>The evidence says yes, for the classes the matrix names. The quoting class went variable-in-synth (#13) → variable-in-transformers (#18) → variable-in-aggregations (#29); tonight's measurement shows variables are finished (3 of 3 shapes run) and the remainder is exactly the non-variable roles, which Phase 3 enumerates from the code and not from the next report. The leak class was two primitives in the issue, six when swept, and zero after the cut, across 83 transformers, both boundary modes and the materialized path; aggregations measured 67 of 67 clean. The materialized-path class had been hiding behind one-date, identity-only tests; it now has two-date tests and one known failure left (#37). What the matrix cannot promise is the absence of classes nobody has named — a sixth invariant. The honest claim of this plan is narrower: no cell of the five named invariants is left unexecuted.</p>
+
+    <h3>What produced each measurement</h3>
+    <table>
+      <thead><tr><th>figure</th><th>commit</th><th>method</th></tr></thead>
+      <tbody>
+        <tr><td>6 transformers move with a future row; 0 after</td><td><code>de03142</code> / PR #43</td><td>every transformer on a child, run twice, the second time with one more child row dated after the as-of date; child id unique and non-unique</td></tr>
+        <tr><td>96 of 512 and 224 cells differ</td><td><code>de03142</code></td><td>TEMP-table path against the single query, two as-of dates; windows; one interval at threshold 10</td></tr>
+        <tr><td>statement 9 fails at 1,813 columns</td><td><code>de03142</code></td><td>150-variable child, default threshold; NULL data (hence Phase 5 task 3)</td></tr>
+        <tr><td>104 of 162 runs fail without <code>identity</code></td><td><code>de03142</code></td><td>the leak sweep's first run, which had left <code>identity</code> out by accident</td></tr>
+        <tr><td>67 of 67 aggregations unmoved</td><td><code>0f1feb9</code></td><td>the #29 fixture, plus two rows after the as-of date</td></tr>
+        <tr><td>160 of 160 unmoved under <code>exclusive</code></td><td>PR #43 branch</td><td>the leak sweep with the extra row dated on the as-of date</td></tr>
+        <tr><td>4 of 4 identifier shapes fail, 3 of 3 variable shapes run</td><td><code>c2c21a7</code></td><td>one config per shape, curated windows, <code>max</code> / <code>count</code> / <code>recency</code>, one interval</td></tr>
+        <tr><td>case-fold config: runs on <code>v1.2.0</code>, fails on master</td><td><code>011aaf2</code>, <code>c2c21a7</code></td><td>unquoted DDL, config spelled <code>totalAmount</code> / <code>Region</code>; a throwaway worktree at the tag</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Risks</h3>
+    <ul>
+      <li><strong>Phase 3 is the widest edit</strong> (about sixty interpolation sites across three modules) under the strictest constraint (metadata frozen by ADR-0015). The two-forms discipline of <code>_build_synth_cte</code> and a test that compares <code>key_columns</code> against master are what keep it safe; the quoting-only text check on the artifacts is the second net.</li>
+      <li><strong>Phase 5 may uncover a third limit.</strong> The heap-row budget is anticipated; an unanticipated one follows the Phase 6 callout.</li>
+      <li><strong>CI time.</strong> Three PostgreSQL legs run every sweep. The budget in Phase 6 is a real constraint: shapes per role are the dial, the registry is not.</li>
+      <li><strong>Serial landing under <code>strict</code> protection</strong> costs about ten minutes of CI per PR plus a rebase for whatever is open behind it. Four serial phases and four to five test-only PRs is roughly two hours of waiting, none of it parallelizable past Phase 4 and Phase 6.</li>
+    </ul>
+
+    <h3>After this plan</h3>
+    <p>The release discussion the maintainer deferred; the <code>triage-pg</code> pin bump with its inert <code>temporal:</code> block; the #10 follow-up (narrowing child reads under a paired cohort); and, if Phase 6's measurement warrants it, an ADR on the target's read.</p>
+  </section>
+
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details open>
+      <summary>2026-09-20T03:55 — build, first night: Phase 1 landed; Phases 2 to 7 built, six PRs green or in CI, two branches held for the serial order</summary>
+      <p><strong>Landed.</strong> Phase 1: PR #43 merged (<code>f17b91d</code>, <code>90fdd2d</code>, <code>8e1222e</code>); #27 and #36 closed.</p>
+      <p><strong>Built and pushed, waiting for the merge word.</strong> Phase 2 → PR #45 (issue #44). Phase 4 → PR #47 (#38). Phase 6 → PR #51 (cells 10, 11, 12), PR #55 (cells 14, 16, 17), PR #54 (CI: JIT off for the tier). Phase 7 → PR #57 (issue #56).</p>
+      <p><strong>Built, verified locally, held unpushed</strong> because each moves the three pinned SQL artifacts and must make its first push after its predecessor merges: Phase 3 on <code>planner/identifier-roles-quoting</code> (issue #46; stacked on Phase 2), Phase 5 on <code>sharding/real-width-rejoin</code> (issues #37, #52; stacked on Phase 3). Landing recipe for each: <code>git rebase --onto origin/master &lt;predecessor branch&gt;</code>, re-capture the three artifacts in their own commit with the text check, first push, PR.</p>
+      <p><strong>Still to build.</strong> Phase 6 task 4: <code>tests/test_sweep_matrix_coverage.py</code> and the CONTRIBUTING rule. Both name sweep modules that only exist once the PRs above are on master, so they come last.</p>
+      <p><strong>What the sweeps found that the plan did not know</strong> (each filed with its measurement, none absorbed into a PR it did not belong to): #48 an as-of lookup on a child that is then aggregated fails under an interval or <code>count</code>, on plain names; #49 an event-like <em>target</em> still has the #27 leak and emits rows dated after the as-of date (needs a decision about return shapes); #52 TEMP shards of 1,400 non-null <code>float8</code> columns exceed the 8 kB heap row (fixed with #37 in Phase 5); #53 PostgreSQL's JIT compiles every expression of a wide generated query, 55.6 s against 0.1 s on five rows, and the whole integration tier runs in 54 s with it off against 7 to 18 minutes. Phase 5 also met the shape the curated defaults produce (only the child's transform oversized), recorded on #37.</p>
+      <p><strong>Plan changes this implies.</strong> Cell 17's as-of-lookup shape is a strict <code>xfail</code> naming #48. #48 and #49 need a phase each once decided; #53 needs a live-DB measurement before any engine change. The CI time budget of Phase 6 is no longer a constraint once PR #54 lands.</p>
+    </details>
+      <details open>
+      <summary>2026-09-20T19:20 — Phases 1 to 7 are on master; final validation; two phases added</summary>
+      <p><strong>Landed</strong>, all by rebase merge with eight green contexts on the rebased head, on the maintainer's word ("proceed with the merge", then "merge each when 8/8 green" for the plan's remaining PRs): #45 (Phase 2, closes #44), #54 (CI, JIT off), #47 (Phase 4, closes #38), #51 and #55 (Phase 6 sweeps), #57 (Phase 7, closes #56), #58 (Phase 3, closes #46), #59 (Phase 5, closes #37 and #52), #61 (Phase 6 task 4, closes #50).</p>
+      <p><strong>Global validation on merged master <code>da99fd4</code>.</strong> Fast tier 875 succeeded, 0 failed. <code>just test-integration</code> 1,105 succeeded, 57 skipped, 1 xfailed (#48), 83 s. Six of six examples run. <code>basedpyright</code> 0 errors, format and lint clean. Pages build green on <code>da53c6d</code>. CI's PostgreSQL 16 integration leg went from 9 min 34 s (<code>8e1222e</code>, 773 tests) to 3 min 03 s (<code>da99fd4</code>, 1,105 tests plus a JIT-on smoke file): the Phase 6 budget of "+4 minutes" turned into minus six and a half.</p>
+      <p><strong>Against the Definition of Done: not met, and the reason is the one the plan allowed for.</strong> The matrix is 17 of 17 cells swept and the coverage test is in the fast tier. Every defect the plan knew about is closed: #27, #36, #37, #38, #44, #46, and #52 which Phase 5 found and fixed. But "no open defect" is false: the sweeps found two classes nobody had named, #48 and #49, each filed with its measurement and kept out of the PR that found it. They are Phases 8 and 9 below. #53 (JIT) is a performance finding waiting for a live-DB measurement the maintainer asked for, and #60 is a feature request split from #48.</p>
+      <p><strong>Decisions taken with the maintainer on 2026-09-20.</strong> #49: cut the target's read too (ADR needed). #53: measure on the live databases before any engine change. #48: the maintainer asked for the implementer's view; working decision "fix now, design the transfer later", after a throwaway prototype of the transfer changed a running config's output while the integration tier stayed green.</p>
+    </details>
+      <details open>
+      <summary>2026-09-20T20:40 — Phase 8 built (PR #62, waits for the merge word); Phase 9 paused on new evidence</summary>
+      <p><strong>Phase 8.</strong> PR #62 fixes #48: the receiver gains only what a lookup transfers, an aggregation's interval is cut on the aggregated entity's timeline (<code>boundary.use_timeline</code>), and <code>child_timestamp</code> is carried. Five tests red before; fast tier 876 and <code>just test-integration</code> 1,109 green after; no pinned artifact moves. Outside the merge authorization, so it waits.</p>
+      <p><strong>Phase 9.</strong> The cut is written and its sweep is green (53 of 54 cases red without it) on the local branch <code>planner/asof-bound-target-read</code>, as a WIP commit. Measuring it on the shipped examples showed a reach the decision did not have in front of it: a target that is an <em>entity</em> table whose temporal index means "when the entity came into existence" loses the rows of entities that do not exist yet at a date. Example 01: 1,200 → 844 rows. Example 02: 400 → 273, and its first as-of date returns nothing. Example 03: 160 → 129. Examples 05 and 06 and every <code>triage-pg</code> config: unchanged. Put back to the maintainer with three options (cut; keep rows and bound only the windows; opt-in now, default in 2.0). Nothing else of Phase 9 (ADR-0017, docs, artifacts, the examples' notebooks) is built until that is answered.</p>
+    </details>
+      <details open>
+      <summary>2026-09-20T22:50 — Phase 9 built as PR #63 after the maintainer saw its reach; both remaining PRs wait for the merge word</summary>
+      <p>The maintainer was shown the examples' row counts and asked for the implementer's view. It stayed "cut", with the change made loud: ADR-0017 with the numbers, a once-per-process planner warning for every target that declares a temporal index, the configuration reference and a FAQ entry with the two ways back to a dense grid. A suspected second leak (an as-of lookup on a not-yet-existing target row reading a later lookup row) was measured and does <em>not</em> exist on master: #27's cut on the lookup's own read already returns NULL there.</p>
+      <p>Building it surfaced one more consequence, recorded in ADR-0017 and at the top of PR #63: the peer-group family had pinned that a future-born ego is emitted and given the knowable members as peers. It is no longer emitted; every value of the remaining rows is unchanged, and the two tests were rewritten to say so. The tutorials' committed outputs and the READMEs state no row counts, so nothing there goes stale.</p>
+      <p>State: PR #62 (Phase 8, fixes #48) and PR #63 (Phase 9, fixes #49) are open. Neither is covered by the merge authorization given for the plan's original PRs. #63 moves the three pinned artifacts and #62 does not, so they can land in either order; the second one needs <code>gh pr update-branch --rebase</code>. After both: #53 (JIT, measure on the live databases) and #60 (lookup provenance, feature) remain, by the maintainer's decisions, and the deferred release discussion.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

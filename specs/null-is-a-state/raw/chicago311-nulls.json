@@ -1,0 +1,10 @@
+[
+  {
+    "dataset": "chicago311",
+    "entity": "area_backlog",
+    "column": "sr_type",
+    "rows": 30654,
+    "null_rows": 0,
+    "null_share": 0.0
+  }
+]
