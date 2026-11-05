@@ -1124,17 +1124,23 @@ gini = Gini()
 
 
 def _transitions_inner(feature, child, relationship, interval):
-    """Inner ``(child_key, curr, prev)`` transition rows for a categorical
-    sequence, ordered within each child key (ADR-0010 set-based pre-pass)."""
+    """Inner ``(child_key, curr, prev, rn)`` transition rows for a categorical
+    sequence, ordered within each child key (ADR-0010 set-based pre-pass).
+
+    ``prev`` is NULL both on a key's first row and after a NULL value, so a
+    reduction tells the two apart by ``rn``, the row number from the same
+    window: ``rn > 1`` is a transition, NULL on either side included
+    (ADR-0020).
+    """
     ck = relationship.child_key_sql
     ct = f"{child.alias}_transform"
     col = _col(feature)
     where = _num_causal_where(feature, child, interval)
     return (
         f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, "
-        f"lag({ct}.{col}) over (partition by {ct}.{ck} "
-        f"order by {_timeline(ct, feature, child, relationship)}) as prev "
-        f"from {ct} {where}"
+        f"lag({ct}.{col}) over w as prev, row_number() over w as rn "
+        f"from {ct} {where} window w as (partition by {ct}.{ck} "
+        f"order by {_timeline(ct, feature, child, relationship)})"
     )
 
 
@@ -1148,7 +1154,7 @@ def _transmatrix_prepass(feature, child, relationship, interval):
         f"select {ck}, prev, curr, count(*) as freq, "
         f"sum(count(*)) over (partition by {ck}) as total, "
         f"sum(count(*)) over (partition by {ck}, prev) as row_total "
-        f"from ({inner}) t where prev is not null group by {ck}, prev, curr"
+        f"from ({inner}) t where rn > 1 group by {ck}, prev, curr"
     )
 
 
@@ -1156,7 +1162,10 @@ class NgramFrequency(SubqueryAggregator):
     """Most common N-gram frequency for sequence features.
 
     Computes the frequency of the most common consecutive pair (bigram)
-    of categorical values, ordered by temporal index.
+    of categorical values, ordered by temporal index. Only complete n-grams
+    count: a row is the end of one from the n-th row of its series on (the
+    row number from the window of the lags), so a series shorter than n has
+    none. A NULL value is a state (ADR-0020).
     """
 
     def __init__(self, n=2):
@@ -1176,15 +1185,18 @@ class NgramFrequency(SubqueryAggregator):
         col = _col(feature)
         where = _num_causal_where(feature, child, interval)
         lag_cols = ", ".join(
-            f"lag({ct}.{col}, {i}) over (partition by {ct}.{ck} "
-            f"order by {_timeline(ct, feature, child, relationship)}) as lag_{i}"
-            for i in range(1, self.n)
+            f"lag({ct}.{col}, {i}) over w as lag_{i}" for i in range(1, self.n)
         )
         lag_names = ", ".join(f"lag_{i}" for i in range(1, self.n))
-        inner = f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, {lag_cols} from {ct} {where}"
+        inner = (
+            f"select {ct}.{ck} as {ck}, {ct}.{col} as curr, {lag_cols}, "
+            f"row_number() over w as rn from {ct} {where} "
+            f"window w as (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)})"
+        )
         prepass = (
             f"select {ck}, count(*) as cnt from ({inner}) ngrams "
-            f"where lag_1 is not null group by {ck}, curr, {lag_names}"
+            f"where rn >= {self.n} group by {ck}, curr, {lag_names}"
         )
         return PreAggSpec(
             family_key=f"ngram{self.n}:{feature.name}",
@@ -1198,17 +1210,17 @@ class NgramFrequency(SubqueryAggregator):
         child_table = f"{child.alias}_transform"
         interval_filter = self._causal_filter(feature, interval)
         lag_cols = ", ".join(
-            f"LAG(sub.{_col(feature)}, {i}) OVER (ORDER BY "
-            f"{_timeline('sub', feature, child, relationship)}) as lag_{i}"
-            for i in range(1, self.n)
+            f"LAG(sub.{_col(feature)}, {i}) OVER w as lag_{i}" for i in range(1, self.n)
         )
         return (
             f"(SELECT MAX(cnt) FROM ("
             f"SELECT COUNT(*) as cnt FROM ("
-            f"SELECT sub.{_col(feature)} as curr, {lag_cols} "
+            f"SELECT sub.{_col(feature)} as curr, {lag_cols}, "
+            f"ROW_NUMBER() OVER w AS rn "
             f"FROM {child_table} sub "
-            f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
-            f") ngrams WHERE lag_1 IS NOT NULL "
+            f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter} "
+            f"WINDOW w AS (ORDER BY {_timeline('sub', feature, child, relationship)})"
+            f") ngrams WHERE rn >= {self.n} "
             f"GROUP BY curr, {', '.join(f'lag_{i}' for i in range(1, self.n))}"
             f") ngram_counts)"
         )
@@ -1520,96 +1532,98 @@ class _SequenceReduction(SubqueryAggregator):
         child_table = f"{child.alias}_transform"
         causal = self._causal_filter(feature, interval)
         col = _col(feature)
+        # ``rn`` from the LAG's own window tells the first row from a row after
+        # a NULL value, which ``prev`` alone cannot (ADR-0020).
         return (
             f"SELECT sub.{col} AS curr, "
-            f"LAG(sub.{col}) OVER (ORDER BY "
-            f"{_timeline('sub', feature, child, relationship)}) AS prev "
+            f"LAG(sub.{col}) OVER w AS prev, ROW_NUMBER() OVER w AS rn "
             f"FROM {child_table} sub "
-            f"WHERE sub.{child_key} = {child_table}.{child_key}{causal}"
+            f"WHERE sub.{child_key} = {child_table}.{child_key}{causal} "
+            f"WINDOW w AS (ORDER BY {_timeline('sub', feature, child, relationship)})"
         )
 
 
-class StateVolatility(_SequenceReduction):
-    """Count of value changes (transitions where prev != curr)."""
+class _TransitionCount(_SequenceReduction):
+    """Base for the counts over the shared ``transitions:`` pre-pass.
 
-    def __init__(self):
-        super().__init__(name="state_volatility")
+    A subclass names the ``reduction``, an aggregate over the ``(curr, prev,
+    rn)`` rows, and both paths apply it: the pre-pass per key, the correlated
+    fallback per key with ``HAVING count(*) > 0``, so a window that holds no
+    row of the key is NULL there as it is on the pre-pass (an ungrouped
+    aggregate with a false HAVING returns no row, which the scalar subquery
+    reads as NULL). The pre-pass keeps the first row (``rn = 1``), so a key
+    with rows but no transition counts 0; the FILTER carries the bound.
+    """
+
+    reduction: str
 
     def _build_preagg(self, feature, child, relationship, interval=None):
         return PreAggSpec(
             family_key=f"transitions:{feature.name}",
             interval=interval,
             prepass_sql=_transitions_inner(feature, child, relationship, interval),
-            # No reduction_where: keep the prev-NULL first row so a group with no
-            # transitions still yields a row and COUNT returns 0 (not NULL, which
-            # a filtered-empty group would give). The FILTER carries the bound.
-            reduction=(
-                "count(*) FILTER (WHERE prev IS DISTINCT FROM curr "
-                "AND prev IS NOT NULL)"
-            ),
+            reduction=self.reduction,
         )
 
     def _build_subquery_expression(self, feature, child, relationship, interval=None):
         transitions = self._transitions(feature, child, relationship, interval)
-        return (
-            f"(SELECT count(*) FROM ({transitions}) t "
-            f"WHERE t.prev IS DISTINCT FROM t.curr AND t.prev IS NOT NULL)"
-        )
+        return f"(SELECT {self.reduction} FROM ({transitions}) t HAVING count(*) > 0)"
+
+
+class StateVolatility(_TransitionCount):
+    """Count of value changes (transitions where prev != curr).
+
+    A NULL value is a state (ADR-0020): ``a, NULL, NULL, a`` changes twice.
+    """
+
+    reduction = "count(*) FILTER (WHERE rn > 1 AND prev IS DISTINCT FROM curr)"
+
+    def __init__(self):
+        super().__init__(name="state_volatility")
 
 
 state_volatility = StateVolatility()
 
 
-class TransitionMatrixSummary(_SequenceReduction):
-    """Number of distinct observed (prev -> curr) transitions."""
+class TransitionMatrixSummary(_TransitionCount):
+    """Number of distinct observed (prev -> curr) transitions.
+
+    A NULL value is a state (ADR-0020): ``(a, NULL)`` and ``(NULL, b)`` are
+    transitions. ``count(DISTINCT (prev, curr))`` counts a row value with NULL
+    fields, and two such row values with the same fields once.
+    """
+
+    reduction = "count(DISTINCT (prev, curr)) FILTER (WHERE rn > 1)"
 
     def __init__(self):
         super().__init__(name="transition_matrix_summary")
-
-    def _build_preagg(self, feature, child, relationship, interval=None):
-        return PreAggSpec(
-            family_key=f"transitions:{feature.name}",
-            interval=interval,
-            prepass_sql=_transitions_inner(feature, child, relationship, interval),
-            reduction="count(DISTINCT (prev, curr)) FILTER (WHERE prev IS NOT NULL)",
-        )
-
-    def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        transitions = self._transitions(feature, child, relationship, interval)
-        return (
-            f"(SELECT count(DISTINCT (t.prev, t.curr)) FROM ({transitions}) t "
-            f"WHERE t.prev IS NOT NULL)"
-        )
 
 
 transition_matrix_summary = TransitionMatrixSummary()
 
 
-class ReworkCount(_SequenceReduction):
-    """Count of self-loops (consecutive repeats, prev == curr)."""
+class ReworkCount(_TransitionCount):
+    """Count of self-loops (consecutive repeats, prev == curr).
+
+    A NULL value is a state (ADR-0020): ``NULL -> NULL`` repeats it.
+    """
+
+    reduction = "count(*) FILTER (WHERE rn > 1 AND prev IS NOT DISTINCT FROM curr)"
 
     def __init__(self):
         super().__init__(name="rework_count")
-
-    def _build_preagg(self, feature, child, relationship, interval=None):
-        return PreAggSpec(
-            family_key=f"transitions:{feature.name}",
-            interval=interval,
-            prepass_sql=_transitions_inner(feature, child, relationship, interval),
-            # prev = curr is already false when prev is NULL, so no extra guard.
-            reduction="count(*) FILTER (WHERE prev = curr)",
-        )
-
-    def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        transitions = self._transitions(feature, child, relationship, interval)
-        return f"(SELECT count(*) FROM ({transitions}) t WHERE t.prev = t.curr)"
 
 
 rework_count = ReworkCount()
 
 
 class TimeInCurrentState(_SequenceReduction):
-    """Days since the most recent change of a categorical attribute (dwell)."""
+    """Days since the most recent change of a categorical attribute (dwell).
+
+    A NULL value is a state (ADR-0020). The first row of the window starts a
+    run whatever its value, so a window whose rows are all NULL dwells since
+    its first row.
+    """
 
     def __init__(self):
         super().__init__(name="time_in_current_state")
@@ -1622,13 +1636,12 @@ class TimeInCurrentState(_SequenceReduction):
         where = _num_causal_where(feature, child, interval)
         # The companion CTE sits inside the lateral, so aod.as_of_date is in
         # scope for the reduction (as it is for every causal bound). Days since
-        # the most recent state change; the first row (prev NULL) counts as a
-        # change, matching the correlated ``prev IS DISTINCT FROM curr``.
+        # the most recent state change; the first row (rn = 1) counts as one.
         prepass = (
             f"select {ct}.{ck} as {ck}, {ct}.{ts} as ts, {ct}.{col} as curr, "
-            f"lag({ct}.{col}) over (partition by {ct}.{ck} "
-            f"order by {_timeline(ct, feature, child, relationship)}) as prev "
-            f"from {ct} {where}"
+            f"lag({ct}.{col}) over w as prev, row_number() over w as rn "
+            f"from {ct} {where} window w as (partition by {ct}.{ck} "
+            f"order by {_timeline(ct, feature, child, relationship)})"
         )
         return PreAggSpec(
             family_key=f"dwell:{feature.name}",
@@ -1636,7 +1649,7 @@ class TimeInCurrentState(_SequenceReduction):
             prepass_sql=prepass,
             reduction=(
                 "aod.as_of_date::date - "
-                "(MAX(ts) FILTER (WHERE prev IS DISTINCT FROM curr))::date"
+                "(MAX(ts) FILTER (WHERE rn = 1 OR prev IS DISTINCT FROM curr))::date"
             ),
         )
 
@@ -1649,11 +1662,11 @@ class TimeInCurrentState(_SequenceReduction):
         return (
             f"(aod.as_of_date::date - (SELECT max(run.ts) FROM ("
             f"SELECT s.{ts} AS ts, s.{col} AS curr, "
-            f"LAG(s.{col}) OVER (ORDER BY "
-            f"{_timeline('s', feature, child, relationship)}) AS prev "
+            f"LAG(s.{col}) OVER w AS prev, ROW_NUMBER() OVER w AS rn "
             f"FROM {child_table} s "
-            f"WHERE s.{child_key} = {child_table}.{child_key}{causal}"
-            f") run WHERE run.prev IS DISTINCT FROM run.curr)::date)"
+            f"WHERE s.{child_key} = {child_table}.{child_key}{causal} "
+            f"WINDOW w AS (ORDER BY {_timeline('s', feature, child, relationship)})"
+            f") run WHERE run.rn = 1 OR run.prev IS DISTINCT FROM run.curr)::date)"
         )
 
 
@@ -1719,6 +1732,7 @@ class _TransitionMatrixReduction(_SequenceReduction):
     row-conditional totals; a subclass names the ``reduction`` that turns it
     into a scalar. The set-based pre-pass and the correlated fallback apply the
     same expression to the same matrix, so the two paths cannot drift apart.
+    A NULL value is a state (ADR-0020): the matrix has a NULL row and column.
     """
 
     reduction: str
@@ -1729,7 +1743,7 @@ class _TransitionMatrixReduction(_SequenceReduction):
             f"SELECT t.prev, t.curr, COUNT(*) AS freq, "
             f"SUM(COUNT(*)) OVER () AS total, "
             f"SUM(COUNT(*)) OVER (PARTITION BY t.prev) AS row_total "
-            f"FROM ({transitions}) t WHERE t.prev IS NOT NULL "
+            f"FROM ({transitions}) t WHERE t.rn > 1 "
             f"GROUP BY t.prev, t.curr"
         )
 

@@ -42,6 +42,31 @@ def _load_golden() -> dict:
 _GOLDEN = _load_golden() if _GOLDEN_PATH.exists() else {"cases": {}, "_meta": {}}
 _CASES = preagg_cases.cases()
 
+# Cells a semantics ADR moved on purpose, applied over the frozen golden so the
+# file itself stays as captured: {case id: {(pid, column): new value}}.
+# ADR-0020 (#86): ngram_3_freq counts only complete trigrams, so the edge
+# fixture's two-row groups (2, 3 and 5) have none.
+_MOVED_BY_ADR: dict[str, dict[tuple[int, str], object]] = {
+    f"ngram_3_freq|edge|{ts_type}|all": {
+        (pid, "NGRAM_3_FREQ(c.cat)"): None for pid in (2, 3, 5)
+    }
+    for ts_type in ("date", "timestamp")
+}
+
+
+def _expected(case_id: str) -> list[dict] | None:
+    rows = _GOLDEN["cases"].get(case_id)
+    moved = _MOVED_BY_ADR.get(case_id, {})
+    if rows is None or not moved:
+        return rows
+    out = [dict(row) for row in rows]
+    for row in out:
+        for (pid, column), value in moved.items():
+            if row["pid"] == pid:
+                assert column in row, f"{case_id}: no column {column}"
+                row[column] = value
+    return out
+
 
 def test_golden_inventory_matches_live_registry() -> None:
     """The frozen golden must cover exactly today's migratable aggregator set.
@@ -60,10 +85,18 @@ def test_golden_inventory_matches_live_registry() -> None:
     )
 
 
+def test_every_adr_move_changes_a_golden_cell() -> None:
+    """An override that equals the golden it overrides is stale."""
+    for case_id, moved in _MOVED_BY_ADR.items():
+        golden = {row["pid"]: row for row in _GOLDEN["cases"][case_id]}
+        for (pid, column), value in moved.items():
+            assert golden[pid][column] != value, f"{case_id} pid {pid}: not a move"
+
+
 @pytest.mark.parametrize("case", _CASES, ids=lambda c: c["id"])
 def test_aggregator_values_match_golden(pg_conn, case) -> None:
     """Re-run one case and assert its result equals the frozen golden."""
-    expected = _GOLDEN["cases"].get(case["id"])
+    expected = _expected(case["id"])
     if expected is None:
         pytest.skip(f"no golden for {case['id']} — re-capture")
     _db.seed_fixture(pg_conn, case["fixture"], case["ts_type"])

@@ -26,8 +26,8 @@ from featurizer.primitives.abstractions import Entity, Relationship
 from featurizer.primitives.aggregations import SubqueryAggregator
 from featurizer.primitives.utils import get_aggregations
 
-# The primitives whose LAG reads the categorical value, and the ones that do
-# not tell "no previous row" from a NULL value today (#86).
+# The primitives whose LAG reads the categorical value. MISMATCHES holds a
+# strict xfail per primitive whose SQL breaks the rule; #86 found nine.
 READS_A_LAG = (
     "longest_streak",
     "markov_conditional_entropy",
@@ -40,11 +40,7 @@ READS_A_LAG = (
     "time_in_current_state",
     "transition_matrix_summary",
 )
-MISMATCHES: dict[str, str] = {
-    name: "#86: no row number beside the LAG"
-    for name in READS_A_LAG
-    if name != "longest_streak"
-}
+MISMATCHES: dict[str, str] = {}
 
 NULL_AS_FIRST_ROW = re.compile(r"\b(prev|lag_\d+)\s+is\s+not\s+null\b", re.I)
 ROW_NUMBER_WINDOW = re.compile(r"\brow_number\(\)\s+over\s+(\w+)", re.I)
