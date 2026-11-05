@@ -123,32 +123,11 @@ EVENTS: list[tuple[int, str, Optional[str]]] = [
 ]
 SERIES = (1, 2, 3, 4, 5, 6, 7, 8, 9)
 
-# What the engine gets wrong on these rows, measured. Each entry is a strict
-# xfail; ADR-0020's fix (#86) deletes them.
-_OUT_OF_NULL = "prev IS NOT NULL drops every step out of a NULL state"
-_EMPTY = (
-    "; and the correlated fallback counts 0 on an empty window of a key with "
-    "history, where the pre-pass gives NULL"
-)
-SENTINEL_MISMATCHES: dict[str, str] = {
-    "markov_conditional_entropy": _OUT_OF_NULL,
-    "max_transition_prob": _OUT_OF_NULL,
-    "sequence_entropy": _OUT_OF_NULL,
-    "state_volatility": "NULL -> x is not counted as a change",
-    "transition_matrix_summary": "a (NULL, x) pair is not counted",
-    "rework_count": "prev = curr: NULL -> NULL never repeats",
-    "ngram_2_freq": "lag_1 IS NOT NULL drops every bigram that starts at a NULL",
-    "ngram_3_freq": "lag_1 IS NOT NULL drops every trigram after a NULL",
-    "time_in_current_state": "an all-NULL window has no change, so no dwell",
-}
-REFERENCE_MISMATCHES: dict[str, str] = {
-    **{f"{name}-set_based": reason for name, reason in SENTINEL_MISMATCHES.items()},
-    **{f"{name}-correlated": reason for name, reason in SENTINEL_MISMATCHES.items()},
-}
-REFERENCE_MISMATCHES["ngram_3_freq-set_based"] += "; a two-row series counts 1"
-REFERENCE_MISMATCHES["ngram_3_freq-correlated"] += "; a two-row series counts 1"
-for _name in ("state_volatility", "transition_matrix_summary", "rework_count"):
-    REFERENCE_MISMATCHES[f"{_name}-correlated"] += _EMPTY
+# What the engine gets wrong on these rows, measured: each entry is a strict
+# xfail naming the issue. #86 measured nine primitives here on both paths
+# before ADR-0020's fix emptied both dicts.
+SENTINEL_MISMATCHES: dict[str, str] = {}
+REFERENCE_MISMATCHES: dict[str, str] = {}
 
 
 def _categorical() -> set[str]:

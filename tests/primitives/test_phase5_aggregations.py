@@ -87,7 +87,7 @@ def test_requires_relationship(name, kind):
         ("median_absolute_deviation", "abs(v.val - b.med)"),
         ("state_volatility", "IS DISTINCT FROM"),
         ("transition_matrix_summary", "count(DISTINCT (prev, curr))"),
-        ("rework_count", "prev = curr"),
+        ("rework_count", "prev IS NOT DISTINCT FROM curr"),
         ("time_in_current_state", "max(ts) filter"),
         ("acf_1", "corr(val, lagk)"),
         ("variance_ratio", "var_samp(val) / NULLIF(var_samp(d), 0)"),
