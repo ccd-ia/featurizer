@@ -1,8 +1,9 @@
 # 0021 — An interval window cuts at the as-of instant
 
-**Status:** Proposed
+**Status:** Accepted
 
-**Date:** 2026-11-05
+**Date:** 2026-11-05 (proposed and accepted the same day, after the live-database
+measurement below)
 
 **Deciders:** Adolfo De Unánue
 
@@ -85,8 +86,21 @@ What moves:
 
 - Every `|interval=W` column of `skewness`, `kurtosis`, `harmonic_mean` and
   `geometric_mean`, on every config that selects them, the default set
-  included. This is the largest move. It is not measured on the live
-  databases yet.
+  included. This is the largest move. Measured on 2026-11-05 with
+  `benchmarks/interval_window_impact.py` (the four plus `mean` as a control,
+  each triage experiment's entity graph, its latest knowledge date, the
+  `a18bff9` engine against this decision's; raw diffs in
+  `specs/interval-window/raw/`):
+
+  | database | matrix | moved cells | moved columns |
+  |---|---|---|---|
+  | donorschoose | 3,000 rows × 140 columns | 117,306, on 2,901 entities | 84 of 84 interval columns of the four; none of `mean`'s 28 |
+  | dirtyduck | 22,169 × 1 | 0 | its config has no numeric child variable |
+  | chicago311 | 30,654 × 0 | 0 | the same |
+
+  Two independent runs of the `a18bff9` engine differ in no cell on any of
+  the three. `mean` not moving is the live-data check that the new window
+  selects the old rows on a `date` as-of date.
 - On a `timestamp` (or `timestamptz`) as-of date: the interval columns of
   every aggregation, in both modes.
 - An interval with a time part (`PT12H`, `P1DT6H`) on any as-of date: its
