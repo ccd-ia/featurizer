@@ -165,21 +165,33 @@ def test_identifier_columns_are_not_duplicated():
     assert synth.count('patients."patient_id"') == 1
 
 
-def test_interval_windows_cast_event_column_to_date():
-    """Bug #7: ``daterange @> <event_col>`` is invalid when the temporal_ix is
-    a timestamp (``operator does not exist: daterange @> timestamp``); every
-    interval window must cast the event column to date. Found by the realistic
-    DonorsChoose dataset, whose ``donation_timestamp`` is a timestamp."""
+_WINDOW = re.compile(
+    r"\(+([^\s(]\S*) >= aod\.as_of_date - interval '[^']+' and (\S+) (<=|<) aod\.as_of_date\)"
+)
+
+
+def test_interval_windows_compare_the_column_on_both_bounds():
+    """Every interval window compares the event column itself, at both bounds,
+    and its upper bound is the causal cut (ADR-0021, #87).
+
+    Bug #7 was a window written as ``daterange @> <event_col>``, invalid on a
+    timestamp column until the column was cast to date; #87 found the cast made
+    the window's upper bound the calendar day while the read cuts at the
+    instant. No containment form is left for either bug to come back through.
+    The aggregations cover the plain filter, the correlated subquery, the
+    pre-pass and the drift windows."""
     config = _parent_child_config(max_depth=2)
     config["intervals"] = ["P1M"]
     config["aggregations"] = ["sum", "count", "recency", "gap_mean", "kl_drift"]
     config["entities"][1]["variables"]["status"] = {"type": "categorical"}
     sql = _render(config)
 
-    contained = re.findall(r"@>\s*([\w.\"]+(?:::\w+)?)", sql)
-    assert contained, "no interval windows were generated"
-    uncast = [token for token in contained if not token.endswith("::date")]
-    assert not uncast, f"interval windows without ::date cast: {uncast!r}"
+    assert "daterange" not in sql and "@>" not in sql
+    windows = _WINDOW.findall(sql)
+    assert windows, "no interval windows were generated"
+    assert sql.count(">= aod.as_of_date - interval 'P1M'") == len(windows)
+    assert all(lower == upper for lower, upper, _ in windows), windows
+    assert {op for _, _, op in windows} == {"<="}
 
 
 def _peer_config(measures: bool = True) -> dict:
@@ -370,19 +382,18 @@ def test_as_of_boundary_exclusive_flips_scalar_operator():
     assert '"ordered_at" <= aod.as_of_date' not in flat
 
 
-def test_as_of_boundary_exclusive_flips_daterange_upper_bound():
-    """``exclusive`` switches interval windows from closed ``'[]'`` to ``'[)'``."""
+def test_as_of_boundary_exclusive_flips_the_window_upper_bound():
+    """``exclusive`` switches the window's upper bound from ``<=`` to ``<``, the
+    same operator as the causal cut."""
     config = _parent_child_config(max_depth=2)
     config["intervals"] = ["P1M"]
 
-    inclusive = _render(config)
-    assert "aod.as_of_date::date, '[]')" in inclusive
-    assert "aod.as_of_date::date, '[)')" not in inclusive
+    inclusive = _WINDOW.findall(_render(config))
+    assert inclusive and {op for _, _, op in inclusive} == {"<="}
 
     config["as_of_boundary"] = "exclusive"
-    exclusive = _render(config)
-    assert "aod.as_of_date::date, '[)')" in exclusive
-    assert "aod.as_of_date::date, '[]')" not in exclusive
+    exclusive = _WINDOW.findall(_render(config))
+    assert exclusive and {op for _, _, op in exclusive} == {"<"}
 
 
 def test_as_of_boundary_exclusive_threads_through_peer_and_subquery_cuts():

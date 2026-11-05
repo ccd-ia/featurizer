@@ -146,8 +146,8 @@ def test_spatial_aggregations_read_the_quoted_lat_lon(tmp_path) -> None:
 
 def test_the_interval_filter_reads_the_quoted_temporal_index(tmp_path) -> None:
     query = Featurizer(_config(tmp_path, "x", ["sum"], temporal_ix=WEIRD_TS)).query
-    assert f'@> "{WEIRD_TS}"::date' in query
-    assert f"@> {WEIRD_TS}::date" not in query
+    assert f'"{WEIRD_TS}" >= aod.as_of_date - interval' in query
+    assert f".{WEIRD_TS} >= aod.as_of_date - interval" not in query
 
 
 def test_output_names_do_not_move(tmp_path) -> None:

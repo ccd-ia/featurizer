@@ -164,7 +164,11 @@ relationships:
    existing feature names. Parent/child key column names may differ per side —
    the engine references each side's own column.
 8. **`as_of_boundary`** (top-level, optional): `inclusive` (default — an event
-   dated exactly on the as-of date is knowable, `<=`) or `exclusive` (`<`).
+   stamped at or before the as-of date is knowable, `<=`) or `exclusive` (`<`).
+   The as-of date is an instant (ADR-0021, 1.5.0): a `date` is 00:00 of its
+   day, so on a `timestamp` column a row stamped later that day counts from the
+   next as-of date. A `timestamp` as-of date is supported; its intervals reach
+   back from its own time (`P1D` = the 24 hours before).
    **`as_of_dates: {id_column: <name>}`** (top-level, optional, 1.3.0) declares
    that YOUR `as_of_dates` table holds `(as_of_date, <target id>)` pairs: the
    matrix then has one row per pair instead of every target row under every

@@ -36,6 +36,7 @@ import tests.integration.test_degenerate_phase as degenerate_phase
 import tests.integration.test_tied_timestamps as tied_rows
 import tests.integration.test_future_row_aggregations as aggregation_future_row
 import tests.integration.test_null_state as null_state
+import tests.integration.test_timestamp_as_of as instant_window
 import tests.integration.test_transformer_selection as transformer_selection
 import tests.test_aggregation_quoting as aggregation_quoting
 import tests.test_identifier_roles_quoting as identifier_roles
@@ -96,6 +97,9 @@ AGGREGATION_SWEEPS = {
     ),
     "the physical order of tied rows moves nothing": lambda: _parametrized_over(
         tied_rows.test_no_aggregation_depends_on_the_order_of_tied_rows
+    ),
+    "a row outside the instant window moves no interval column": lambda: _first_values(
+        instant_window._outside_cases()
     ),
 }
 

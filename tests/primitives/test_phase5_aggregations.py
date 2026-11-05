@@ -62,13 +62,13 @@ def test_fires_and_is_causally_bounded(name, kind):
 
 
 @pytest.mark.parametrize("name,kind", PHASE5.items())
-def test_interval_variant_uses_daterange(name, kind):
+def test_interval_variant_uses_the_window(name, kind):
     parent, child, rel = _setup()
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), interval="P1W", relationship=rel)
     assert result is not None and result.definition is not None
     full = _full_sql(result)
-    assert "daterange" in full and "P1W" in full
+    assert ">= aod.as_of_date - interval '" in full and "P1W" in full
 
 
 @pytest.mark.parametrize("name,kind", PHASE5.items())

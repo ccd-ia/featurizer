@@ -49,7 +49,7 @@ primitive names get a "did you mean?" from the registry. Disable with
 | `intervals` | yes | ISO-8601 durations (`P7D`, `P1M`, `P1Y`…). Each one adds a windowed variant of every aggregation, on top of the lifetime variant that is always emitted — see [Column budget](#column-budget) |
 | `aggregations` | no | subset of registered aggregations to apply — see the [primitives reference](/featurizer/reference/primitives/); omit (or `null`) for the curated default set. An explicit `[]` suppresses the aggregation layer: zero aggregation features (since v1.0.1) |
 | `transformations` | no | subset of registered transformers; omit (or `null`) for the curated default set. An explicit `[]` suppresses the transform layer — features pass through unchanged, identical to `[identity]` (since v1.0.1) |
-| `as_of_boundary` | no | `inclusive` (events at the as-of date count) or `exclusive` (strictly before) |
+| `as_of_boundary` | no | `inclusive` (a row stamped at or before the as-of date counts) or `exclusive` (strictly before). The as-of date is an instant: a `date` is 00:00 of its day, so a `timestamp` row stamped later that day counts from the next as-of date. A `timestamp` as-of date cuts at its own time, and an interval reaches back from it (`P1D` is the 24 hours before). `timestamptz` values follow the session `TimeZone` |
 | `as_of_dates` | no | `{id_column: <name>}` — declares that your `as_of_dates` table pairs each date with target ids, so the matrix holds only those pairs. See [Paired cohorts](/featurizer/concepts/paired-cohorts/) |
 | `entities` | yes | the tables — see below |
 | `relationships` | no | foreign-key links — see below |

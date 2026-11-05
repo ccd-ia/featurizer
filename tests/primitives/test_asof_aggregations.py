@@ -58,7 +58,7 @@ def test_interval_variant_bounds_window(name):
     result = agg(parent, child, child.temporal_ix, interval="P1W")
     assert result is not None
     assert result.definition is not None
-    assert "daterange" in result.definition
+    assert ">= aod.as_of_date - interval '" in result.definition
     assert "P1W" in result.definition
 
 

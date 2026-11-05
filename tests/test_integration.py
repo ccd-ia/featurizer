@@ -233,7 +233,7 @@ relationships:
             # Query should have filter clauses for intervals
             query = featurizer.query
             assert "filter" in query.lower()
-            assert "daterange" in query.lower()
+            assert ">= aod.as_of_date - interval '" in query.lower()
 
             Path(f.name).unlink()
 

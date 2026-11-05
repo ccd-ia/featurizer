@@ -1,7 +1,7 @@
 """Causal-safety regression tests for SubqueryAggregators.
 
 A subquery aggregator reads `<child>_transform` directly, so it must carry its
-own backward bound (`<= aod.as_of_date`, or the daterange window) — the outer
+own backward bound (`<= aod.as_of_date`, or the interval window) — the outer
 aggregation WHERE does not reach into it. These tests lock that in for every
 subquery aggregator (the prior leak was the missing non-interval bound).
 
@@ -75,11 +75,11 @@ def test_subquery_bounded_without_interval(name, kind):
 
 @pytest.mark.parametrize("name,kind", SUBQUERY_AGGS)
 def test_subquery_bounded_with_interval(name, kind):
-    """Interval subquery must bound rows with the as-of-anchored daterange."""
+    """Interval subquery must bound rows with the as-of-anchored interval window."""
     parent, child, rel = _setup()
     agg = get_aggregations([name])[name]
     result = agg(parent, child, _feature(child, kind), interval="P1W", relationship=rel)
     assert result is not None and result.definition is not None
     causal_sql = _causal_sql(result)
-    assert "daterange" in causal_sql
+    assert ">= aod.as_of_date - interval '" in causal_sql
     assert "P1W" in causal_sql

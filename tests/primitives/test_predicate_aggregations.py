@@ -114,11 +114,13 @@ def test_cross_type_latency_requires_temporal_ix():
     assert agg(parent, child, _feat(child, "event_type"), relationship=rel) is None
 
 
-def test_cross_type_latency_interval_uses_daterange():
+def test_cross_type_latency_interval_uses_the_window():
     parent, child, rel = _setup()
     agg = get_aggregations(["cross_type_latency"])["cross_type_latency"]
     result = agg(
         parent, child, _feat(child, "event_type"), interval="P1W", relationship=rel
     )
-    assert result.definition.count("daterange") == 2  # a and b windows
+    assert (
+        result.definition.count(">= aod.as_of_date - interval '") == 2
+    )  # a and b windows
     assert "P1W" in result.definition

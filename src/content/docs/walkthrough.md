@@ -135,9 +135,9 @@ cross join lateral (
     orders_aggs_for_customers as (
       select customer_id,
         count(order_id)             as "COUNT(orders.order_id)",
-        count(order_id) filter (where daterange((aod.as_of_date
-              - interval 'P7D')::date, aod.as_of_date::date, '[]')
-              @> order_date::date)  as "COUNT(orders.order_id|interval=P7D)",
+        count(order_id) filter (where (order_date >= aod.as_of_date
+              - interval 'P7D' and order_date <= aod.as_of_date))
+                                    as "COUNT(orders.order_id|interval=P7D)",
         sum(amount)                 as "SUM(orders.amount)"
         -- … one column per (aggregation × variable × interval)
       from orders_transform

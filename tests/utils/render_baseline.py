@@ -75,6 +75,18 @@ order, so they were captured an eighth time, from ``c3ce3ac`` plus that fix
 column is added, and no remaining column's projection changed. Like #49's move,
 this one changes what a config returns; ``ddl`` did not move.
 
+Issue #87 then wrote every interval window on the column itself, its upper
+bound the causal predicate (ADR-0021), so they were captured a ninth time, from
+``a18bff9`` plus that fix (``windowed_by``). 13 of the 23 parts move (8
+``groups``, 4 ``query``, 1 ``ddl``). Each one is identical to ``a18bff9``'s text
+once every ``daterange((aod.as_of_date - interval 'W')::date,
+aod.as_of_date::date, '[]') @> c::date`` is rewritten as
+``(c >= aod.as_of_date - interval 'W' and c <= aod.as_of_date)`` and every
+drift baseline as ``(c >= aod.as_of_date - (2 * interval 'W') and
+c < aod.as_of_date - interval 'W')``. ``n_groups`` did not change. On a
+``date`` as-of date with whole-day intervals, which every case here uses, the
+two spellings select the same rows.
+
 Three renderers read the target's base relation, so all three are digested: the
 monolithic query, the column-group queries, and the temp-table preamble.
 """

@@ -27,7 +27,9 @@ feature is computed from rows knowable at that date.
 _Avoid_: snapshot date, t0 (use t₀ only informally).
 
 **Causal boundary / causal bound**: The `<= aod.as_of_date` filter that keeps a
-feature from reading the future. "Leakage" is its violation.
+feature from reading the future, compared at the as-of date's instant (a `date`
+is 00:00 of its day). An interval window's upper bound is the same filter
+(ADR-0021). "Leakage" is its violation.
 _Avoid_: time filter, cutoff filter, look-back (look-back is the `interval`).
 
 **Interval**: An ISO-8601 window (`P6M`, `P1Y`) restricting an aggregation to a
