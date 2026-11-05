@@ -53,9 +53,11 @@ def _quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _config(triage_dir: Path, dataset: str) -> Dict[str, Any]:
+def _config(
+    triage_dir: Path, dataset: str, aggregations: List[str] = SEQUENCE_PRIMITIVES
+) -> Dict[str, Any]:
     config = final_matrix.load_feature_config(triage_dir, dataset)
-    config["aggregations"] = list(SEQUENCE_PRIMITIVES)
+    config["aggregations"] = list(aggregations)
     config["transformations"] = ["identity"]
     return config
 
@@ -79,10 +81,14 @@ def _is_feature(column: str) -> bool:
     return "(" in column
 
 
-def run(triage_dir: Path, dataset: str) -> Dict[str, Any]:
+def run(
+    triage_dir: Path, dataset: str, aggregations: List[str] = SEQUENCE_PRIMITIVES
+) -> Dict[str, Any]:
+    """Canonical rows of ``aggregations`` over the dataset's entity graph; also
+    used by ``benchmarks.interval_window_impact`` with its own list."""
     import featurizer
 
-    config = _config(triage_dir, dataset)
+    config = _config(triage_dir, dataset, aggregations)
     f = final_matrix.featurizer_for(config)
     conn = final_matrix.connect(triage_dir, dataset)
     try:
