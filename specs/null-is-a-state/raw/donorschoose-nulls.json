@@ -1,0 +1,10 @@
+[
+  {
+    "dataset": "donorschoose",
+    "entity": "resources",
+    "column": "project_resource_type",
+    "rows": 16682,
+    "null_rows": 0,
+    "null_share": 0.0
+  }
+]

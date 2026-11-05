@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: TODO audit &amp; the two cockpit fixes</title>
+<style>
+  :root {
+    --paper:      #fbfaf7;
+    --paper-2:    #f3f1eb;
+    --ink:        #1c1f23;
+    --ink-soft:   #5b6571;
+    --line:       #ddd8cd;
+    --accent:     #1f6f5c;   /* verified / done */
+    --accent-2:   #2b5f8a;   /* action / fix */
+    --stale:      #9a6b12;   /* stale / open */
+    --alert:      #a23b2e;
+    --code-bg:    #f0eee8;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:    #15181b;
+      --paper-2:  #1d2126;
+      --ink:      #e8e6e1;
+      --ink-soft: #9aa5b1;
+      --line:     #2e343b;
+      --accent:   #57b79c;
+      --accent-2: #6fa8d6;
+      --stale:    #d8a445;
+      --alert:    #e0705f;
+      --code-bg:  #1f242a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 120px; }
+  h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 {
+    font-size: 1.35rem; letter-spacing: -0.01em; margin: 56px 0 16px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  h3 { font-size: 1.1rem; margin: 32px 0 8px; }
+  h4 { font-size: 0.95rem; margin: 24px 0 8px; color: var(--ink-soft);
+       text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent-2); }
+  code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 16px; overflow-x: auto;
+    font-family: var(--mono); font-size: 0.82rem; line-height: 1.55;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  header .meta { margin: 20px 0 0; font-size: 0.86rem; }
+  header .meta summary {
+    cursor: pointer; color: var(--ink-soft); font-family: var(--mono);
+    font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  header .meta dl {
+    display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px;
+    margin: 14px 0 0; padding: 14px 16px;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  header .meta dt { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+  header .meta dd { margin: 0; font-size: 0.82rem; word-break: break-word; }
+  figure { margin: 28px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  figcaption {
+    margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft);
+    font-style: italic; max-width: 620px; margin-left: auto; margin-right: auto;
+  }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 6px; border-radius: 3px; vertical-align: 2px; margin-right: 6px;
+  }
+  .tag.existing { background: var(--paper-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  .tag.new      { background: var(--accent); color: var(--paper); }
+  .files ul { list-style: none; padding: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .phase {
+    margin: 32px 0; padding: 4px 22px 22px;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent-2); border-radius: var(--radius);
+  }
+  .phase h3 { margin-top: 22px; }
+  .status {
+    font-family: var(--mono); background: transparent; color: var(--ink-soft);
+    padding: 0 4px 0 0;
+  }
+  ul.checklist { list-style: none; padding: 0; margin: 10px 0; }
+  ul.checklist li {
+    padding: 5px 0 5px 2px; font-size: 0.9rem;
+    border-bottom: 1px dashed var(--line);
+  }
+  .loop {
+    margin: 18px 0 0; padding: 11px 14px; font-size: 0.86rem;
+    background: var(--paper); border: 1px solid var(--line);
+    border-left: 3px solid var(--stale); border-radius: var(--radius);
+  }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+  td code { font-size: 0.82em; }
+  #definition-of-done { padding: 22px 24px 8px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  #definition-of-done h2 { margin-top: 6px; border-bottom-color: var(--accent); }
+  details { margin: 8px 0; padding: 10px 14px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  details summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+  details .qa-answer { margin: 10px 0 2px; font-size: 0.89rem; color: var(--ink-soft); }
+  .callout { padding: 12px 16px; margin: 18px 0; font-size: 0.89rem;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--alert); border-radius: var(--radius); }
+  .muted { color: var(--ink-soft); }
+  .svg-mono { font-family: var(--mono); font-size: 11px; }
+  .svg-label { font-family: var(--sans); font-size: 12px; }
+  .svg-title { font-family: var(--sans); font-size: 13px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: TODO audit &amp; the two cockpit fixes</h1>
+    <p class="muted">Close what the code already solved, fix what it has not, and stop the task
+    list from asserting things that stopped being true.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-09-17</dd>
+        <dt>modified</dt>     <dd>2026-09-17, 2026-09-18</dd>
+        <dt>commits</dt>      <dd>763edc7 (PR #15, closes #14), 4e26c04 (PR #17, closes #16)</dd>
+        <dt>agent name</dt>   <dd>claude-opus-5[1m]</dd>
+        <dt>session id</dt>   <dd>e8f206ee-8312-48c2-8512-ed72f0468314</dd>
+        <dt>back refs</dt>    <dd><code>CONTRIBUTING.md</code> §"Changing featurizer from a consumer or another session" ·
+                                  <code>docs/adr/0010-set-based-preaggregation.md</code> ·
+                                  <code>docs/adr/0012-set-based-two-window-drift.md</code> ·
+                                  <code>docs/adr/0013-analyze-as-of-dates.md</code> ·
+                                  <code>specs/live-db-revalidation-v100/</code> ·
+                                  <code>specs/manifest-label-globbing-helper.html</code></dd>
+        <dt>forward refs</dt> <dd>(none yet)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 760 210" role="img" aria-label="Six reviewed task-list items sorted into two lanes: three still valid and needing a fix, three already solved in the code and needing only closure">
+      <text x="380" y="20" text-anchor="middle" fill="var(--ink)" class="svg-title">Six items reviewed against the code</text>
+
+      <rect x="18" y="40" width="352" height="150" rx="6" fill="var(--paper-2)" stroke="var(--accent-2)" stroke-width="1.5"/>
+      <text x="36" y="63" fill="var(--accent-2)" class="svg-label" font-weight="700">STILL VALID · fix</text>
+      <line x1="36" y1="72" x2="352" y2="72" stroke="var(--line)"/>
+      <text x="36" y="95"  fill="var(--ink)" class="svg-mono">gauge label widens the column</text>
+      <text x="36" y="120" fill="var(--ink)" class="svg-mono">cockpit page has no screenshots</text>
+      <text x="36" y="145" fill="var(--ink)" class="svg-mono">flake note misdiagnoses itself</text>
+      <text x="36" y="173" fill="var(--ink-soft)" class="svg-mono">2 pull requests · 1 rewrite</text>
+
+      <rect x="390" y="40" width="352" height="150" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="408" y="63" fill="var(--accent)" class="svg-label" font-weight="700">ALREADY SOLVED · close</text>
+      <line x1="408" y1="72" x2="724" y2="72" stroke="var(--line)"/>
+      <text x="408" y="95"  fill="var(--ink)" class="svg-mono">group_000 guard — c2c8aba</text>
+      <text x="408" y="120" fill="var(--ink)" class="svg-mono">ADR-0010 target — ADR-0012/0013</text>
+      <text x="408" y="145" fill="var(--ink)" class="svg-mono">CLAUDE.md refresh — 2026-09-05</text>
+      <text x="408" y="173" fill="var(--ink-soft)" class="svg-mono">closed with evidence, not opinion</text>
+    </svg>
+    <figcaption>The review that produced this plan: three items the code still owes, three the code
+    already paid and the list never recorded.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Six open <code>TODO.org</code> entries were checked against the code this session. Three
+    describe real, unfixed defects; three describe work that landed months ago and was never
+    closed. This plan fixes the first group through the protected-master flow, closes the second
+    group with the evidence that settles it, and then extends the same verification to the
+    remaining twenty open entries — because if six entries produced three false claims, the rest
+    have not earned their credibility either.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>A task list that asserts things the code contradicts is worse than an empty one: every
+    entry gets re-read, re-investigated, and re-costed by whoever opens the file next. Three of
+    the six entries examined were stale — <code>group_000</code> was guarded and tested in
+    <code>c2c8aba</code>, ADR-0010's real-database target was met and recorded in ADR-0012/0013,
+    and <code>CLAUDE.md</code> was rewritten on 2026-09-05 — and a fourth, the branch-protection
+    entry, still says <em>"master has NO protection"</em>, which stopped being true on 2026-09-06.
+    Meanwhile two genuine defects sat behind that noise, and one entry proposed a fix
+    (<em>"a settle on the query worker group"</em>) that has existed in
+    <code>lynkeus/src/lynkeus/testing.py</code> since its first commit.</p>
+    <figure>
+      <svg viewBox="0 0 760 230" role="img" aria-label="A task list entry claiming a fallback is unguarded, set against the code that raises on that exact condition and the two tests that cover it">
+        <rect x="18" y="26" width="336" height="176" rx="6" fill="var(--paper-2)" stroke="var(--stale)" stroke-width="1.5"/>
+        <text x="36" y="50" fill="var(--stale)" class="svg-label" font-weight="700">THE ENTRY SAYS</text>
+        <line x1="36" y1="59" x2="336" y2="59" stroke="var(--line)"/>
+        <text x="36" y="84"  fill="var(--ink)" class="svg-mono">_write_manifest_table defaults</text>
+        <text x="36" y="104" fill="var(--ink)" class="svg-mono">an unmatched column to</text>
+        <text x="36" y="124" fill="var(--ink)" class="svg-mono">"group_000" — a silent mis-tag</text>
+        <text x="36" y="156" fill="var(--ink-soft)" class="svg-mono">add an assertion + a test</text>
+        <text x="36" y="182" fill="var(--stale)" class="svg-mono">written 2026-07</text>
+
+        <path d="M 366 114 L 398 114" stroke="var(--ink-soft)" stroke-width="1.5"/>
+        <path d="M 392 108 L 400 114 L 392 120 Z" fill="var(--ink-soft)"/>
+
+        <rect x="406" y="26" width="336" height="176" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="424" y="50" fill="var(--accent)" class="svg-label" font-weight="700">THE CODE SAYS</text>
+        <line x1="424" y1="59" x2="724" y2="59" stroke="var(--line)"/>
+        <text x="424" y="84"  fill="var(--ink)" class="svg-mono">if orphaned:</text>
+        <text x="424" y="104" fill="var(--ink)" class="svg-mono">    raise RuntimeError(...)</text>
+        <text x="424" y="124" fill="var(--ink-soft)" class="svg-mono">featurizer.py:828</text>
+        <text x="424" y="156" fill="var(--ink-soft)" class="svg-mono">2 tests cover it</text>
+        <text x="424" y="182" fill="var(--accent)" class="svg-mono">landed c2c8aba</text>
+      </svg>
+      <figcaption>One of three stale entries. The fallback it warns about was replaced by a raise,
+      and both halves of the requested work shipped — the list simply never heard.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Four phases, ordered so the cheapest and least reversible work happens first. Phase 1 is
+    desk work on two gitignored files and needs no pull request. Phase 2 extends the same
+    evidence standard to the other twenty entries. Phases 3 and 4 are one pull request each,
+    through the protected-master flow: an issue first, a worktree branch off
+    <code>origin/master</code>, eight green contexts, the worktree removed before the rebase
+    merge, and <code>Closes #N</code> in both the commit message and the pull-request body so the
+    issue closes itself on merge.</p>
+    <figure>
+      <svg viewBox="0 0 760 178" role="img" aria-label="Four sequential phases: desk work on gitignored files, audit of the remaining entries, then two separate pull requests">
+        <rect x="14" y="44" width="166" height="82" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="97" y="70"  text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">1 · DESK</text>
+        <text x="97" y="92"  text-anchor="middle" fill="var(--ink)" class="svg-mono">close 4 · rewrite 1</text>
+        <text x="97" y="110" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">no pull request</text>
+
+        <rect x="198" y="44" width="166" height="82" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="281" y="70"  text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">2 · AUDIT</text>
+        <text x="281" y="92"  text-anchor="middle" fill="var(--ink)" class="svg-mono">20 entries remain</text>
+        <text x="281" y="110" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">evidence or re-date</text>
+
+        <rect x="382" y="44" width="166" height="82" rx="6" fill="var(--paper-2)" stroke="var(--accent-2)" stroke-width="1.5"/>
+        <text x="465" y="70"  text-anchor="middle" fill="var(--accent-2)" class="svg-label" font-weight="700">3 · GAUGE</text>
+        <text x="465" y="92"  text-anchor="middle" fill="var(--ink)" class="svg-mono">adapters.py + tests</text>
+        <text x="465" y="110" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">issue → PR → merge</text>
+
+        <rect x="566" y="44" width="180" height="82" rx="6" fill="var(--paper-2)" stroke="var(--accent-2)" stroke-width="1.5"/>
+        <text x="656" y="70"  text-anchor="middle" fill="var(--accent-2)" class="svg-label" font-weight="700">4 · SCREENSHOTS</text>
+        <text x="656" y="92"  text-anchor="middle" fill="var(--ink)" class="svg-mono">gen.py + cockpit.md</text>
+        <text x="656" y="110" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">issue → PR → merge</text>
+
+        <path d="M 180 85 L 196 85"  stroke="var(--ink-soft)" stroke-width="1.5"/>
+        <path d="M 190 80 L 198 85 L 190 90 Z" fill="var(--ink-soft)"/>
+        <path d="M 364 85 L 380 85"  stroke="var(--ink-soft)" stroke-width="1.5"/>
+        <path d="M 374 80 L 382 85 L 374 90 Z" fill="var(--ink-soft)"/>
+        <path d="M 548 85 L 564 85"  stroke="var(--ink-soft)" stroke-width="1.5"/>
+        <path d="M 558 80 L 566 85 L 558 90 Z" fill="var(--ink-soft)"/>
+
+        <text x="380" y="158" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">gitignored files first · protected master last</text>
+      </svg>
+      <figcaption>Phases 1–2 touch only <code>TODO.org</code> and <code>CLAUDE.md</code>, both
+      gitignored. Phases 3–4 are the only ones that reach <code>master</code>, one pull request
+      each.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>TODO.org</code> — the 26 open
+        <code>**</code>-level entries in lines 1–144. Gitignored; never staged.</li>
+      <li><span class="tag existing">existing</span> <code>CLAUDE.md</code> — line 24 records the
+        wrong consumer pin (<code>v1.0.1</code>; reality is <code>v1.1.0</code>). Gitignored.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/tui/adapters.py</code> —
+        line 495 passes <code>m.run_id</code> as the gauge name; <code>run_for()</code> at line
+        428 already uses <code>m.stem</code>. The one-line fix and its precedent share a file.</li>
+      <li><span class="tag existing">existing</span> <code>tests/integration/test_tui_adapters.py</code>
+        — asserts the gauge name at lines 122 and 180; both fail without updating, which is what
+        makes them the test that covers the change.</li>
+      <li><span class="tag existing">existing</span> <code>site/gen.py</code> —
+        <code>copy_passthrough()</code> at line 40 is the seam the screenshots join.</li>
+      <li><span class="tag existing">existing</span> <code>tests/test_site_gen.py</code> —
+        <code>test_explorable_copied_to_public</code> (line 107) is the template for the new
+        copy test.</li>
+      <li><span class="tag existing">existing</span> <code>src/content/docs/reference/cockpit.md</code>
+        — 146 lines, zero images.</li>
+      <li><span class="tag existing">existing</span> <code>.github/workflows/pages.yml</code> —
+        the <code>paths:</code> filter omits <code>tests/**</code>, so a re-taken snapshot would
+        not redeploy the site.</li>
+      <li><span class="tag existing">existing</span> <code>tests/__snapshots__/test_tui_screens/</code>
+        — the four committed SVGs that become the published screenshots.</li>
+      <li><span class="tag existing">existing</span> <code>site/check_links.py</code> — collects
+        <code>href</code> <em>and</em> <code>src</code>, so it already gates the new images.</li>
+      <li><span class="tag existing">existing</span> <code>CONTRIBUTING.md</code> — the six change
+        rules and the exact merge sequence both phases must follow.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>public/cockpit/*.svg</code> — generated by
+        <code>gen.py</code>, gitignored, regenerated in CI. Not authored by hand.</li>
+      <li class="muted">No other new files. Both fixes are edits to code that already exists; the
+        plan deliberately adds no module, no table and no dependency.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1: Settle the six reviewed entries</h3>
+      <p>Desk work on two gitignored files. No branch, no pull request, no CI. Every closure
+      carries the artifact that settles it — a commit SHA, an ADR number or a file path — so a
+      later reader can check the claim instead of trusting it.</p>
+
+      <h4>1. Close the three entries the code already solved</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>TODO.org:106</code> "Manifest-under-sharding: guard the group_000 fallback + add a test" → <code>DONE</code>, closed with: guard at <code>featurizer/featurizer.py:828</code> raising <code>RuntimeError</code>, covered by <code>tests/test_to_tables_row_width.py:196</code> (DB-free) and <code>tests/integration/test_manifest_sharding_guard.py</code>; landed in <code>c2c8aba</code></li>
+        <li><code class="status">[x]</code> <code>TODO.org:102</code> "Re-state ADR-0010 acceptance against real DBs" → <code>DONE</code>, closed with: ADR-0012 records the target met on the real database (dirtyduck 356.8s → 27.6s), ADR-0013 takes it to 7.0s, and <code>specs/live-db-revalidation-v100/</code> holds the committed per-database artifacts</li>
+        <li><code class="status">[x]</code> <code>TODO.org:25</code> "Refresh the project CLAUDE.md" → <code>DONE</code>, closed with: rewritten 2026-09-05, all three cited defects absent (<code>Last Updated</code>, <code>Active Tasks</code>, <code>~/projects/triage</code>)</li>
+        <li><code class="status">[x]</code> Note in the 2026-09-02 closure that the "name the skill + parity test" sub-point was not carried over, so it is dropped deliberately rather than lost</li>
+      </ul>
+
+      <h4>2. Close the fourth stale entry found while reviewing</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>TODO.org:34</code> "Decide on branch protection for ccd-ia/featurizer master" → <code>DONE</code>, closed with: protection landed 2026-09-06 as PR #1, merge <code>7bca8ef</code>; the six rules live in <code>CONTRIBUTING.md</code>. The entry's body still asserts <code>GET /branches/master/protection → 404</code>, which is the single most misleading line in the file</li>
+      </ul>
+
+      <h4>3. Rewrite the lynkeus flake entry with the correct diagnosis</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Replace <code>TODO.org:12</code> with the agreed text: the settle it asks for already exists (<code>press()</code> settles after every key including <code>ctrl+r</code>; <code>settle()</code> is <code>workers.wait_for_complete()</code> plus three pauses, <code>lynkeus/src/lynkeus/testing.py:25-36</code>, present since <code>92402b8</code> and therefore in force when the bad capture happened)</li>
+        <li><code class="status">[x]</code> Record the re-check of 2026-09-17: 10/10 pass in compare mode, 12/12 byte-identical SVG under <code>--snapshot-update</code></li>
+        <li><code class="status">[x]</code> Record the residual race — <code>wait_for_complete()</code> returns immediately when the worker is not yet registered, and three ticks may not cover a worker that chains a second message — and that an assertion, not more settling, is what would pin it. Keep it upstream and low priority</li>
+      </ul>
+
+      <h4>4. Correct the consumer pin in CLAUDE.md</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>CLAUDE.md:24</code>: <code>v1.0.1</code> → <code>v1.1.0</code>, verified against <code>~/projects/triage-pg/pyproject.toml:33</code></li>
+        <li><code class="status">[x]</code> Do <strong>not</strong> touch <code>triage-pg</code> itself — bumping the consumer to <code>v1.2.0</code> was considered and declined for this plan</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>Nothing executable changes in this phase, so the check is that the two files still say
+      only true things and that neither has leaked into git. Both are gitignored; the danger is
+      a stray <code>git add -f</code>, which the global rules forbid outright.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git status --porcelain</code> — proves the tree is still clean; <code>TODO.org</code> and <code>CLAUDE.md</code> must not appear</li>
+        <li><code class="status">[x]</code> <code>git check-ignore -v TODO.org CLAUDE.md</code> — proves both are still ignored, so the edits cannot reach a commit</li>
+        <li><code class="status">[x]</code> <code>grep -c "^\*\* \(TODO\|NEXT\|DEFERRED\)" TODO.org</code> — the open count dropped by exactly 4 (26 → 22); the rewritten flake entry stays open by design</li>
+        <li><code class="status">[x]</code> <code>grep -n "v1\.0\.1" CLAUDE.md</code> — returns nothing</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2: Audit the remaining twenty entries</h3>
+      <p>Apply the standard that produced Phase 1 to every other open entry: read the claim, find
+      the code, test, ADR or commit that confirms or refutes it, then close it with that evidence
+      or keep it with a re-dated note saying what was checked. Scope is the 26 <code>**</code>-level
+      entries in lines 1–144 — twenty remain after Phase 1. The <code>***</code>/<code>****</code>
+      roadmap tree below line 143 carries <code>DEADLINE: &lt;2025-12-01&gt;</code> markers and
+      predates 1.0; it is a separate backlog and is explicitly out of scope.</p>
+      <p>This is audit work, not repair work. An entry that turns out to be real and unfixed stays
+      open — the deliverable is that no open entry asserts something false, not that the list gets
+      short.</p>
+
+      <h4>1. Work the high-suspicion group first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> The three <code>triage-pg</code> pin entries — lines 115 (<code>→ v0.5.0</code>), 118 (<code>v0.4.1 → v0.4.2</code>) and 122 (verify the <code>v0.4.1</code> pin resolves). The consumer pins <code>v1.1.0</code> today, so all three are moot. Verify against <code>~/projects/triage-pg/pyproject.toml:33</code> and close as superseded</li>
+        <li><code class="status">[x]</code> <code>TODO.org:127</code> "Wire the triage-pg adapter against v0.2.0" — check whether the adapter exists and runs in <code>triage-pg</code> today</li>
+        <li><code class="status">[x]</code> <code>TODO.org:137</code> "Optionally push master to origin (nanounanue) / open PR to upstream (dssg)" — <code>origin</code> has been <code>ccd-ia</code> since 2026-07-10; re-read against the current remote layout</li>
+        <li><code class="status">[x]</code> <code>TODO.org:132</code> "Widen example configs' curated primitive sets now that #7 sharding handles &gt;1664 cols" — sharding landed; decide and record, since the entry itself calls it a judgment call</li>
+        <li><code class="status">[x]</code> <code>TODO.org:117</code> "Confirm dotfiles instance re-vendored the skill body" — check <code>~/.claude/skills/featurizer-dfs/SKILL.md</code> against the in-repo copy</li>
+      </ul>
+
+      <h4>2. Work the remainder</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> For each of the fifteen entries left, record one of: <code>DONE</code> + evidence, <code>CANCELLED</code> + reason, or keep + a dated "re-checked, still true" note</li>
+        <li><code class="status">[x]</code> Where an entry is real and actionable but out of this plan's scope, leave it open and say so — do not convert it into new work here</li>
+        <li><code class="status">[x]</code> Where an entry has become a GitHub issue (#7, #9–#13 are open), point the entry at the issue instead of duplicating it</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>The audit's own correctness is the thing to check: every closure must name an artifact,
+      and no entry may be closed on recollection. The grep below is the mechanical half; the
+      reading is the other half and cannot be automated.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Every entry closed in this phase names a commit SHA, file path, ADR number or issue number — read the diff of <code>TODO.org</code> and confirm it line by line</li>
+        <li><code class="status">[x]</code> <code>grep -c "^\*\* \(TODO\|NEXT\|DEFERRED\)" TODO.org</code> — record the final open count; any number is acceptable, an unrecorded one is not</li>
+        <li><code class="status">[x]</code> <code>grep -n "NO protection\|v0\.4\.\|v0\.5\.0" TODO.org</code> — the known-false assertions are gone</li>
+        <li><code class="status">[x]</code> <code>git status --porcelain</code> — still clean; the audit touches only gitignored files</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3: The Status gauge label (issue + pull request)</h3>
+      <p>On the Status screen, one label column is sized to the widest thing in the panel — a
+      deliberate upstream fix, whose comment names the bug it solved (<em>"a project whose gauges
+      are table names … runs its bar straight into the label"</em>). featurizer feeds it
+      <code>m.run_id</code>, which is <code>schema.stem</code>, so
+      <code>example_01.customers</code> sets the width for every row and the extras lose seven
+      characters to ellipsis.</p>
+      <p>The fix belongs here, not upstream, and it has a precedent in the same file:
+      <code>run_for()</code> already renders a materialization as <code>name=stem</code> with the
+      schema in <code>detail</code>. The Status gauge is the one place that does not follow it.</p>
+
+      <figure>
+        <svg viewBox="0 0 760 260" role="img" aria-label="Before and after of the status panel label column: with the schema-qualified gauge name the primitives row is truncated, with the stem alone it fits">
+          <text x="26" y="26" fill="var(--stale)" class="svg-label" font-weight="700">BEFORE · label column = 20</text>
+          <rect x="18" y="38" width="724" height="78" rx="4" fill="var(--code-bg)" stroke="var(--line)"/>
+          <text x="32" y="60"  fill="var(--ink-soft)" class="svg-mono">relationships</text>
+          <text x="186" y="60" fill="var(--ink)" class="svg-mono">4 · 2 as-of</text>
+          <text x="32" y="80"  fill="var(--ink-soft)" class="svg-mono">primitives</text>
+          <text x="186" y="80" fill="var(--ink)" class="svg-mono">7 aggregations · 2 transform</text>
+          <text x="404" y="80" fill="var(--alert)" class="svg-mono" font-weight="700">…</text>
+          <text x="32" y="104" fill="var(--ink-soft)" class="svg-mono">example_01.customers</text>
+          <text x="186" y="104" fill="var(--accent)" class="svg-mono">███████ 1 of 1  group tables</text>
+          <line x1="180" y1="44" x2="180" y2="110" stroke="var(--alert)" stroke-dasharray="3 3"/>
+
+          <text x="26" y="158" fill="var(--accent)" class="svg-label" font-weight="700">AFTER · label column = 13</text>
+          <rect x="18" y="170" width="724" height="78" rx="4" fill="var(--code-bg)" stroke="var(--line)"/>
+          <text x="32" y="192"  fill="var(--ink-soft)" class="svg-mono">relationships</text>
+          <text x="140" y="192" fill="var(--ink)" class="svg-mono">4 · 2 as-of</text>
+          <text x="32" y="212"  fill="var(--ink-soft)" class="svg-mono">primitives</text>
+          <text x="140" y="212" fill="var(--ink)" class="svg-mono">7 aggregations · 2 transformations</text>
+          <text x="32" y="236"  fill="var(--ink-soft)" class="svg-mono">customers</text>
+          <text x="140" y="236" fill="var(--accent)" class="svg-mono">███████ 1 of 1  example_01 · group tables</text>
+          <line x1="134" y1="176" x2="134" y2="242" stroke="var(--accent)" stroke-dasharray="3 3"/>
+        </svg>
+        <figcaption>The schema does not disappear — it moves into the note, where the entity
+        gauges on the same panel already keep theirs.</figcaption>
+      </figure>
+
+      <h4>1. Open the issue first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>gh issue list</code> and <code>gh pr list</code> — confirm nothing covers this already (verified 2026-09-17: #7, #9–#13 open, none related; no open PRs)</li>
+        <li><code class="status">[x]</code> <code>gh issue create</code> describing the widening, the <code>run_for()</code> precedent, and the proposed label/note split. Record the issue number as <code>&lt;N3&gt;</code></li>
+      </ul>
+
+      <h4>2. Branch in a worktree</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git worktree add .worktrees/gauge-label -b cockpit/gauge-label origin/master</code></li>
+        <li><code class="status">[x]</code> Work inside the worktree; <code>.worktrees/</code> is gitignored</li>
+      </ul>
+
+      <h4>3. Make the change</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>featurizer/tui/adapters.py</code> materialization gauge (lines 492–500): name becomes <code>m.stem</code>, note becomes <code>f"{m.schema} · group tables"</code></li>
+        <li><code class="status">[x]</code> Leave <code>run_for()</code> alone — it is already correct and is the precedent being matched</li>
+        <li><code class="status">[x]</code> Leave <code>Materialization.run_id</code> alone — it stays the identity used by <code>show()</code>, <code>_find()</code> and prefix lookup</li>
+      </ul>
+
+      <h4>4. Update the tests that cover it</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/integration/test_tui_adapters.py:122</code> — key the gauge by <code>"customers"</code>, not <code>f"{name}.customers"</code></li>
+        <li><code class="status">[x]</code> <code>tests/integration/test_tui_adapters.py:180</code> — same key change</li>
+        <li><code class="status">[x]</code> Add the assertion that fails without the change: <code>gauge.note == f"{name} · group tables"</code>, so the schema is proven present rather than merely assumed</li>
+        <li><code class="status">[x]</code> Confirm no collision with the entity gauges, which are keyed <code>"customers rows"</code></li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>The change is one line of rendering data, but it moves a string that appears in
+      <code>featurizer status --json</code>, so the integration tier is the real gate — and it is
+      one of the eight required contexts, running on PostgreSQL 14, 16 and 17. Locally the
+      integration tier needs a database; without one it skips rather than fails, which would be a
+      silent pass, so <code>just db-up</code> comes first.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>just db-up</code> — the ephemeral database, so the integration tier actually runs instead of skipping</li>
+        <li><code class="status">[x]</code> <code>just test-integration</code> — the two updated assertions and the new note assertion pass against a real database</li>
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_tui_screens.py -q</code> — the three screen snapshots are unchanged; Status is not among them, so any diff here means the change reached further than intended</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> — the DB-free tier is untouched</li>
+        <li><code class="status">[x]</code> <code>just typecheck</code> — basedpyright clean, at the 3.10 floor</li>
+        <li><code class="status">[x]</code> <code>just fmt-check</code> — formatting gate</li>
+      </ul>
+
+      <h4>6. Land it</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Commit with <code>Closes #&lt;N3&gt;</code> in the message, plus the <code>Co-Authored-By</code> trailer. <strong>Do not touch <code>CHANGELOG.md</code></strong> — rule 4: the release commit writes that section, and <code>release.yml</code> checks it at tag time</li>
+        <li><code class="status">[x]</code> <code>gh pr create</code> with <code>Closes #&lt;N3&gt;</code> in the body as well, so the issue closes on merge under either path</li>
+        <li><code class="status">[x]</code> Rebase on <code>origin/master</code>, then <code>git push --force-with-lease</code> — protection is <code>strict</code>, so a stale branch will not merge</li>
+        <li><code class="status">[x]</code> <code>gh pr checks --watch --fail-fast</code> — all eight contexts green</li>
+        <li><code class="status">[x]</code> <code>git worktree remove .worktrees/gauge-label</code> <em>from the main checkout</em>, <strong>before</strong> merging — a live worktree breaks two of the three local git steps <code>gh</code> runs, and it has failed on PRs #1, #3 and #5</li>
+        <li><code class="status">[x]</code> <code>gh pr merge &lt;n&gt; --rebase --delete-branch</code>, then confirm the local branch is really gone — <code>gh</code> has skipped that step silently before, with no error and no output</li>
+        <li><code class="status">[x]</code> Confirm the issue closed itself; if not, the keyword did not take and the issue is closed by hand</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4: Cockpit screenshots on the Reference page (issue + pull request)</h3>
+      <p>Four deterministic SVGs of the cockpit already live under
+      <code>tests/__snapshots__/test_tui_screens/</code>, produced against fake adapters with a
+      frozen clock and no database. The Reference page describes all three featurizer screens in
+      prose and shows none of them. <code>gen.py</code> already copies three directories into
+      <code>public/</code>; this adds a fourth.</p>
+      <p>Sourcing the published images directly from the snapshot directory is what keeps them
+      honest: the snapshot tests fail when the TUI changes, so a stale screenshot cannot ship
+      quietly. The cost is one line in <code>pages.yml</code>, because <code>tests/**</code> is
+      not currently a path that triggers a deploy.</p>
+
+      <h4>1. Open the issue first</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>gh issue list</code> — confirm nothing covers it</li>
+        <li><code class="status">[x]</code> <code>gh issue create</code> describing the four screenshots, the copy seam and the <code>pages.yml</code> path gap. Record the number as <code>&lt;N4&gt;</code></li>
+      </ul>
+
+      <h4>2. Branch in a worktree</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>git worktree add .worktrees/cockpit-screenshots -b docs/cockpit-screenshots origin/master</code></li>
+      </ul>
+
+      <h4>3. Copy the snapshots into the site</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>site/gen.py</code>: add <code>(REPO / "tests" / "__snapshots__" / "test_tui_screens", PUBLIC / "cockpit")</code> to the <code>copy_passthrough()</code> list</li>
+        <li><code class="status">[x]</code> Update <code>copy_passthrough()</code>'s docstring and the module docstring's item 1 — both currently enumerate the sources and would otherwise be wrong the moment this lands</li>
+        <li><code class="status">[x]</code> <code>.github/workflows/pages.yml</code>: add <code>- "tests/__snapshots__/**"</code> to <code>paths:</code>, so a re-taken snapshot redeploys the site</li>
+      </ul>
+
+      <h4>4. Place the images on the page</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>src/content/docs/reference/cockpit.md</code>: add the four images at <code>/featurizer/cockpit/&lt;name&gt;.svg</code> — absolute with the base prefix, matching how <code>walkthrough.md</code> references its figures</li>
+        <li><code class="status">[x]</code> Put each screenshot beside the prose it illustrates: <code>test_config_screen.svg</code> after the screens table; <code>test_manifest_screen.svg</code> and <code>test_manifest_screen_filtered.svg</code> at "The Manifest filter is the library's glob"; <code>test_sql_screen.svg</code> at "The SQL screen never runs a group for its rows"</li>
+        <li><code class="status">[x]</code> Write real alt text describing what each screen shows — these are the only images on the page and a screen reader gets nothing else</li>
+      </ul>
+
+      <h4>5. Add the test that fails without the change</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/test_site_gen.py</code>: <code>test_cockpit_screenshots_copied_to_public</code>, mirroring <code>test_explorable_copied_to_public</code> (line 107) — call <code>gen.copy_passthrough()</code>, assert the four SVGs land in <code>public/cockpit/</code></li>
+        <li><code class="status">[x]</code> A second test mirroring <code>test_referenced_notebook_assets_exist</code>: every <code>/featurizer/cockpit/*.svg</code> referenced by <code>cockpit.md</code> exists in the snapshot directory — this is what catches a renamed snapshot before the deploy does</li>
+      </ul>
+
+      <h4>6. Testing Strategy</h4>
+      <p>Two gates, and the second is the one that matters: <code>check_links.py</code> collects
+      <code>src</code> as well as <code>href</code>, so the published images are already covered by
+      the check that stands between <code>astro build</code> and deploy. Running the full site
+      build locally reproduces exactly what CI does, and is the only way to see a broken image
+      path before it is public.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — both new tests pass, and they fail on a stash of the <code>gen.py</code> change</li>
+        <li><code class="status">[x]</code> <code>uv run python site/gen.py</code> — prints the new <code>copied tests/__snapshots__/test_tui_screens -&gt; public/cockpit (4 files)</code> line</li>
+        <li><code class="status">[x]</code> <code>npm ci &amp;&amp; npm run build</code> — the Astro build with base <code>/featurizer</code></li>
+        <li><code class="status">[x]</code> <code>uv run python site/check_links.py dist</code> — exits 0; the four new <code>src</code> values resolve</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> and <code>just typecheck</code> — the package is untouched, and this proves it</li>
+      </ul>
+
+      <h4>7. Land it</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Commit with <code>Closes #&lt;N4&gt;</code> and the <code>Co-Authored-By</code> trailer; no <code>CHANGELOG.md</code></li>
+        <li><code class="status">[x]</code> <code>gh pr create</code> with <code>Closes #&lt;N4&gt;</code> in the body</li>
+        <li><code class="status">[x]</code> Rebase, <code>git push --force-with-lease</code>, <code>gh pr checks --watch --fail-fast</code> — eight green</li>
+        <li><code class="status">[x]</code> <code>git worktree remove .worktrees/cockpit-screenshots</code> from the main checkout, <strong>then</strong> <code>gh pr merge &lt;n&gt; --rebase --delete-branch</code></li>
+        <li><code class="status">[x]</code> Watch <code>pages.yml</code> deploy and open the published Reference page — the images render at the real base path, which no local build fully proves</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== DEFINITION OF DONE ===== -->
+  <section id="definition-of-done">
+    <h2>Definition of Done</h2>
+
+    <figure>
+      <svg viewBox="0 0 760 156" role="img" aria-label="Three before-and-after measures: open entries audited, cockpit page images, and gauge label width">
+        <rect x="18" y="26" width="230" height="110" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="133" y="50"  text-anchor="middle" fill="var(--ink-soft)" class="svg-label">open entries unverified</text>
+        <text x="90"  y="92"  text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:30px;font-weight:700">26</text>
+        <text x="133" y="92"  text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="180" y="92"  text-anchor="middle" fill="var(--accent)" style="font-family:var(--sans);font-size:30px;font-weight:700">0</text>
+        <text x="133" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">each closure names evidence</text>
+
+        <rect x="265" y="26" width="230" height="110" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="380" y="50"  text-anchor="middle" fill="var(--ink-soft)" class="svg-label">images on the cockpit page</text>
+        <text x="337" y="92"  text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:30px;font-weight:700">0</text>
+        <text x="380" y="92"  text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="427" y="92"  text-anchor="middle" fill="var(--accent)" style="font-family:var(--sans);font-size:30px;font-weight:700">4</text>
+        <text x="380" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">gated by check_links</text>
+
+        <rect x="512" y="26" width="230" height="110" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="627" y="50"  text-anchor="middle" fill="var(--ink-soft)" class="svg-label">status label column</text>
+        <text x="584" y="92"  text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:30px;font-weight:700">20</text>
+        <text x="627" y="92"  text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="671" y="92"  text-anchor="middle" fill="var(--accent)" style="font-family:var(--sans);font-size:30px;font-weight:700">13</text>
+        <text x="627" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">no truncated extras</text>
+      </svg>
+      <figcaption>The three measures that make completion checkable by someone who was not here.</figcaption>
+    </figure>
+
+    <p>Every open entry in <code>TODO.org</code> lines 1–144 has been read against the code, and
+    each one that was closed names the artifact that closes it — a commit SHA, a file and line, an
+    ADR number or a GitHub issue. Opening the file and picking an entry at random, a reader can
+    check the claim in under a minute instead of re-investigating it. The two real defects are
+
+    fixed on <code>master</code>: the Status screen's extras are no longer truncated by a
+    schema-qualified gauge name, and the published Reference page shows the cockpit rather than
+    only describing it.</p>
+
+    <p>The numbers: 26 open <code>**</code>-level entries audited, of which at least 7 close with
+    evidence (3 verified this session, the branch-protection entry, and the 3 superseded
+    <code>triage-pg</code> pin entries against the consumer's actual <code>v1.1.0</code>); the final
+    open count is recorded, whatever it turns out to be. The Status label column narrows from 20
+    to 13 characters, which is the width of <code>relationships</code> and is what stops
+    <code>7 aggregations · 2 transformations</code> from ellipsising at 110 columns.
+    <code>src/content/docs/reference/cockpit.md</code> goes from 0 images to 4, each resolved by
+    <code>site/check_links.py</code> against the built tree. Two pull requests merge with all eight
+    required contexts green, each closing its issue through a <code>Closes #N</code> keyword, and
+    neither touching <code>CHANGELOG.md</code>.</p>
+
+    <p><strong>Not included.</strong> No upstream change to <code>lynkeus</code> — the flake entry
+    is rewritten, not fixed, and the shared label width stays as the deliberate upstream design it
+    is. No bump of <code>triage-pg</code>'s pin to <code>v1.2.0</code>; only featurizer's own record
+    of what that pin currently is. No <code>CHANGELOG.md</code> entry and no release tag — the
+    release commit owns that section. No work on the <code>***</code> roadmap tree below line 143,
+    and no triage of the six open GitHub issues (#7, #9–#13), which are real engine bugs and
+    deserve their own plan.</p>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[x]</code> <code>git status --porcelain</code> — clean; <code>TODO.org</code> and <code>CLAUDE.md</code> never entered git</li>
+      <li><code class="status">[x]</code> <code>grep -n "NO protection\|v1\.0\.1\|group_000 fallback" TODO.org CLAUDE.md</code> — every known-false assertion is gone</li>
+      <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — the gauge change proven against a real database, not skipped</li>
+      <li><code class="status">[x]</code> <code>just test-fast</code> — 762 DB-free tests still pass</li>
+      <li><code class="status">[x]</code> <code>just typecheck</code> — basedpyright clean at the 3.10 floor</li>
+      <li><code class="status">[x]</code> <code>just fmt-check</code> — formatting gate green</li>
+      <li><code class="status">[x]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — the two new copy/reference tests pass</li>
+      <li><code class="status">[x]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — the site builds and every image resolves</li>
+      <li><code class="status">[x]</code> <code>gh issue list --state open</code> — both new issues are closed; nothing was left dangling by a keyword that did not fire</li>
+      <li><code class="status">[x]</code> <code>git log --oneline origin/master -4</code> — both changes are on master as rebase commits, with no merge commit</li>
+      <li><code class="status">[x]</code> <code>git worktree list</code> — only the main checkout remains</li>
+      <li><code class="status">[x]</code> <code>git branch -vv</code> — neither <code>cockpit/gauge-label</code> nor <code>docs/cockpit-screenshots</code> survives locally</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+
+    <details>
+      <summary>[asked] What to do with the lynkeus <code>test_query_screen</code> flake entry</summary>
+      <p class="qa-answer"><strong>Chosen: rewrite the note, no code change.</strong> The entry
+      proposes a settle that has existed since <code>testing.py</code>'s first commit, and the
+      flake did not reproduce in 22 runs (10 compare, 12 update, all byte-identical). An upstream
+      pull request adding a non-empty assertion was offered and declined for now; the rewritten
+      entry records that assertion as the remedy if it ever recurs.</p>
+    </details>
+
+    <details>
+      <summary>[asked] How wide the <code>TODO.org</code> pass should go</summary>
+      <p class="qa-answer"><strong>Chosen: full audit of all 26 open entries.</strong> The six
+      reviewed produced three false claims and a fourth was found in passing, so the base rate
+      argues for the sweep. Scope is bounded to the <code>**</code>-level entries in lines 1–144;
+      Phase 2 is explicitly audit work, and entries that turn out to be real stay open.</p>
+    </details>
+
+    <details>
+      <summary>[asked] How far the <code>triage-pg</code> pin correction should go</summary>
+      <p class="qa-answer"><strong>Chosen: correct featurizer's record only.</strong>
+      <code>CLAUDE.md:24</code> moves from <code>v1.0.1</code> to <code>v1.1.0</code> to match
+      <code>~/projects/triage-pg/pyproject.toml:33</code>. Bumping the consumer to
+      <code>v1.2.0</code> is a cross-repo change with its own issue, pull request and test run, and
+      is not what "fix the valid issues" asked for.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Gauge name becomes the stem, with the schema in the note</summary>
+      <p class="qa-answer">Rather than truncating or asking upstream for a second column.
+      <code>run_for()</code> in the same file already renders a materialization as
+      <code>name=stem</code> with the schema in <code>detail</code>, and the entity gauges on the
+      same panel already carry <code>schema.table</code> in their note — so this makes the Status
+      gauge consistent with both of its neighbours instead of introducing a new convention.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Stem collisions across schemas are accepted, not guarded</summary>
+      <p class="qa-answer"><code>find_materializations(schema=None)</code> scans every user schema,
+      so two materializations could share a stem and produce two identically-labelled gauges. The
+      Runs list has carried exactly this ambiguity since 1.2.0 without complaint, the note
+      disambiguates them visually, and <code>run_id</code> remains the identity used for lookup.
+      Adding collision-aware labelling here would make the Status screen stricter than the Runs
+      screen beside it, which is the wrong kind of inconsistency to introduce.</p>
+    </details>
+
+    <details>
+      <summary>[decided] The fix is featurizer's, not lynkeus's</summary>
+      <p class="qa-answer">The single shared label column is deliberate upstream: the comment at
+      <code>screens/status.py:75-78</code> names the bug it fixed — a consumer whose gauges are
+      table names ran its bar into the label. Asking for a second width would reopen that. The
+      original entry framed this as a choice between "here" and "upstream"; it is not.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Screenshots are sourced from <code>tests/</code>, not a committed copy</summary>
+      <p class="qa-answer">Copying the four SVGs into <code>docs/images/</code> would put them on an
+      already-watched path and avoid the <code>pages.yml</code> edit, but it creates a second copy
+      that drifts silently. Reading them from <code>tests/__snapshots__/</code> keeps one source
+      whose accuracy the snapshot tests already enforce. The cost — one line in the workflow's
+      <code>paths:</code> filter — is smaller than the drift.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Two issues and two pull requests, not one of each</summary>
+      <p class="qa-answer">Rule 1 is "one need, one thread" and rule 3 describes a pull request
+      referencing <em>its</em> issue. The two changes share no file: one is a TUI adapter with
+      integration tests, the other is the docs pipeline. Bundling would halve the CI cost and
+      muddle both reviews.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Neither pull request touches <code>CHANGELOG.md</code></summary>
+      <p class="qa-answer">Rule 4, enforced by <code>release.yml</code>'s guard at tag time: the
+      release commit writes the section from the merged pull requests. Worth stating because the
+      gauge change is user-visible in <code>featurizer status --json</code> and the reflex is to
+      document it in the same commit.</p>
+    </details>
+
+    <details>
+      <summary>[decided] The <code>***</code> roadmap tree below line 143 is out of scope</summary>
+      <p class="qa-answer">It carries <code>DEADLINE: &lt;2025-12-01&gt;</code> markers and predates
+      1.0; most of it was overtaken by the 1.0–1.2 work. Auditing it is a separate exercise with a
+      different conclusion — probably "archive the tree", not "close the entries" — and folding it
+      into this plan would triple Phase 2 for no gain to the six items that prompted it.</p>
+    </details>
+
+    <details>
+      <summary>[unresolved] <code>featurizer status --json</code> gauge names change</summary>
+      <p class="qa-answer"><strong>Assumption in force:</strong> no consumer parses gauge names out
+      of the headless JSON, so renaming them is safe. The TUI is not on ADR-0015's freeze list and
+      1.2.0 shipped on 2026-09-04, so the exposure is about two weeks. But the JSON is a public
+      surface of the cockpit's headless twin, and this is the one part of Phase 3 that could
+      surprise someone. <strong>Phase at risk:</strong> 3. If a consumer does read those names,
+      the fallback is to keep <code>run_id</code> in the JSON and shorten only the rendered label
+      — which would require rendering logic in the TUI, something the architecture rules forbid,
+      so it would need a different design.</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Blast radius of each change</h3>
+    <table>
+      <tr><th>Change</th><th>Files</th><th>Tests affected</th><th>User-visible?</th></tr>
+      <tr>
+        <td>Gauge label</td>
+        <td><code>featurizer/tui/adapters.py</code></td>
+        <td>2 assertions updated, 1 added — all integration</td>
+        <td>Yes: Status screen and <code>status --json</code></td>
+      </tr>
+      <tr>
+        <td>Screenshots</td>
+        <td><code>site/gen.py</code>, <code>cockpit.md</code>, <code>pages.yml</code></td>
+        <td>2 new in <code>tests/test_site_gen.py</code></td>
+        <td>Yes: published Reference page</td>
+      </tr>
+      <tr>
+        <td>TODO / CLAUDE.md</td>
+        <td>both gitignored</td>
+        <td>none</td>
+        <td>No — local only</td>
+      </tr>
+    </table>
+
+    <h3>The merge sequence, in the order that works</h3>
+    <p>Removing the worktree before merging is not a style preference. <code>gh pr merge
+    --delete-branch</code> ends with three local git steps, and a live worktree breaks two of
+    them — verified the hard way on PRs #1, #3 and #5. In every failure case the pull request is
+    <em>already merged</em>, so the repair is <code>git branch -D</code> plus <code>git push origin
+    --delete</code>, never a second merge.</p>
+    <pre><code>git worktree add .worktrees/&lt;need&gt; -b &lt;who&gt;/&lt;need&gt; origin/master
+# ... work, commit with "Closes #N" ...
+gh pr create                      # "Closes #N" in the body too
+git rebase origin/master
+git push --force-with-lease
+gh pr checks --watch --fail-fast  # eight contexts, strict
+git worktree remove .worktrees/&lt;need&gt;    # from the MAIN checkout, first
+gh pr merge &lt;n&gt; --rebase --delete-branch
+git branch -vv                    # gh has skipped this step silently before</code></pre>
+
+    <h3>Why <code>Closes #N</code> goes in both places</h3>
+    <p>GitHub closes a referenced issue from the pull-request body on merge, and from any commit
+    message that lands on the default branch. This repo requires linear history and merges with
+    <code>--rebase</code>, so the commits <em>do</em> land on <code>master</code> and either
+    location would work on its own. Putting the keyword in both costs nothing and survives a
+    squash, a hand-edited body, or a merge performed from the web UI by someone else. The final
+    validation step still checks <code>gh issue list</code>, because a keyword that silently fails
+    to fire looks exactly like one that was never written.</p>
+
+    <h3>The eight required contexts</h3>
+    <p>Both pull requests wait on the same set, and <code>strict: true</code> means a branch that
+    has fallen behind <code>master</code> will not merge until it is rebased:</p>
+    <pre><code>fast tests (py 3.10)   fast tests (py 3.11)
+fast tests (py 3.12)   fast tests (py 3.13)
+integration (PostgreSQL 14)   integration (PostgreSQL 16)
+integration (PostgreSQL 17)   packaging (build + twine check)</code></pre>
+    <p>The gauge change is covered only by the three integration contexts — the fast tier cannot
+    reach it, because <code>status()</code> opens a connection. That is why <code>just db-up</code>
+    is the first validation step in Phase 3: without a database the integration tier skips, and a
+    skip reads like a pass.</p>
+
+    <h3>Risks worth naming</h3>
+    <ul>
+      <li><strong>Phase 2 discovers real work.</strong> Likely, and the plan is built for it: an
+      entry that survives the audit stays open with a dated note. Turning discoveries into new
+      phases here would be scope creep wearing an audit's clothes.</li>
+      <li><strong>The snapshot SVGs are 110×34 terminal captures</strong> — wide, and they will
+      need a width constraint on narrow screens. Starlight's content styles handle most of it;
+      check the published page on a phone before calling Phase 4 done.</li>
+      <li><strong>A global <code>svg { display: block }</code> reset breaks inline MathJax flow</strong>
+      on this site — a documented, hard-won gotcha. Phase 4 adds SVGs to one page; if it tempts
+      anyone toward a global SVG rule, that is the trap.</li>
+      <li><strong>No new dependency</strong> in either phase. Nothing to <code>uv add</code>,
+      nothing to <code>npm install</code>, no lockfile churn — which also keeps both pull requests
+      off rule 2's all-consumer list.</li>
+    </ul>
+
+    <h3>What this plan deliberately leaves on the table</h3>
+    <p>Six GitHub issues are open (#7, #9–#13) and several are genuine engine defects — unquoted
+    variable interpolation producing invalid SQL (#13), <code>temporal: {mode: as_of}</code>
+    silently ignored on backward relationships (#9), validation gaps (#12, #7). #9 in particular
+    touches the point-in-time invariant the project exists to hold. None of them belong in a
+    task-list audit, and folding them in would bury them. They want their own plan, and #9 should
+    probably lead it.</p>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details>
+      <summary>2026-09-18 — built in full; all four phases complete</summary>
+      <p>TODO.org 26 → 11 open (4 closed in Phase 1, 7 in the Phase 2 audit, 3 re-dated after
+      re-verification). Gauge fix landed as PR #15 (763edc7); screenshots as PR #17 (4e26c04).
+      Two deviations from the plan as written: <code>public/cockpit/</code> had to be added to
+      <code>.gitignore</code> (the public/ ignores are per-directory, so the SVGs were staged on the
+      first commit), and the force-push after rebase was blocked by the permission gate —
+      <code>gh pr update-branch --rebase</code> does the same server-side and was used for every
+      later PR.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

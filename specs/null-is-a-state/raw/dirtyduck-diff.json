@@ -1,0 +1,37 @@
+{
+  "dataset": "dirtyduck",
+  "rows": 22169,
+  "feature_columns": 133,
+  "moved_cells": 16781,
+  "moved_entities": 4452,
+  "moved_columns": 18,
+  "moved_cells_per_column": {
+    "MARKOV_CONDITIONAL_ENTROPY(inspections.risk)": 1,
+    "MAX_TRANSITION_PROB(inspections.risk)": 1,
+    "NGRAM_3_FREQ(inspections.result)": 3090,
+    "NGRAM_3_FREQ(inspections.result|interval=P1M)": 159,
+    "NGRAM_3_FREQ(inspections.result|interval=P3M)": 732,
+    "NGRAM_3_FREQ(inspections.result|interval=P6M)": 1610,
+    "NGRAM_3_FREQ(inspections.risk)": 3090,
+    "NGRAM_3_FREQ(inspections.risk|interval=P1M)": 159,
+    "NGRAM_3_FREQ(inspections.risk|interval=P3M)": 732,
+    "NGRAM_3_FREQ(inspections.risk|interval=P6M)": 1610,
+    "NGRAM_3_FREQ(inspections.type)": 3090,
+    "NGRAM_3_FREQ(inspections.type|interval=P1M)": 159,
+    "NGRAM_3_FREQ(inspections.type|interval=P3M)": 732,
+    "NGRAM_3_FREQ(inspections.type|interval=P6M)": 1610,
+    "SEQUENCE_ENTROPY(inspections.risk)": 1,
+    "STATE_VOLATILITY(inspections.risk)": 1,
+    "TIME_IN_CURRENT_STATE(inspections.risk)": 3,
+    "TRANSITION_MATRIX_SUMMARY(inspections.risk)": 1
+  },
+  "moved_columns_per_primitive": {
+    "markov_conditional_entropy": 1,
+    "max_transition_prob": 1,
+    "ngram_3_freq": 12,
+    "sequence_entropy": 1,
+    "state_volatility": 1,
+    "time_in_current_state": 1,
+    "transition_matrix_summary": 1
+  }
+}

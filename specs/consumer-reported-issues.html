@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan: The six consumer-reported issues</title>
+<style>
+  :root {
+    --paper:      #fcfbf8;
+    --paper-2:    #f2f0ea;
+    --ink:        #191c20;
+    --ink-soft:   #596472;
+    --line:       #dcd7cc;
+    --accent:     #1d5f7a;   /* fix / action */
+    --accent-2:   #7a4a1d;   /* report / finding */
+    --verify:     #1f6f4a;   /* proven */
+    --stale:      #9a6b12;
+    --alert:      #a2352a;
+    --code-bg:    #efece6;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    --radius: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:    #14171a;
+      --paper-2:  #1c2025;
+      --ink:      #e9e7e2;
+      --ink-soft: #99a4b0;
+      --line:     #2d333a;
+      --accent:   #63b0cd;
+      --accent-2: #d09a5e;
+      --verify:   #55b585;
+      --stale:    #d8a445;
+      --alert:    #e07060;
+      --code-bg:  #1e2329;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 16px 120px; }
+  h1 { font-size: 2rem; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 1.35rem; letter-spacing: -0.01em; margin: 56px 0 16px;
+       padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 1.1rem; margin: 32px 0 8px; }
+  h4 { font-size: 0.95rem; margin: 24px 0 8px; color: var(--ink-soft);
+       text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.86em;
+         background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 14px 16px; overflow-x: auto;
+        font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  header .meta { margin: 20px 0 0; font-size: 0.86rem; }
+  header .meta summary { cursor: pointer; color: var(--ink-soft);
+    font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.04em;
+    text-transform: uppercase; }
+  header .meta dl { display: grid; grid-template-columns: 150px 1fr; gap: 4px 16px;
+    margin: 14px 0 0; padding: 14px 16px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  header .meta dt { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-soft); }
+  header .meta dd { margin: 0; font-size: 0.82rem; word-break: break-word; }
+  figure { margin: 28px 0; text-align: center; }
+  figure svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+  figcaption { margin-top: 10px; font-size: 0.82rem; color: var(--ink-soft);
+    font-style: italic; max-width: 640px; margin-left: auto; margin-right: auto; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 0.68rem;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 1px 6px; border-radius: 3px; vertical-align: 2px; margin-right: 6px; }
+  .tag.existing { background: var(--paper-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  .tag.new { background: var(--accent); color: var(--paper); }
+  .files ul { list-style: none; padding: 0; }
+  .files li { padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 0.92rem; }
+  .phase { margin: 32px 0; padding: 4px 22px 22px; background: var(--paper-2);
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--radius); }
+  .phase h3 { margin-top: 22px; }
+  .status { font-family: var(--mono); background: transparent; color: var(--ink-soft); padding: 0 4px 0 0; }
+  ul.checklist { list-style: none; padding: 0; margin: 10px 0; }
+  ul.checklist li { padding: 5px 0 5px 2px; font-size: 0.9rem; border-bottom: 1px dashed var(--line); }
+  .loop { margin: 18px 0 0; padding: 11px 14px; font-size: 0.86rem;
+    background: var(--paper); border: 1px solid var(--line);
+    border-left: 3px solid var(--stale); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.87rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); }
+  td code { font-size: 0.82em; }
+  #definition-of-done { padding: 22px 24px 8px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  #definition-of-done h2 { margin-top: 6px; border-bottom-color: var(--verify); }
+  details { margin: 8px 0; padding: 10px 14px; background: var(--paper-2);
+    border: 1px solid var(--line); border-radius: var(--radius); }
+  details summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+  details .qa-answer { margin: 10px 0 2px; font-size: 0.89rem; color: var(--ink-soft); }
+  .callout { padding: 12px 16px; margin: 18px 0; font-size: 0.89rem;
+    background: var(--paper-2); border: 1px solid var(--line);
+    border-left: 3px solid var(--alert); border-radius: var(--radius); }
+  .muted { color: var(--ink-soft); }
+  .svg-mono { font-family: var(--mono); font-size: 11px; }
+  .svg-label { font-family: var(--sans); font-size: 12px; }
+  .svg-title { font-family: var(--sans); font-size: 13px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ===== HEADER + UPDATABLE METADATA ===== -->
+  <header>
+    <h1>Plan: The six consumer-reported issues</h1>
+    <p class="muted">Six issues from one integration. Three of them are the same defect;
+    two were invisible because of the shape of everything we have ever measured.</p>
+    <details class="meta">
+      <summary>Metadata</summary>
+      <dl>
+        <dt>created</dt>      <dd>2026-09-17</dd>
+        <dt>modified</dt>     <dd>2026-09-17, 2026-09-18</dd>
+        <dt>commits</dt>      <dd>71a47d7 (PR #19, closes #13), 8613d10 (PR #20, closes #7), 2eeeea3 (PR #22, closes #21), 3e1790d (PR #24, closes #18)</dd>
+        <dt>agent name</dt>   <dd>claude-opus-5[1m]</dd>
+        <dt>session id</dt>   <dd>e8f206ee-8312-48c2-8512-ed72f0468314</dd>
+        <dt>back refs</dt>    <dd>issues #7, #9, #10, #11, #12, #13 ·
+                                  <code>CONTRIBUTING.md</code> §"Changing featurizer from a consumer or another session" ·
+                                  <code>docs/adr/0015</code> (API freeze) ·
+                                  <code>docs/adr/0007</code> (output naming) ·
+                                  <code>specs/todo-audit-and-cockpit-fixes.html</code></dd>
+        <dt>forward refs</dt> <dd>(none yet)</dd>
+      </dl>
+    </details>
+  </header>
+
+  <figure>
+    <svg viewBox="0 0 800 250" role="img" aria-label="Six reported issues collapsing into five pull requests, with three of the issues sharing one root cause">
+      <text x="400" y="20" text-anchor="middle" fill="var(--ink)" class="svg-title">Six issues · five changes</text>
+
+      <rect x="16" y="38" width="200" height="196" rx="6" fill="var(--paper-2)" stroke="var(--accent-2)" stroke-width="1.5"/>
+      <text x="32" y="60" fill="var(--accent-2)" class="svg-label" font-weight="700">REPORTED</text>
+      <line x1="32" y1="69" x2="200" y2="69" stroke="var(--line)"/>
+      <text x="32" y="92"  fill="var(--ink)" class="svg-mono">#13  bare interpolation</text>
+      <text x="32" y="114" fill="var(--ink)" class="svg-mono">#7   unknown key</text>
+      <text x="32" y="136" fill="var(--ink)" class="svg-mono">#12  unknown key ×2</text>
+      <text x="32" y="158" fill="var(--ink)" class="svg-mono">#12  budget is I+1</text>
+      <text x="32" y="180" fill="var(--ink)" class="svg-mono">#9   temporal inert</text>
+      <text x="32" y="202" fill="var(--ink)" class="svg-mono">#11  row-size ceiling</text>
+      <text x="32" y="224" fill="var(--ink)" class="svg-mono">#10  dense product</text>
+
+      <path d="M 220 136 L 252 136" stroke="var(--ink-soft)" stroke-width="1.5"/>
+      <path d="M 246 130 L 254 136 L 246 142 Z" fill="var(--ink-soft)"/>
+
+      <rect x="262" y="38" width="240" height="196" rx="6" fill="var(--paper-2)" stroke="var(--verify)" stroke-width="1.5"/>
+      <text x="278" y="60" fill="var(--verify)" class="svg-label" font-weight="700">ROOT CAUSES</text>
+      <line x1="278" y1="69" x2="486" y2="69" stroke="var(--line)"/>
+      <text x="278" y="94"  fill="var(--ink)" class="svg-mono">names quoted inconsistently</text>
+      <text x="278" y="124" fill="var(--ink)" class="svg-mono">keys cherry-picked, never</text>
+      <text x="278" y="140" fill="var(--ink)" class="svg-mono">rejected  ← three issues</text>
+      <text x="278" y="170" fill="var(--ink)" class="svg-mono">block read on one path only</text>
+      <text x="278" y="200" fill="var(--ink)" class="svg-mono">measured at one date,</text>
+      <text x="278" y="216" fill="var(--ink)" class="svg-mono">by one writer</text>
+
+      <path d="M 506 136 L 538 136" stroke="var(--ink-soft)" stroke-width="1.5"/>
+      <path d="M 532 130 L 540 136 L 532 142 Z" fill="var(--ink-soft)"/>
+
+      <rect x="548" y="38" width="236" height="196" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="564" y="60" fill="var(--accent)" class="svg-label" font-weight="700">PULL REQUESTS</text>
+      <line x1="564" y1="69" x2="768" y2="69" stroke="var(--line)"/>
+      <text x="564" y="94"  fill="var(--ink)" class="svg-mono">A  quote bare identifiers</text>
+      <text x="564" y="122" fill="var(--ink)" class="svg-mono">B  reject unknown keys</text>
+      <text x="564" y="150" fill="var(--ink)" class="svg-mono">C  warn + fix the example</text>
+      <text x="564" y="178" fill="var(--ink)" class="svg-mono">D  two documentation gaps</text>
+      <text x="564" y="206" fill="var(--ink)" class="svg-mono">E  pair-table cohorts</text>
+    </svg>
+    <figcaption>Six issues, filed in one sitting by one integration. They reduce to four root
+    causes and land as five pull requests.</figcaption>
+  </figure>
+
+  <!-- ===== PURPOSE / PROBLEM / SOLUTION ===== -->
+  <section id="purpose">
+    <h2>Purpose</h2>
+    <p>Close every open GitHub issue. All six were verified against the code before this plan was
+    written — each line reference still resolves, and no commit has touched
+    <code>featurizer/</code> since they were filed. They are not six independent complaints:
+    three are one validation defect, one is a quoting inconsistency, one is a config block read on
+    only half the paths, and one is a cohort shape the engine cannot express.</p>
+  </section>
+
+  <section id="problem">
+    <h2>Problem</h2>
+    <p>Two of the six could not have been found by testing harder. Every performance number this
+    project has published — ADR-0009, ADR-0010, ADR-0012, ADR-0013 and the v1.0.0 live
+    revalidation — was measured with <strong>exactly one as-of date</strong>:
+    <code>benchmarks/final_matrix.py:174-180</code> inserts a single row,
+    <code>bench.py:66</code> hardcodes one, <code>_db.py:87</code> passes one tuple, and the
+    published artifacts carry the key <code>as_of_date</code>, singular. At one date the dense
+    cross product <em>is</em> the answer, so the waste ratio is 1:1 and #10's pathology is
+    structurally invisible. The correctness tier does use two or three dates, at row counts where
+    a 3:1 product is a few thousand rows.</p>
+    <p>#11 is the mirror image: the heap-row ceiling <em>was</em> found, during v1.0 hardening, and
+    guarded — <code>HEAP_ROW_BUDGET_BYTES</code> landed in <code>c2c8aba</code> and the estimator
+    is accurate to within 2% of the reporter's measurement. But it guards only the table featurizer
+    writes. A consumer materializing the same matrix with their own <code>COPY</code> gets no
+    pre-flight, and the configuration reference still names only column counts.</p>
+    <figure>
+      <svg viewBox="0 0 800 236" role="img" aria-label="A measurement grid with a single as-of date column against a production grid with many dates, where only the diagonal is wanted">
+        <text x="150" y="22" text-anchor="middle" fill="var(--verify)" class="svg-label" font-weight="700">WHAT WE MEASURED</text>
+        <text x="150" y="40" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">1 date × N entities</text>
+        <g>
+          <rect x="120" y="56" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="120" y="82" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="120" y="108" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="120" y="134" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="120" y="160" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+        </g>
+        <text x="150" y="206" text-anchor="middle" fill="var(--verify)" class="svg-mono">every cell wanted</text>
+
+        <line x1="300" y1="50" x2="300" y2="200" stroke="var(--line)" stroke-dasharray="4 4"/>
+
+        <text x="560" y="22" text-anchor="middle" fill="var(--alert)" class="svg-label" font-weight="700">WHAT A PAIRED COHORT NEEDS</text>
+        <text x="560" y="40" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">M dates × N entities · only the diagonal</text>
+        <g>
+          <rect x="430" y="56"  width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="456" y="56"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="482" y="56"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="508" y="56"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="534" y="56"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+
+          <rect x="430" y="82"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="456" y="82"  width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="482" y="82"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="508" y="82"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="534" y="82"  width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+
+          <rect x="430" y="108" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="456" y="108" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="482" y="108" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="508" y="108" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="534" y="108" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+
+          <rect x="430" y="134" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="456" y="134" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="482" y="134" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="508" y="134" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+          <rect x="534" y="134" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+
+          <rect x="430" y="160" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="456" y="160" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="482" y="160" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="508" y="160" width="22" height="22" fill="var(--alert)" opacity="0.2"/>
+          <rect x="534" y="160" width="22" height="22" fill="var(--verify)" opacity="0.85"/>
+        </g>
+        <text x="560" y="206" text-anchor="middle" fill="var(--alert)" class="svg-mono">faded cells are computed and thrown away</text>
+      </svg>
+      <figcaption>The harness only ever ran the left-hand shape. On the right, the engine computes
+      every cell and the caller keeps the diagonal.</figcaption>
+    </figure>
+  </section>
+
+  <section id="solution">
+    <h2>Solution</h2>
+    <p>Five pull requests, ordered cheapest-and-most-blocking first. Each opens against its
+    existing issue, branches in a worktree off <code>origin/master</code>, carries the test that
+    fails without it, waits on eight green contexts, and closes its issue with a
+    <code>Closes #N</code> keyword in both the commit message and the pull-request body. None of
+    them edits <code>CHANGELOG.md</code>.</p>
+    <p>Only the last one adds public surface: an optional <code>as_of_dates.id_column</code> config
+    key. Absent, the rendered SQL is byte-identical to today's — that is a test, not an
+    aspiration.</p>
+    <figure>
+      <svg viewBox="0 0 800 150" role="img" aria-label="Five pull requests in sequence from smallest to largest">
+        <rect x="10"  y="46" width="142" height="72" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="81" y="70" text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">A · QUOTING</text>
+        <text x="81" y="90" text-anchor="middle" fill="var(--ink)" class="svg-mono">#13</text>
+        <text x="81" y="107" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">one projection</text>
+
+        <rect x="164" y="46" width="142" height="72" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="235" y="70" text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">B · UNKNOWN KEYS</text>
+        <text x="235" y="90" text-anchor="middle" fill="var(--ink)" class="svg-mono">#7 · #12.3 · #12.5</text>
+        <text x="235" y="107" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">three levels</text>
+
+        <rect x="318" y="46" width="142" height="72" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="389" y="70" text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">C · INERT BLOCK</text>
+        <text x="389" y="90" text-anchor="middle" fill="var(--ink)" class="svg-mono">#9</text>
+        <text x="389" y="107" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">warn + example</text>
+
+        <rect x="472" y="46" width="142" height="72" rx="6" fill="var(--paper-2)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="543" y="70" text-anchor="middle" fill="var(--accent)" class="svg-label" font-weight="700">D · DOCS</text>
+        <text x="543" y="90" text-anchor="middle" fill="var(--ink)" class="svg-mono">#12.4 · #11</text>
+        <text x="543" y="107" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">two references</text>
+
+        <rect x="626" y="46" width="164" height="72" rx="6" fill="var(--paper-2)" stroke="var(--accent-2)" stroke-width="1.5"/>
+        <text x="708" y="70" text-anchor="middle" fill="var(--accent-2)" class="svg-label" font-weight="700">E · PAIR TABLE</text>
+        <text x="708" y="90" text-anchor="middle" fill="var(--ink)" class="svg-mono">#10</text>
+        <text x="708" y="107" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">new config key</text>
+
+        <text x="400" y="138" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">additive throughout · nothing on the freeze list moves</text>
+      </svg>
+      <figcaption>Four pull requests are corrections. Only E adds surface, and it is inert unless
+      the new key is present.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ===== RELEVANT FILES ===== -->
+  <section id="files" class="files">
+    <h2>Relevant Files</h2>
+
+    <h3>Existing Files</h3>
+    <ul>
+      <li><span class="tag existing">existing</span> <code>featurizer/planner.py</code> —
+        <code>_build_synth_cte</code> (1838) holds #13's bare interpolation;
+        <code>_build_direct</code> (1355) is the only reader of <code>temporal_mode</code> (1378);
+        <code>_build_aggregations</code> (1266) is the <code>I+1</code> loop and the path that
+        ignores the block; <code>_build_synth_cte</code> is also where #10's cohort predicate lands.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/primitives/abstractions.py</code> —
+        <code>pg_identifier</code> (54) is <strong>not idempotent</strong>;
+        <code>Entity.__init__</code> (183-193) cherry-picks variable keys and
+        <code>ERGraph.__init__</code> (~82) cherry-picks relationship keys, which is why neither
+        raises.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/validation.py</code> —
+        line 712 is the one existing unknown-key warning, and the template for the new pass.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/boundary.py</code> —
+        <code>causal_predicate</code> (94) is the model for #10's cohort predicate: same
+        <code>aod</code>-correlated shape, same <code>prefix</code> convention.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sql.py</code> — lines 26-38
+        render the <code>cross join lateral</code> that #10 narrows.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/sharding.py</code> —
+        <code>HEAP_ROW_BUDGET_BYTES</code> (88) and the comment at 77-88 already explain #11's
+        mechanism; nothing here changes.</li>
+      <li><span class="tag existing">existing</span> <code>examples/02-temporal-joins/config.yaml</code> —
+        ships <code>mode: as_of</code> + <code>grace: P7D</code> in the orientation where none of
+        it renders. Verified: zero <code>_asof_for_</code>, no <code>P7D</code>.</li>
+      <li><span class="tag existing">existing</span> <code>featurizer/featurizer.yaml</code> —
+        lines 11-17 advertise <code>whitelist:</code>/<code>blacklist:</code>, which nothing reads.</li>
+      <li><span class="tag existing">existing</span> <code>benchmarks/final_matrix.py</code> —
+        lines 174-180 insert one as-of date; the single-date shape that hid #10.</li>
+      <li><span class="tag existing">existing</span> <code>src/content/docs/reference/configuration.md</code> —
+        line 224 names the 1664-column limit with no pointer to the row-size ceiling.</li>
+    </ul>
+
+    <h3>New Files</h3>
+    <ul>
+      <li><span class="tag new">new</span> <code>tests/test_synth_quoting.py</code> — #13's
+        regression: a target whose declared variables are not bare identifiers.</li>
+      <li><span class="tag new">new</span> <code>tests/test_unknown_keys.py</code> — the three
+        levels of unknown-key rejection, DB-free.</li>
+      <li><span class="tag new">new</span> <code>tests/test_cohort_pairs.py</code> — #10's
+        rendering, including the byte-identical-when-absent guarantee.</li>
+      <li><span class="tag new">new</span> <code>src/content/docs/concepts/paired-cohorts.md</code> —
+        the generic documentation for cohorts that pair each date with its own entity set.</li>
+    </ul>
+  </section>
+
+  <!-- ===== IMPLEMENTATION PHASES ===== -->
+  <section id="phases">
+    <h2>Implementation Phases</h2>
+    <p><strong>IMPORTANT:</strong> Execute every phase and task step by step, in order, top to bottom.</p>
+    <p>Status markers: <code>[]</code> idle · <code>[wip]</code> in progress · <code>[x]</code> complete · <code>[f]</code> failed. All start as <code>[]</code>; the Build Plan workflow updates them as it works.</p>
+
+    <div class="callout">
+      <strong>Every phase follows the protected-master flow.</strong> The issue already exists, so
+      start at the worktree. Branch <code>&lt;who&gt;/&lt;need&gt;</code> off
+      <code>origin/master</code>; commit with <code>Closes #N</code> plus the
+      <code>Co-Authored-By</code> trailer; <code>gh pr create</code> with <code>Closes #N</code> in
+      the body too; rebase, <code>--force-with-lease</code>,
+      <code>gh pr checks --watch --fail-fast</code>; <strong>remove the worktree from the main
+      checkout</strong>, then <code>gh pr merge &lt;n&gt; --rebase --delete-branch</code>; confirm
+      the local branch is really gone. <strong>No pull request edits
+      <code>CHANGELOG.md</code></strong> — the release commit owns that section.
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 1 — PR A: quote bare identifiers in the synth projection (#13)</h3>
+      <p><code>_build_synth_cte</code> interpolates every projected name bare, so a target column
+      whose name is not a plain identifier produces invalid SQL. It is invisible while every column
+      is a bare identifier, and it hard-blocks the documented identity-passthrough shape the moment
+      a target's columns are featurizer's own generated names.</p>
+
+      <div class="callout">
+        <strong>The issue's suggested fix does not work as written.</strong> It proposes routing the
+        projection through <code>pg_identifier</code> "like every other column reference".
+        <code>pg_identifier</code> is <strong>not idempotent</strong> — it unconditionally wraps in
+        quotes (<code>abstractions.py:54-60</code>) — and generated feature names are
+        <em>already</em> quoted, which the comment at <code>planner.py:1780</code> states outright:
+        wrapping again "yields an empty delimited identifier". A blanket application breaks every
+        aggregate and transform column. The fix must discriminate.
+      </div>
+
+      <figure>
+        <svg viewBox="0 0 800 186" role="img" aria-label="Two kinds of name reach the same projection: generated names already quoted, declared variables raw">
+          <text x="400" y="20" text-anchor="middle" fill="var(--ink)" class="svg-title">Two kinds of name reach one projection</text>
+
+          <rect x="20" y="36" width="340" height="60" rx="5" fill="var(--paper-2)" stroke="var(--verify)" stroke-width="1.4"/>
+          <text x="36" y="58" fill="var(--verify)" class="svg-mono" font-weight="700">generated · already quoted</text>
+          <text x="36" y="80" fill="var(--ink)" class="svg-mono">"ABS(care_plans.risk_score)"</text>
+
+          <rect x="20" y="106" width="340" height="60" rx="5" fill="var(--paper-2)" stroke="var(--alert)" stroke-width="1.4"/>
+          <text x="36" y="128" fill="var(--alert)" class="svg-mono" font-weight="700">declared variable · raw</text>
+          <text x="36" y="150" fill="var(--ink)" class="svg-mono">MEAN(x.y|interval=P30D)</text>
+
+          <path d="M 368 66  L 404 96" stroke="var(--ink-soft)" stroke-width="1.4"/>
+          <path d="M 368 136 L 404 106" stroke="var(--ink-soft)" stroke-width="1.4"/>
+          <path d="M 398 92 L 408 101 L 396 104 Z" fill="var(--ink-soft)"/>
+
+          <rect x="416" y="72" width="364" height="60" rx="5" fill="var(--code-bg)" stroke="var(--accent)" stroke-width="1.5"/>
+          <text x="432" y="94"  fill="var(--accent)" class="svg-mono" font-weight="700">quote only if bare</text>
+          <text x="432" y="116" fill="var(--ink)" class="svg-mono">select "ABS(...)", "MEAN(x.y|...)"</text>
+        </svg>
+        <figcaption>The discrimination is the whole fix: one list already carries delimiters, the
+        other never has.</figcaption>
+      </figure>
+
+      <h4>1. Add a narrow helper rather than changing pg_identifier</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Add <code>quote_if_bare(name)</code> beside <code>pg_identifier</code> in <code>abstractions.py</code>: return the name unchanged when it is already a delimited identifier (starts and ends with <code>"</code>), otherwise return <code>pg_identifier(name)</code></li>
+        <li><code class="status">[x]</code> <strong>Do not</strong> make <code>pg_identifier</code> itself idempotent — it is called at feature-construction time in eight places and a silent behaviour change there would reach the ADR-0007 naming contract</li>
+        <li><code class="status">[x]</code> <strong>Do not</strong> quote at <code>Variable</code> construction time — variable names flow into the manifest, the one-hot naming contract and the sharding metadata; that is a 2.0-shaped change, not a bug fix</li>
+      </ul>
+
+      <h4>2. Apply it at the projection site only</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>planner.py:1841-1848</code>: build <code>id_columns</code> and <code>feature_names</code> through <code>quote_if_bare</code></li>
+        <li><code class="status">[x]</code> Verify the emitted <em>output</em> name is unchanged for bare identifiers: <code>select patients."age"</code> and <code>select patients.age</code> both yield a column named <code>age</code>, so no existing matrix moves</li>
+        <li><code class="status">[x]</code> <strong>Check <code>_synth_columns</code> stays consistent.</strong> Line 1852 records <code>set(feature_names)</code> and line 1912 reads it back; whatever is recorded must keep matching what the transform CTE and the sharding metadata expect. Record the <em>output</em> names, not the quoted projection expressions, if those differ</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>The regression needs a target entity whose declared variables are not bare identifiers —
+      the exact shape that fails today. Rendering is DB-free, so the primary test costs nothing;
+      the integration tier proves PostgreSQL actually accepts the result.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/test_synth_quoting.py</code>: a config whose target declares a variable named <code>MEAN(x.y|interval=P30D)</code> renders without a syntax error — this fails on current master</li>
+        <li><code class="status">[x]</code> Assert a bare-identifier config renders a projection whose <em>output column names</em> are unchanged against a captured baseline</li>
+        <li><code class="status">[x]</code> <code>just db-up &amp;&amp; just test-integration</code> — PostgreSQL parses the generated SQL for both shapes</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> · <code>just typecheck</code> · <code>just fmt-check</code></li>
+        <li><code class="status">[x]</code> Name-stability snapshot unchanged — ADR-0007's contract is untouched by design, and this proves it</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 2 — PR B: reject unknown keys at three levels (#7, #12.3, #12.5)</h3>
+      <p>Three issues, one defect. Unknown keys are accepted in silence at the top level (#7's
+      <code>whitelist:</code>), the relationship level (#12.5's <code>parent_key:</code>) and the
+      variable level (#12.3's <code>intervals:</code>). The mechanism is the same in all three: the
+      config dict is <em>cherry-picked</em> rather than splatted, so no <code>TypeError</code> ever
+      fires. <code>validation.py:712</code> already warns for unknown keys inside
+      <code>temporal:</code> and is the template.</p>
+
+      <div class="callout">
+        <strong>This phase errors rather than warns — a deliberate choice with consumer blast
+        radius.</strong> A config that runs today and carries a stray key stops validating.
+        <code>triage-pg</code> pins featurizer by tag and embeds feature configs in its
+        <code>experiment*.yaml</code> files, so the breakage would surface on a pin bump rather
+        than at authoring time. Task 3 exists to find that before the merge, not after.
+      </div>
+
+      <h4>1. One unknown-key pass, three call sites</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Top level: reject keys outside the known set (<code>target</code>, <code>max_depth</code>, <code>intervals</code>, <code>entities</code>, <code>relationships</code>, <code>aggregations</code>, <code>transformations</code>, the three optional blocks, and #10's new key once Phase 5 lands)</li>
+        <li><code class="status">[x]</code> Relationship level: reject keys outside <code>parent</code>, <code>child</code>, <code>temporal</code>, <code>name</code></li>
+        <li><code class="status">[x]</code> Variable level: reject keys outside <code>type</code>, <code>predicates</code>, <code>role</code>, <code>vocabulary</code></li>
+        <li><code class="status">[x]</code> Reuse the existing Levenshtein suggestion machinery — <code>parent_key</code> should suggest the nested <code>parent: {entity, key}</code> form, which is the mistake the issue calls out as easy</li>
+      </ul>
+
+      <h4>2. Remove the thing the example promises and does not have</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Delete the commented <code>whitelist:</code>/<code>blacklist:</code> blocks from <code>featurizer/featurizer.yaml</code> (lines 11-17) — nothing reads them, and with this phase merged an uncommented copy becomes a hard error</li>
+        <li><code class="status">[x]</code> Point the surrounding comment at the keys that do work: the top-level <code>aggregations:</code> / <code>transformations:</code> lists</li>
+      </ul>
+
+      <h4>3. Prove the strictness against real consumer configs before merging</h4>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> Run the new validator over every shipped config in <code>examples/</code> — all must pass</li>
+        <li><code class="status">[x]</code> Run it over the feature configs embedded in <code>~/projects/triage-pg/example/*/experiment*.yaml</code>. Any failure is a finding: either the key is a real typo (good catch, report it) or the pass is too strict (fix the known-key set)</li>
+        <li><code class="status">[x]</code> Record the result in the pull-request body — a reviewer should see that the consumer was checked, not assume it</li>
+      </ul>
+
+      <h4>4. Testing Strategy</h4>
+      <p>All DB-free: unknown-key rejection is pure config validation. The interesting cases are the
+      near-misses, because a rejection with a bad suggestion is worse than none.</p>
+      <ul class="checklist">
+        <li><code class="status">[x]</code> <code>tests/test_unknown_keys.py</code>: one rejection per level, each asserting the message names the offending key</li>
+        <li><code class="status">[x]</code> <code>parent_key:</code> is rejected with a suggestion pointing at the nested form</li>
+        <li><code class="status">[x]</code> A variable carrying <code>intervals:</code> is rejected — #12.3's exact repro</li>
+        <li><code class="status">[x]</code> Every config under <code>examples/</code> still validates — the shipped examples are the regression net</li>
+        <li><code class="status">[x]</code> <code>just test-fast</code> · <code>just typecheck</code> · <code>just fmt-check</code></li>
+        <li><code class="status">[x]</code> CI's "validate shipped example configs" job (<code>test.yml:47</code>) is green — it exercises exactly this</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 3 — PR C: warn that <code>temporal:</code> is inert in the aggregation orientation (#9)</h3>
+      <p><code>temporal_mode</code> is read at exactly one line — <code>planner.py:1378</code>,
+      inside <code>_build_direct</code> — and the aggregation path never reads it. A
+      <code>temporal:</code> block on a relationship traversed in the aggregation direction is
+      discarded, and validation returns <code>is_valid=True</code> with zero warnings.</p>
+      <p><strong>This is not a leakage bug.</strong> The aggregation path applies
+      <code>causal_predicate</code> unconditionally (<code>planner.py:1526-1530</code>), so the
+      child stream is bounded by <code>as_of_date</code> either way. What is lost is
+      <code>grace</code> — which <em>relaxes</em> the bound — so the effect is a config stricter
+      than the author asked for, not looser. Warning is therefore sufficient and additive; honouring
+      the block would move results for every config that carries an inert one.</p>
+
+      <h4>1. Warn, and name the working orientation</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Validation emits a warning when a relationship carries a <code>temporal:</code> block and is traversed in the aggregation direction</li>
+        <li><code class="status">[]</code> The message must name the fix, not just the fault: declare the lookup/dimension table as <code>parent</code> and the timestamped entity as <code>child</code></li>
+        <li><code class="status">[]</code> Say that the child stream is <em>already</em> bounded by <code>as_of_date</code>, so the author knows nothing leaked</li>
+      </ul>
+
+      <h4>2. Fix the example that ships the trap</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>examples/02-temporal-joins/config.yaml</code> declares <code>mode: as_of</code>, <code>grace: P7D</code> and <code>child_timestamp: plan_date</code>, and renders <strong>none</strong> of it — verified: zero <code>_asof_for_</code>, no <code>P7D</code> in 242,919 characters of SQL. Its comment promises "matching plans up to 7 days in the future", which does not happen</li>
+        <li><code class="status">[]</code> Either re-orient the relationship so the as-of join actually renders, or drop the <code>temporal:</code> block and rename the example. <strong>An example that emits the new warning is not acceptable</strong> — it is the tutorial for this exact feature</li>
+        <li><code class="status">[]</code> If re-oriented: the notebook under <code>examples/02-temporal-joins/</code> has committed outputs that the docs site renders from, and <code>site/gen.py</code> never executes them. Re-execute against a live database and commit the new outputs, or the published tutorial contradicts the config</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>The decisive test is the one that caught this: render the example and look for the as-of
+      lateral. It needs no database and it would have failed on every version since the feature
+      shipped.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> A test asserting <code>examples/02-temporal-joins</code> renders at least one <code>_asof_for_</code> lateral, or (if the block is dropped) that the config carries no <code>temporal:</code> block at all — never the current silent middle</li>
+        <li><code class="status">[]</code> The issue's minimal repro config produces exactly one warning, and <code>is_valid</code> stays <code>True</code></li>
+        <li><code class="status">[]</code> Every other shipped example produces <strong>zero</strong> new warnings</li>
+        <li><code class="status">[]</code> <code>just test-fast</code> · <code>just typecheck</code> · <code>just fmt-check</code></li>
+        <li><code class="status">[]</code> If the notebook was re-executed: <code>uv run python site/gen.py</code> converts it and <code>site/check_links.py</code> passes</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 4 — PR D: two documentation gaps (#12.4, #11)</h3>
+      <p>Both are cases where the code is right and the reference does not say so. Together they
+      close #12 (with Phase 2) and #11.</p>
+
+      <h4>1. Document the <code>I+1</code> interval multiplier (#12.4)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>planner.py:1272-1295</code> calls each aggregator once with no interval and then once per interval, so the multiplier is <code>I+1</code>, not <code>I</code>. <code>intervals: []</code> still emits the lifetime column; the only way to lose the interval variants is a child with no <code>temporal_ix</code> (the <code>break</code> at 1281)</li>
+        <li><code class="status">[]</code> State it in the configuration reference beside the column-budget discussion — at <code>I=2</code> it is a 50% budget surprise against a hard ceiling</li>
+        <li><code class="status">[]</code> <strong>Document, do not add a switch.</strong> The reporter's own words: "No complaint about the feature itself; only about it being invisible until you count the output." An <code>include_lifetime: false</code> key would add config surface to solve a documentation problem</li>
+      </ul>
+
+      <h4>2. Cross-reference the row-size ceiling (#11)</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> The ceiling is real and already guarded — <code>HEAP_ROW_BUDGET_BYTES</code>, landed in <code>c2c8aba</code>, with <code>max_heap_safe_columns(2) = 979</code> against the reporter's measured ~1,018, and <code>estimate_heap_row_width(1398) = 11,383</code> against their measured 11,176 bytes. It errs conservative in both directions. <strong>No code changes.</strong></li>
+        <li><code class="status">[]</code> <code>configuration.md:224</code> names only the 1664-column limit. Add a note that the three documented limits are <em>column counts</em> and that for an all-numeric matrix the binding limit is the 8 kB heap row — roughly 1,000 <code>float8</code> columns — linking the existing FAQ entry (<code>faq.md:235</code>) and the internals note (<code>internals.md:111</code>)</li>
+        <li><code class="status">[]</code> Say that <code>to_tables()</code> shards on this automatically, and that a caller writing the table themselves gets no such pre-flight — that is the gap that actually cost the reporter time</li>
+        <li><code class="status">[]</code> The shard-joining view from #11's second ask is <strong>not in scope</strong>; leave that half of the issue open or close it deliberately</li>
+      </ul>
+
+      <h4>3. Testing Strategy</h4>
+      <p>Documentation, so the gate is the link checker and the docs build — the same two that stand
+      between <code>astro build</code> and deploy.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — exits 0; the new cross-references resolve</li>
+        <li><code class="status">[]</code> <code>uv run pytest tests/test_site_gen.py -q</code> — the configuration-reference snippets still parse</li>
+        <li><code class="status">[]</code> Re-read the <code>I+1</code> paragraph against <code>planner.py:1272-1295</code> — a documentation phase whose prose is wrong is worse than the gap it closes</li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="phase">
+      <h3><code class="status">[x]</code> Phase 5 — PR E: pair-table cohorts (#10)</h3>
+      <p>The engine renders <code>from as_of_dates aod cross join lateral (…)</code>, so every
+      target row is emitted under every as-of date. Where a cohort pairs each date with its own
+      entity set, all but the diagonal is computed and discarded.</p>
+
+      <div class="callout">
+        <strong>The issue's proposed interface cannot work.</strong> It asks featurizer to join on
+        <code>entity_id</code> "if the supplied <code>as_of_dates</code> relation has that column".
+        Rendering is <strong>DB-free</strong> — <code>Featurizer(cfg).query</code> takes no
+        connection, verified by rendering 242,919 characters of SQL for example 02 with no database
+        available — so the renderer cannot inspect the caller's table. The pairing must be
+        <em>declared</em>.
+      </div>
+
+      <h4>1. Measure the waste first, with a harness case that can see it</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a multi-date case to <code>benchmarks/final_matrix.py</code>. It inserts one as-of date today (lines 174-180); the new case takes N and records rows computed against rows on the diagonal</li>
+        <li><code class="status">[]</code> Run it on the existing live datasets and record the baseline — this is the "before" number, and the reason #10 went unseen for the project's whole history</li>
+        <li><code class="status">[]</code> Keep the single-date case exactly as it is: every published figure from ADR-0009 onward was measured with it, and changing it would break comparability with the v1.0.0 revalidation</li>
+      </ul>
+
+      <h4>2. Declare the pairing in the config</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> New optional top-level block: <code>as_of_dates: {id_column: &lt;name&gt;}</code></li>
+        <li><code class="status">[]</code> <strong>Absent → today's behaviour exactly.</strong> Not "equivalent", not "near-identical": the rendered SQL must be byte-identical, and that is a test</li>
+        <li><code class="status">[]</code> Add the key to Phase 2's known-top-level-key set</li>
+        <li><code class="status">[]</code> Validation can check the key's shape (non-empty string) but <strong>cannot</strong> check the caller's table has the column — no connection at validate time. A wrong name surfaces as a PostgreSQL error at execute time; say so in the docs</li>
+      </ul>
+
+      <h4>3. Push the predicate into the target's base read</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> Add a <code>cohort_predicate</code> beside <code>causal_predicate</code> in <code>boundary.py</code>, same <code>aod</code>-correlated shape and <code>prefix</code> convention</li>
+        <li><code class="status">[]</code> Apply it in <code>_build_synth_cte</code>, on the target's <code>from {target.table}</code> — <strong>not</strong> as a filter on the lateral's output. <code>aod</code> is in scope inside every CTE (that is how <code>causal_predicate</code> already works), and a post-filter would return the right rows while still computing the discarded ones, which is the entire cost being removed</li>
+        <li><code class="status">[]</code> Confirm the aggregation CTEs narrow as a consequence. If they still compute over the full entity set, say so plainly in the pull request and record the real speedup rather than the hoped-for one</li>
+      </ul>
+
+      <h4>4. Document the pattern generically</h4>
+      <ul class="checklist">
+        <li><code class="status">[]</code> New page <code>src/content/docs/concepts/paired-cohorts.md</code>: when each as-of date has its own entity set — an event that happens on a date, a scoring run over that day's arrivals — the dense product computes a matrix the caller throws away, and <code>id_column</code> expresses the diagonal instead</li>
+        <li><code class="status">[]</code> Contrast it with the default, which is correct and wanted for the standard shape: every entity in the cohort scored at every as-of date, which is what temporal cross-validation means</li>
+        <li><code class="status">[]</code> Written as a general cohort-shape concept. <strong>No consumer, domain or dataset is named</strong></li>
+        <li><code class="status">[]</code> Add it to the sidebar and cross-link from the configuration reference</li>
+      </ul>
+
+      <h4>5. Testing Strategy</h4>
+      <p>Two properties matter and they pull in opposite directions: the new key must narrow the
+      matrix, and its absence must change nothing at all. The second is the one that protects every
+      existing consumer, so it gets the strictest test in the plan — a byte comparison against a
+      captured baseline.</p>
+      <ul class="checklist">
+        <li><code class="status">[]</code> <code>tests/test_cohort_pairs.py</code>: with no <code>as_of_dates</code> block, the rendered SQL is <strong>byte-identical</strong> to a baseline captured before the change</li>
+        <li><code class="status">[]</code> With the block, the rendered SQL carries the cohort predicate inside the target's base read — assert on the CTE text, not just on the presence of the column name</li>
+        <li><code class="status">[]</code> Integration: a paired <code>as_of_dates</code> of (date, id) rows returns exactly the paired rows, and the values equal what the dense run produces for those same pairs. <strong>Equality against the dense oracle is the correctness gate</strong> — a faster wrong answer is the failure mode here</li>
+        <li><code class="status">[]</code> Validation rejects a malformed block and accepts a well-formed one</li>
+        <li><code class="status">[]</code> Re-run the Phase 5.1 harness case and record the after-number beside the baseline</li>
+        <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> · <code>just test-fast</code> · <code>just typecheck</code> · <code>just fmt-check</code></li>
+      </ul>
+      <div class="loop">
+        🔁 <strong>Do not exit this phase until every box above is checked.</strong>
+        If any command fails, fix the cause and re-run — loop until all pass.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== DEFINITION OF DONE ===== -->
+  <section id="definition-of-done">
+    <h2>Definition of Done</h2>
+
+    <figure>
+      <svg viewBox="0 0 800 150" role="img" aria-label="Four before-and-after measures: open issues, unknown-key levels rejected, as-of laterals in the temporal example, and as-of dates in the matrix harness">
+        <rect x="10" y="26" width="188" height="108" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="104" y="50" text-anchor="middle" fill="var(--ink-soft)" class="svg-label">open issues</text>
+        <text x="66"  y="92" text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:28px;font-weight:700">6</text>
+        <text x="104" y="92" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="142" y="92" text-anchor="middle" fill="var(--verify)" style="font-family:var(--sans);font-size:28px;font-weight:700">0</text>
+        <text x="104" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">five pull requests</text>
+
+        <rect x="208" y="26" width="188" height="108" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="302" y="50" text-anchor="middle" fill="var(--ink-soft)" class="svg-label">config levels checked</text>
+        <text x="264" y="92" text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:28px;font-weight:700">1</text>
+        <text x="302" y="92" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="340" y="92" text-anchor="middle" fill="var(--verify)" style="font-family:var(--sans);font-size:28px;font-weight:700">4</text>
+        <text x="302" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">temporal only → all</text>
+
+        <rect x="406" y="26" width="188" height="108" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="500" y="50" text-anchor="middle" fill="var(--ink-soft)" class="svg-label">as-of joins in example 02</text>
+        <text x="462" y="92" text-anchor="middle" fill="var(--alert)" style="font-family:var(--sans);font-size:28px;font-weight:700">0</text>
+        <text x="500" y="92" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="540" y="92" text-anchor="middle" fill="var(--verify)" style="font-family:var(--sans);font-size:28px;font-weight:700">≥1</text>
+        <text x="500" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">or the block is gone</text>
+
+        <rect x="604" y="26" width="188" height="108" rx="6" fill="var(--paper)" stroke="var(--line)"/>
+        <text x="698" y="50" text-anchor="middle" fill="var(--ink-soft)" class="svg-label">dates in the harness</text>
+        <text x="660" y="92" text-anchor="middle" fill="var(--stale)" style="font-family:var(--sans);font-size:28px;font-weight:700">1</text>
+        <text x="698" y="92" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">→</text>
+        <text x="738" y="92" text-anchor="middle" fill="var(--verify)" style="font-family:var(--sans);font-size:28px;font-weight:700">N</text>
+        <text x="698" y="118" text-anchor="middle" fill="var(--ink-soft)" class="svg-mono">single-date case kept</text>
+      </svg>
+      <figcaption>Four measures a reader can check without having been here.</figcaption>
+    </figure>
+
+    <p>All six issues are closed by merged pull requests, each through a <code>Closes #N</code>
+    keyword. A config author who mistypes a key learns at validation time instead of debugging a
+    column explosion; a target whose columns are not bare identifiers renders valid SQL; the
+    tutorial named after temporal joins actually renders one; and a cohort that pairs each date
+    with its own entities can say so in the config instead of rebuilding the join by hand.</p>
+
+    <p>The numbers: unknown-key checking goes from <strong>1</strong> level (inside
+    <code>temporal:</code>, <code>validation.py:712</code>) to <strong>4</strong> — top level,
+    relationship, variable, temporal. <code>examples/02-temporal-joins</code> goes from
+    <strong>0</strong> rendered as-of laterals to at least one, or loses the block entirely; today
+    it promises a 7-day forward window across 242,919 characters of SQL that contain no
+    <code>P7D</code>. <code>benchmarks/final_matrix.py</code> gains a multi-date case recording
+    rows-computed against rows-on-the-diagonal, with the before-number from current master and the
+    after-number from the merged change; the existing single-date case is untouched so every figure
+    from ADR-0009 through the v1.0.0 revalidation stays comparable. With no
+    <code>as_of_dates</code> block present, rendered SQL is byte-identical to the captured
+    pre-change baseline, and paired results equal the dense oracle on the same pairs.</p>
+
+    <p><strong>Not included.</strong> No shard-joining view from <code>to_tables()</code> — #11's
+    second ask; the heap guard is already correct and that half stays open or is closed
+    deliberately. No <code>include_lifetime: false</code> switch — <code>I+1</code> is documented,
+    not made configurable. No honouring of <code>temporal:</code> in the aggregation path — it warns;
+    making it work is a behaviour change for every config carrying an inert block, and belongs to a
+    major version. No <code>CHANGELOG.md</code> edits and no release tag. No consumer, domain or
+    dataset is named anywhere in the shipped documentation.</p>
+  </section>
+
+  <!-- ===== GLOBAL VALIDATION ===== -->
+  <section id="validation">
+    <h2>Validation Commands</h2>
+    <p>Execute these commands to validate the entire plan is complete:</p>
+    <ul class="checklist">
+      <li><code class="status">[]</code> <code>gh issue list --state open</code> — returns nothing; all six closed by their keywords, none left dangling</li>
+      <li><code class="status">[]</code> <code>just db-up &amp;&amp; just test-integration</code> — the quoting fix and the paired cohort proven against a real database on PostgreSQL 14/16/17 in CI</li>
+      <li><code class="status">[]</code> <code>just test-fast</code> — the DB-free tier, including the three new test files</li>
+      <li><code class="status">[]</code> <code>just typecheck</code> — basedpyright clean at the 3.10 floor</li>
+      <li><code class="status">[]</code> <code>just fmt-check</code> — formatting gate green</li>
+      <li><code class="status">[]</code> <code>uv run python -m featurizer validate examples/*/config.yaml</code> — every shipped example passes the stricter validator with zero warnings</li>
+      <li><code class="status">[]</code> <code>uv run python site/gen.py &amp;&amp; npm run build &amp;&amp; uv run python site/check_links.py dist</code> — docs build and every new cross-reference resolves</li>
+      <li><code class="status">[]</code> The name-stability snapshot is unchanged — ADR-0007's output-naming contract did not move</li>
+      <li><code class="status">[]</code> <code>git log --oneline origin/master -6</code> — five rebase commits, no merge commit, linear history intact</li>
+      <li><code class="status">[]</code> <code>git worktree list</code> — only the main checkout remains</li>
+      <li><code class="status">[]</code> <code>git branch -vv</code> — none of the five branches survives locally</li>
+      <li><code class="status">[]</code> <code>git diff origin/master -- CHANGELOG.md</code> — empty; no pull request touched it</li>
+    </ul>
+    <div class="loop">
+      🔁 <strong>The plan is not complete until every box is checked and every command passes. If for some reason a step is not possible to complete, mark it with [f] and move on if possible.</strong>
+    </div>
+  </section>
+
+  <!-- ===== QUESTIONABLES ===== -->
+  <section id="questionables">
+    <h2>Questionables</h2>
+
+    <details>
+      <summary>[asked] #9 warns rather than honouring the block</summary>
+      <p class="qa-answer"><strong>Chosen: warn only.</strong> Additive, nothing on ADR-0015's
+      freeze list moves, and no existing config changes behaviour. Supported by the verification:
+      the aggregation path is already bounded by <code>causal_predicate</code>, so the missing piece
+      is <code>grace</code>, which relaxes the bound — the current behaviour is stricter than
+      declared, not looser. Honouring the block would silently loosen point-in-time bounds for
+      anyone carrying an inert <code>grace</code>.</p>
+    </details>
+
+    <details>
+      <summary>[asked] Unknown keys are an error, not a warning</summary>
+      <p class="qa-answer"><strong>Chosen: error, matching <code>Entity(**e)</code>'s
+      <code>TypeError</code>.</strong> Chosen over warning despite the consumer blast radius being
+      raised twice: a config that runs today and carries a stray key stops validating, and
+      <code>triage-pg</code> would meet that on a pin bump rather than at authoring time. Phase 2
+      task 3 exists because of this decision — the consumer's configs are checked before the merge,
+      and a failure there is a finding to act on, not a result to paper over.</p>
+    </details>
+
+    <details>
+      <summary>[asked] #10 is in scope, declared in the config</summary>
+      <p class="qa-answer"><strong>Chosen: include it, with
+      <code>as_of_dates: {id_column: …}</code>.</strong> Declarative, visible to
+      <code>validate</code>, travels with the config, and additive under the freeze. Explicitly
+      required: when the block is absent the behaviour is exactly today's, enforced by a
+      byte-identical SQL test rather than by assertion.</p>
+    </details>
+
+    <details>
+      <summary>[asked] #11 gets a cross-reference, not the view</summary>
+      <p class="qa-answer"><strong>Chosen: the guard is already correct, so no code.</strong>
+      Verified against the reporter's own measurements — 979 vs ~1,018 columns, 11,383 vs 11,176
+      bytes, conservative in both directions. The documentation cross-reference is kept because it
+      costs six lines and closes the half that actually cost time; the shard-joining view is
+      dropped. <em>If the intent was to drop #11 entirely, the cross-reference is the only thing to
+      remove from Phase 4.</em></p>
+    </details>
+
+    <details>
+      <summary>[decided] #13 uses a new helper, not <code>pg_identifier</code> directly</summary>
+      <p class="qa-answer">The issue proposes routing the projection through
+      <code>pg_identifier</code>. That breaks every aggregate and transform column, because
+      <code>pg_identifier</code> is not idempotent (<code>abstractions.py:54-60</code>) and
+      generated names arrive already quoted — the comment at <code>planner.py:1780</code> says
+      re-wrapping "yields an empty delimited identifier". A <code>quote_if_bare</code> helper
+      applied at the projection site is the smallest change that discriminates. Quoting at
+      <code>Variable</code> construction was rejected: variable names reach the manifest, the
+      one-hot naming contract and the sharding metadata.</p>
+    </details>
+
+    <details>
+      <summary>[decided] #12.4 is documented, not made configurable</summary>
+      <p class="qa-answer">The issue offers "document <code>I+1</code> prominently <em>or</em> offer
+      <code>include_lifetime: false</code>". The reporter's own framing settles it: "No complaint
+      about the feature itself; only about it being invisible until you count the output." Adding a
+      config key to fix a documentation gap grows the surface ADR-0015 froze, for no behaviour
+      anyone asked for.</p>
+    </details>
+
+    <details>
+      <summary>[decided] Five pull requests, one per root cause</summary>
+      <p class="qa-answer">Rule 1 is "one need, one thread" and every issue already has one. The
+      three unknown-key issues share a single pass and therefore a single pull request, which means
+      #12 closes in Phase 4 rather than Phase 2 — its sub-items 3 and 5 land with the validation
+      pass, sub-item 4 with the docs. Worth stating so nobody expects #12 to close early.</p>
+    </details>
+
+    <details>
+      <summary>[decided] The harness grows, and the single-date case is preserved</summary>
+      <p class="qa-answer">A multi-date case in <code>final_matrix.py</code> would have made #10
+      visible the first time it ran. But the existing single-date case produced every published
+      figure from ADR-0009 through the v1.0.0 revalidation, so it is kept untouched and the new
+      case is added beside it — otherwise the next revalidation cannot be compared to the last one.</p>
+    </details>
+
+    <details>
+      <summary>[decided] The paired-cohort docs name no consumer</summary>
+      <p class="qa-answer">Written as a general cohort-shape concept — an event that happens on a
+      date, a scoring run over that day's arrivals — with no domain, dataset or organisation named.
+      The pattern is what generalises; the reporter's use case is only the first instance of it.</p>
+    </details>
+
+    <details>
+      <summary>[unresolved] Whether the cohort predicate actually narrows the aggregation CTEs</summary>
+      <p class="qa-answer"><strong>Assumption in force:</strong> filtering the target in its base
+      read propagates, because the aggregation CTEs join to the target downstream. But they
+      aggregate the <em>child</em> stream grouped by the child key, and that grouping may not narrow
+      just because the target did — in which case the measured speedup is much smaller than the
+      row-ratio suggests. <strong>Phase at risk:</strong> 5. Phase 5 task 3 makes this checkable
+      rather than assumed, and the instruction there is to report the real number. If the
+      aggregations do not narrow, the honest outcome is a correct feature with a modest speedup, and
+      the deeper push-down becomes its own plan.</p>
+    </details>
+  </section>
+
+  <!-- ===== NOTES ===== -->
+  <section id="notes">
+    <h2>Notes</h2>
+
+    <h3>Issue → phase → root cause</h3>
+    <table>
+      <tr><th>Issue</th><th>Phase</th><th>Root cause</th><th>Closes in</th></tr>
+      <tr><td>#13</td><td>1</td><td>Two name conventions meet in one projection; only one is quoted</td><td>PR A</td></tr>
+      <tr><td>#7</td><td>2</td><td rowspan="3">Config dicts are cherry-picked, never splatted, so no <code>TypeError</code> fires</td><td>PR B</td></tr>
+      <tr><td>#12.3, #12.5</td><td>2</td><td rowspan="2">PR D<br><span class="muted">(#12 needs 4 too)</span></td></tr>
+      <tr><td>#12.4</td><td>4</td><td>Loop shape is <code>I+1</code>; never written down</td></tr>
+      <tr><td>#9</td><td>3</td><td><code>temporal_mode</code> read on one traversal path of two</td><td>PR C</td></tr>
+      <tr><td>#11</td><td>4</td><td>Guard exists and is correct; the reference points elsewhere</td><td>PR D</td></tr>
+      <tr><td>#10</td><td>5</td><td>No way to declare a cohort that pairs dates with entities</td><td>PR E</td></tr>
+    </table>
+
+    <h3>Why two of these could not have been caught by better testing</h3>
+    <p>#10 and #11 are shape gaps, not logic gaps, and the evidence is specific.</p>
+    <pre><code>benchmarks/final_matrix.py:174-180   as_of = latest_knowledge_date(...)
+                                    insert into as_of_dates values (%s)   # ONE row
+benchmarks/bench.py:66              insert into as_of_dates values ('2023-01-01')
+benchmarks/_db.py:87                [(spec["as_of"],)]                    # ONE tuple
+specs/live-db-revalidation-v100/    artifact key: "as_of_date"  (singular)
+  raw/dirtyduck-all-agg.json        rows: 22169  = 22,169 entities x 1 date</code></pre>
+    <p>At one date the dense product is exactly the wanted rows. The correctness tier does use more
+    — 2 dates in <code>test_tui_adapters.py:86</code>, 3 in <code>_realistic.py:9</code> — but at row
+    counts where a 3:1 product is invisible. #11 is the mirror: the ceiling was found and guarded
+    during v1.0 hardening, but the guard only protects the table featurizer writes, and the reporter
+    wrote their own.</p>
+    <p>The general lesson, worth carrying past this plan: the harness measures one cohort shape,
+    written by one writer. Both gaps sat in the space that shape does not cover, and no amount of
+    additional testing <em>of that shape</em> would have found either.</p>
+
+    <h3>Freeze posture</h3>
+    <p>ADR-0015 froze the config schema, <code>Featurizer</code> methods, output naming, imputation
+    and the bridge contract. Every phase here is additive against that list:</p>
+    <ul>
+      <li><strong>Phase 1</strong> changes rendered SQL only; output column names are provably unchanged (the name-stability snapshot is a validation step).</li>
+      <li><strong>Phase 2</strong> tightens validation. This is the one place to be honest: rejecting a key that was previously accepted <em>is</em> a config-schema change in effect, even though no key's meaning moved. It was chosen deliberately with the consumer risk on the table.</li>
+      <li><strong>Phase 3</strong> adds a warning; <code>is_valid</code> is unaffected.</li>
+      <li><strong>Phase 4</strong> is documentation.</li>
+      <li><strong>Phase 5</strong> adds an optional key that is inert when absent.</li>
+    </ul>
+
+    <h3>Risks worth naming</h3>
+    <ul>
+      <li><strong>Phase 2 breaks a consumer config.</strong> Not hypothetical — that is the point of task 3. Finding it before the merge turns a pin-bump incident into a pull-request comment.</li>
+      <li><strong>Phase 3's notebook.</strong> If example 02 is re-oriented, its committed outputs must be re-executed against a live database. <code>site/gen.py</code> renders committed outputs and never executes them, so a stale notebook would publish a tutorial that contradicts its own config — and CI would not notice.</li>
+      <li><strong>Phase 5's speedup may disappoint.</strong> See the unresolved questionable. The correctness gate (equality with the dense oracle) matters more than the performance one, and a faster wrong matrix is the failure mode to guard against.</li>
+      <li><strong>No new dependency</strong> in any phase. Nothing to <code>uv add</code>, no lockfile churn, so none of these touches rule 2's all-consumer list.</li>
+    </ul>
+
+    <h3>Relationship to the other open plan</h3>
+    <p><code>specs/todo-audit-and-cockpit-fixes.html</code> covers the task-list audit and the two
+    cockpit fixes. The two plans are independent and share no file: that one touches
+    <code>TODO.org</code>, <code>CLAUDE.md</code>, <code>featurizer/tui/adapters.py</code>,
+    <code>site/gen.py</code> and <code>cockpit.md</code>; this one touches the planner, the
+    validator, <code>boundary.py</code>, the benchmarks and the reference docs. They can be built in
+    either order, or concurrently in separate worktrees — though both end in rebase merges to a
+    protected <code>master</code>, so the second to land will need a rebase.</p>
+  </section>
+
+  <!-- ===== AMENDMENTS ===== -->
+  <section id="amendments">
+    <h2>Amendments</h2>
+    <details>
+      <summary>2026-09-18 — Phases 1–2 landed; two new issues handled outside the plan; Phase 3 unblocked</summary>
+      <p>Phase 1 (#13) → PR #19. Its first attempt leaked quotes into <code>GroupedQueries.key_columns</code>
+      (ADR-0015 frozen); metadata and projection are now split. Correction to the plan: <code>pg_identifier</code>
+      IS idempotent — the reason for <code>quote_if_bare</code> is that <code>pg_identifier</code> hash-caps past
+      63 bytes and strips embedded quotes.</p>
+      <p>Phase 2 (#7, #12.3, #12.5) → PR #20. The packaged <code>featurizer.yaml</code> was itself invalid under
+      the new check (per-variable <code>intervals:</code>). triage-pg: 13/13 configs clean;
+      <code>_featurizer_only()</code> already strips <code>feature_groups</code>.</p>
+      <p>Two issues opened during the build and closed outside the phase list: #18 (transformer definitions,
+      split from #13) → PR #24, via quoting at 34 SQL-emission sites in <code>transformations.py</code> — the
+      option first chosen (quote <code>Variable.definition</code>) was measured not to work; and #21 (window
+      ORDER BY over transferred features, broader than as-of) → PR #22. #23 filed for five pre-existing
+      primitive defects the 83-transformer sweep exposed.</p>
+      <p>Phase 3 (#9) was blocked by #21 and is now unblocked. Its uncommitted work sits in the
+      <code>validation/temporal-orientation</code> worktree on the pre-#21 base.</p>
+    </details>
+  </section>
+
+</main>
+</body>
+</html>

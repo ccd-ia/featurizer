@@ -1,0 +1,10 @@
+{
+  "dataset": "chicago311",
+  "rows": 30654,
+  "feature_columns": 44,
+  "moved_cells": 0,
+  "moved_entities": 0,
+  "moved_columns": 0,
+  "moved_cells_per_column": {},
+  "moved_columns_per_primitive": {}
+}

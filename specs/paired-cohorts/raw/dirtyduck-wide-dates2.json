@@ -1,0 +1,20 @@
+{
+  "dataset": "dirtyduck",
+  "variant": "wide",
+  "case": "multi-date",
+  "features": 1252,
+  "featurizer_version": "1.2.0",
+  "last_as_of_date": "2017-12-30",
+  "dates": 2,
+  "rows_computed_dense": 44338,
+  "rows_on_diagonal": 2184,
+  "dense_to_diagonal": 20.3,
+  "rows_paired": 2184,
+  "dense_exec_seconds": 12.7,
+  "paired_exec_seconds": 2.0,
+  "paired_equals_dense_on_pairs": true,
+  "columns_differing": 95,
+  "rows_differing": 9,
+  "rows_differing_without_a_tied_timestamp": 0,
+  "status": "materialized"
+}

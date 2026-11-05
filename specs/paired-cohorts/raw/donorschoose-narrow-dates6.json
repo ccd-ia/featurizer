@@ -1,0 +1,20 @@
+{
+  "dataset": "donorschoose",
+  "variant": "narrow",
+  "case": "multi-date",
+  "features": 175,
+  "featurizer_version": "1.2.0",
+  "last_as_of_date": "2014-01-01",
+  "dates": 6,
+  "rows_computed_dense": 18000,
+  "rows_on_diagonal": 1086,
+  "dense_to_diagonal": 16.6,
+  "rows_paired": 1086,
+  "dense_exec_seconds": 0.9,
+  "paired_exec_seconds": 0.1,
+  "paired_equals_dense_on_pairs": true,
+  "columns_differing": 0,
+  "rows_differing": 0,
+  "rows_differing_without_a_tied_timestamp": 0,
+  "status": "materialized"
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "dataset": "dirtyduck",
+    "entity": "inspections",
+    "column": "result",
+    "rows": 74191,
+    "null_rows": 0,
+    "null_share": 0.0
+  },
+  {
+    "dataset": "dirtyduck",
+    "entity": "inspections",
+    "column": "risk",
+    "rows": 74191,
+    "null_rows": 4,
+    "null_share": 5.4e-05
+  },
+  {
+    "dataset": "dirtyduck",
+    "entity": "inspections",
+    "column": "type",
+    "rows": 74191,
+    "null_rows": 0,
+    "null_share": 0.0
+  }
+]

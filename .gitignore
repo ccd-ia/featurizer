@@ -162,3 +162,8 @@ COMPACT-archive-*.md
 # pytest-textual-snapshot writes this beside the tests on a snapshot run.
 snapshot_report.html
 reports/cc_report_*.html
+
+# Full before/after feature matrices from the ADR-0020 measurement (14-158 MB
+# each). The diffs and NULL counts next to them are committed.
+specs/null-is-a-state/raw/*-before*.json
+specs/null-is-a-state/raw/*-after*.json
