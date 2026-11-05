@@ -1218,51 +1218,6 @@ ngram_2_freq = NgramFrequency(n=2)
 ngram_3_freq = NgramFrequency(n=3)
 
 
-class SequenceEntropy(SubqueryAggregator):
-    """Transition entropy of consecutive categorical values.
-
-    Measures the randomness of transitions between consecutive values
-    in a temporal sequence. Higher values indicate more random transitions.
-    """
-
-    def __init__(self):
-        super().__init__(name="sequence_entropy", input_types=["categorical"])
-
-    def __call__(self, parent, child, feature, interval=None, *, relationship=None):
-        if feature.entity is None or feature.entity.temporal_ix is None:
-            return None
-        return super().__call__(
-            parent, child, feature, interval=interval, relationship=relationship
-        )
-
-    def _build_preagg(self, feature, child, relationship, interval=None):
-        return PreAggSpec(
-            family_key=f"transmatrix:{feature.name}",
-            interval=interval,
-            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
-            reduction="-SUM((freq::float / total) * LN(freq::float / total))",
-        )
-
-    def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        child_key = relationship.child_key_sql
-        child_table = f"{child.alias}_transform"
-        interval_filter = self._causal_filter(feature, interval)
-        return (
-            f"(SELECT -SUM(freq::float / total * LN(freq::float / total)) "
-            f"FROM (SELECT COUNT(*) as freq, SUM(COUNT(*)) OVER () as total "
-            f"FROM (SELECT sub.{_col(feature)} as curr, "
-            f"LAG(sub.{_col(feature)}) OVER (ORDER BY "
-            f"{_timeline('sub', feature, child, relationship)}) as prev "
-            f"FROM {child_table} sub "
-            f"WHERE sub.{child_key} = {child_table}.{child_key}{interval_filter}"
-            f") transitions WHERE prev IS NOT NULL "
-            f"GROUP BY curr, prev) seq_entropy_calc)"
-        )
-
-
-sequence_entropy = SequenceEntropy()
-
-
 class LongestStreak(SubqueryAggregator):
     """Longest consecutive streak of the same categorical value."""
 
@@ -1761,8 +1716,12 @@ class _TransitionMatrixReduction(_SequenceReduction):
     """Base for reductions over the first-order transition matrix.
 
     Builds the grouped (prev, curr) frequency matrix with joint and
-    row-conditional totals; subclasses reduce it to a scalar.
+    row-conditional totals; a subclass names the ``reduction`` that turns it
+    into a scalar. The set-based pre-pass and the correlated fallback apply the
+    same expression to the same matrix, so the two paths cannot drift apart.
     """
+
+    reduction: str
 
     def _matrix(self, feature, child, relationship, interval):
         transitions = self._transitions(feature, child, relationship, interval)
@@ -1774,6 +1733,18 @@ class _TransitionMatrixReduction(_SequenceReduction):
             f"GROUP BY t.prev, t.curr"
         )
 
+    def _build_preagg(self, feature, child, relationship, interval=None):
+        return PreAggSpec(
+            family_key=f"transmatrix:{feature.name}",
+            interval=interval,
+            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
+            reduction=self.reduction,
+        )
+
+    def _build_subquery_expression(self, feature, child, relationship, interval=None):
+        matrix = self._matrix(feature, child, relationship, interval)
+        return f"(SELECT {self.reduction} FROM ({matrix}) m)"
+
 
 class MarkovConditionalEntropy(_TransitionMatrixReduction):
     """First-order Markov entropy rate H(X_t | X_{t-1}), in nats.
@@ -1784,23 +1755,10 @@ class MarkovConditionalEntropy(_TransitionMatrixReduction):
     this is the conditional entropy the Markov taxonomy actually calls for.
     """
 
+    reduction = "-SUM((freq::float / total) * LN(freq::float / row_total))"
+
     def __init__(self):
         super().__init__(name="markov_conditional_entropy")
-
-    def _build_preagg(self, feature, child, relationship, interval=None):
-        return PreAggSpec(
-            family_key=f"transmatrix:{feature.name}",
-            interval=interval,
-            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
-            reduction="-SUM((freq::float / total) * LN(freq::float / row_total))",
-        )
-
-    def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        matrix = self._matrix(feature, child, relationship, interval)
-        return (
-            f"(SELECT -SUM((freq::float / total) * LN(freq::float / row_total)) "
-            f"FROM ({matrix}) m)"
-        )
 
 
 markov_conditional_entropy = MarkovConditionalEntropy()
@@ -1813,23 +1771,32 @@ class MaxTransitionProbability(_TransitionMatrixReduction):
     always transitions to the same successor.
     """
 
+    reduction = "MAX(freq::float / row_total)"
+
     def __init__(self):
         super().__init__(name="max_transition_prob")
 
-    def _build_preagg(self, feature, child, relationship, interval=None):
-        return PreAggSpec(
-            family_key=f"transmatrix:{feature.name}",
-            interval=interval,
-            prepass_sql=_transmatrix_prepass(feature, child, relationship, interval),
-            reduction="MAX(freq::float / row_total)",
-        )
-
-    def _build_subquery_expression(self, feature, child, relationship, interval=None):
-        matrix = self._matrix(feature, child, relationship, interval)
-        return f"(SELECT MAX(freq::float / row_total) FROM ({matrix}) m)"
-
 
 max_transition_prob = MaxTransitionProbability()
+
+
+class SequenceEntropy(_TransitionMatrixReduction):
+    """Transition entropy of consecutive categorical values.
+
+    Measures the randomness of transitions between consecutive values
+    in a temporal sequence. Higher values indicate more random transitions.
+    The joint (prev, curr) entropy of the shared transition matrix. Its
+    correlated fallback used to rebuild that matrix by hand, and #83 lived in
+    the copy.
+    """
+
+    reduction = "-SUM((freq::float / total) * LN(freq::float / total))"
+
+    def __init__(self):
+        super().__init__(name="sequence_entropy")
+
+
+sequence_entropy = SequenceEntropy()
 
 
 class FirstPassageTime(SubqueryAggregator):
