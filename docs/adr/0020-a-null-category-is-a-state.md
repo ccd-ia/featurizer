@@ -1,8 +1,8 @@
 # 0020 — A NULL category is a state
 
-**Status:** Proposed
+**Status:** Accepted
 
-**Date:** 2026-11-04
+**Date:** 2026-11-05 (proposed 2026-11-04)
 
 **Deciders:** Adolfo De Unánue
 
@@ -75,8 +75,8 @@ primitive, under both NULL rules, was never part of the contract. The one
 exception is a value that is coherent under another reading and still moves:
 `time_in_current_state` on a window whose rows are all NULL, which is NULL
 today and becomes the days since the window's first row under the rule. It is
-named here, not hidden in the list. If the maintainer refuses it at signing,
-that one case stays NULL and this ADR says so.
+named here, not hidden in the list, and the maintainer accepted it at signing
+on 2026-11-05: one rule, no special case.
 
 Alternatives considered:
 
