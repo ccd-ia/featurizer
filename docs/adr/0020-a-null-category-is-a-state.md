@@ -28,8 +28,9 @@ candidate rules, NULL as a state and NULL as missing data:
 
 The engine already treats NULL as a state elsewhere, so the inconsistent
 primitives disagree with their neighbours on the same rows. Of the 20
-aggregations that take a categorical input (registry, 2026-11-04), by reading
-the code (Phase 2 of the plan replaces this with measurements):
+aggregations that take a categorical input (registry, 2026-11-04), as measured
+by the sweeps in `tests/integration/test_null_state.py` on 2026-11-05 (the
+reading of the code had predicted the same nine):
 
 - **Values move (9):** eight are wrong under both rules: `sequence_entropy`,
   `markov_conditional_entropy`, `max_transition_prob`, `state_volatility`,
@@ -90,16 +91,57 @@ Alternatives considered:
 
 ## Consequences
 
-- **Moving cases:** to be filled in Phase 5 from the measured Phase 2 list,
-  with the tests that show each value moved before and not after, and the
-  render digest that shows nothing else moved (ADR-0016's three duties).
-- **Measured on:** to be filled in Phase 5 from the Phase 4 runs on the live
-  databases: moved cells, entities and columns per database, and NULL
-  prevalence per categorical child column.
+- **Moving cases**, following ADR-0016's three duties:
+  - *Each value moved before and not after.* Two oracles in
+    `tests/integration/test_null_state.py`. The sentinel sweep compares 17
+    categorical aggregations (20 minus the three SQL aggregates, each of which
+    a test shows does move) with the same rows where each NULL is replaced by
+    an unused category. The reference sweep compares the 11 sequence
+    primitives on both paths with the Python reference in
+    `tests/_sequence_reference.py`. A DB-free guard,
+    `tests/primitives/test_sequence_null_marker.py`, keeps the rendered SQL
+    from reading a LAG's NULL. Before the fix, 9 sentinel, 18 reference and
+    18 guard cases failed, the nine primitives above on both paths; after it,
+    all 63 pass. Reverting the engine fails the same 45.
+  - *Nothing else moved.* A per-name render digest of all 68 registered
+    aggregations is byte-identical for 59 of them; the 9 that moved are the
+    nine above. The fallback parity sweep stays 30/30, and the tied-row and
+    future-row sweeps are unchanged.
+  - *Every moving primitive named:* the nine above, for the 1.5.0 CHANGELOG.
+    `ngram_3_freq` also moves on series with no NULL at all. Under the old
+    `lag_1 IS NOT NULL` test, a two-row series counted a trigram of 1, and
+    under the rule it has none (NULL). On real data this is most of what
+    moves.
+  - The frozen v0.5.2 golden (`tests/fixtures/preagg_golden_values.json`)
+    held the partial trigram for the three two-row groups of its edge
+    fixture. The test overrides those six cells by name and leaves the file
+    as captured.
+- **One fallback defect fixed on the way.** The reference sweep found that
+  the correlated fallbacks of `state_volatility`, `transition_matrix_summary`
+  and `rework_count` counted 0 on an empty window of a key with history,
+  where the set-based pre-pass, the path the planner renders, gives NULL. The
+  fallback now gives NULL too. No rendered value changes because of it.
+- **Measured on** the three triage-pg databases (2026-11-05, PostgreSQL 16,
+  one as-of date each: the latest knowledge date). The configs are the triage
+  entity graphs with the 11 sequence primitives;
+  `benchmarks/null_state_impact.py` was run on `master` and on the fix. The
+  control, two independent `master` runs, differed in 0 cells on each
+  database.
+
+  | database | rows × columns | moved cells | entities | columns | NULLs in the categorical child |
+  |---|---|---|---|---|---|
+  | dirtyduck | 22,169 × 133 | 16,781 | 4,452 | 18 | `inspections.risk` 4 of 74,191; `result`, `type` 0 |
+  | donorschoose | 3,000 × 44 | 932 | 464 | 4 | `resources.project_resource_type` 0 of 16,682 |
+  | chicago311 | 30,654 × 44 | 0 | 0 | 0 | `area_backlog.sr_type` 0 of 30,654 |
+
+  Of dirtyduck's 16,781 cells, 16,773 are `ngram_3_freq` partial trigrams
+  (1 to NULL). The other 8 are on the 4 entities that hold the 4 NULL `risk`
+  rows, and 3 of those are one-row all-NULL dwells. All 932 donorschoose
+  cells are partial trigrams.
 - An all-NULL series now has a defined dwell, entropy and streak. A downstream
   model that relied on NULL there will see numbers.
 - The release notes name every primitive whose values move. No triage-pg
-  config names any of the 11 sequence primitives (checked 2026-11-04), and the
-  default aggregation selection contains none.
+  config names any of the 11 sequence primitives (re-checked 2026-11-05), and
+  the default aggregation selection contains none.
 - A categorical primitive registered later is covered by the sentinel sweep the
   day it lands, which the sweep-matrix closure enforces.
