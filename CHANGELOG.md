@@ -4,6 +4,55 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning once a release is cut.
 
+## [1.6.0] - 2026-11-25
+
+A minor release that changes how the Arrow path uses memory, not what it
+returns. `to_arrow` and `to_parquet` return the same schema and values as 1.5.0
+for every type the exporter maps, with NULLs as Arrow nulls. Column names, the
+config schema, the imputation contract and the `Featurizer` surface do not
+change. Before this release, a 2.75 M-row × 630-feature training matrix in a
+triage-pg run took 4 h 37 min on a 128 GB machine, and the next, larger matrix
+exhausted swap (#95).
+
+Measured with the issue's repro script (`random()::float8` columns, the
+PostgreSQL 16 test container), 1.5.0 against 1.6.0:
+
+| rows × 602 columns | peak RSS | seconds |
+|---|---|---|
+| 200,000 | 11.54 GB → 1.36 GB | 25.1 → 9.9 |
+| 400,000 | 20.07 GB → 2.42 GB | 60.0 → 19.5 |
+
+### Changed
+
+- **The feature query runs once per export (#95).** Column names and type
+  OIDs now come from a Parse and Describe of the statement, which neither
+  plans nor runs it. Before, `cursor.execute(query)` ran the whole query only
+  to read its description, then `COPY` ran it again.
+- **`COPY` is decoded in bounded batches (#95).** At most `batch_values`
+  values (rows × columns, 4,000,000 by default, about 160 MB of Python
+  objects) are decoded before they become Arrow arrays. `to_arrow` peaks at
+  the Arrow table plus one batch, where 1.5.0 peaked at 10 to 12 times the
+  Arrow size. Each column of the returned table is chunked by batch. Two kinds
+  of column are still held until the last row, because their type depends on
+  the values: `numeric` with `numeric_as_float=False`, and a column of a type
+  the exporter does not map.
+- **`to_parquet` writes each column group before the next one runs (#95).**
+  Without `impute`, each group is streamed to disk in 128 MB row groups: 0.55
+  GB peak for 200,000 rows and 0.56 GB for 800,000 at 602 columns. With
+  `impute`, a group is decoded, imputed whole and then written, because a
+  `<feature>__missing` column exists only for a feature with a NULL somewhere
+  in the matrix.
+- A `uuid` column no longer logs a string-fallback warning. Its values are the
+  same strings.
+
+### Added
+
+- `ArrowExporter(batch_values=...)` sets the batch size. The `Featurizer`
+  methods use the default.
+- `ArrowExporter.write_parquet(query, path, ...)` streams one query to a
+  Parquet file. The file appears at `path` only when it is complete, so a
+  failed export leaves no partial file that would read as a shorter matrix.
+
 ## [1.5.0] - 2026-11-05
 
 A minor release that changes values. Two accepted decisions, ADR-0020 and
