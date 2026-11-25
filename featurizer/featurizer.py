@@ -633,10 +633,11 @@ class Featurizer:
         """Execute the query and return Arrow output, no pandas hop.
 
         Streams the result out of PostgreSQL with binary ``COPY`` and decodes it
-        column-by-column into Arrow, so SQL NULLs are preserved as Arrow nulls
-        (never coerced to ``NaN``) and the full result set never materializes as
-        a pandas frame. ``as_of_date`` and the target id are ordinary leading
-        columns (no index), unlike :meth:`to_dataframe`.
+        into Arrow in bounded batches, so SQL NULLs are preserved as Arrow nulls
+        (never coerced to ``NaN``), the full result set never materializes as
+        Python objects or a pandas frame, and peak memory is the Arrow table
+        plus one batch (#95). ``as_of_date`` and the target id are ordinary
+        leading columns (no index), unlike :meth:`to_dataframe`.
 
         Sharding (issue #7): when the matrix fits in one query a single
         :class:`pyarrow.Table` is returned. When it is too wide for a single
@@ -700,10 +701,14 @@ class Featurizer:
     ) -> None:
         """Execute the query and write the result to Parquet.
 
-        Thin wrapper over the Arrow path plus ``pyarrow.parquet.write_table``;
-        all arguments (including the imputation contract and its ADR-0001 leakage
-        gate) behave exactly as in :meth:`to_arrow`. NULLs are written as Parquet
-        nulls.
+        All arguments (including the imputation contract and its ADR-0001
+        leakage gate) behave exactly as in :meth:`to_arrow`. NULLs are written as
+        Parquet nulls. Without ``impute``, each group is streamed to disk batch by
+        batch and never held in memory. With ``impute``, each group is decoded
+        into an Arrow table, imputed and written before the next group runs:
+        the ``__missing`` indicators exist only for features with a NULL
+        somewhere in the matrix, so the file's columns are unknown until its
+        last row is read (#95).
 
         Sharding (issue #7): when the matrix fits in one query, a single Parquet
         file is written at ``path``. When it is too wide for one valid query,
@@ -724,27 +729,35 @@ class Featurizer:
         """
         import pyarrow.parquet as pq  # pyright: ignore[reportMissingImports]
 
-        groups = self._arrow_groups(
-            connection=connection,
-            numeric_as_float=numeric_as_float,
-            impute=impute,
-            **impute_kwargs,
-        )
-        if len(groups) == 1:
-            pq.write_table(next(iter(groups.values())), path)
-            return
+        if impute:
+            self._guard_arrow_impute(impute_kwargs)
+        grouped = self._grouped()
+        sharded = len(grouped.queries) > 1
+        if sharded:
+            os.makedirs(path, exist_ok=True)
 
-        import os as _os
+        def write(exporter: Any, conn: Any, gid: str, sql: str) -> None:
+            out = os.path.join(path, f"{gid}.parquet") if sharded else path
+            if impute:
+                table = exporter.to_arrow(
+                    sql, connection=conn, numeric_as_float=numeric_as_float
+                )
+                pq.write_table(self._impute_group(table, **impute_kwargs), out)
+            else:
+                exporter.write_parquet(
+                    sql, out, connection=conn, numeric_as_float=numeric_as_float
+                )
 
-        _os.makedirs(path, exist_ok=True)
-        for gid, table in groups.items():
-            pq.write_table(table, _os.path.join(path, f"{gid}.parquet"))
-        logger.info(
-            "Wrote {} column-group Parquet files to {} (re-join on {}).",
-            len(groups),
-            path,
-            ("as_of_date", self.target.id.name) if self.target.id else "(as_of_date,)",
-        )
+        self._export_groups(grouped, connection, write)
+        if sharded:
+            logger.info(
+                "Wrote {} column-group Parquet files to {} (re-join on {}).",
+                len(grouped.queries),
+                path,
+                ("as_of_date", self.target.id.name)
+                if self.target.id
+                else "(as_of_date,)",
+            )
 
     def to_tables(
         self,
@@ -951,20 +964,49 @@ class Featurizer:
         ADR-0001 leakage gate as the single-query path; the gate is checked once
         up front so a leaky strategy is refused before any query runs.
         """
-        from .arrow import ArrowExporter
+        from collections import OrderedDict as _OrderedDict
 
         if impute:
-            from .imputation import guard_full_matrix_fit
+            self._guard_arrow_impute(impute_kwargs)
+        tables: "OrderedDict[str, Any]" = _OrderedDict()
 
-            guard_full_matrix_fit(
-                impute_kwargs.get("measure_strategy", "none"),
-                allow_full_matrix_fit=bool(impute_kwargs.get("allow_full_matrix_fit")),
-                caller="to_arrow",
+        def collect(exporter: Any, conn: Any, gid: str, sql: str) -> None:
+            table = exporter.to_arrow(
+                sql, connection=conn, numeric_as_float=numeric_as_float
             )
+            if impute:
+                table = self._impute_group(table, **impute_kwargs)
+            tables[gid] = table
+
+        self._export_groups(self._grouped(), connection, collect)
+        return tables
+
+    @staticmethod
+    def _guard_arrow_impute(impute_kwargs: Dict[str, Any]) -> None:
+        """Refuse a leaky measure strategy before any query runs (ADR-0001)."""
+        from .imputation import guard_full_matrix_fit
+
+        guard_full_matrix_fit(
+            impute_kwargs.get("measure_strategy", "none"),
+            allow_full_matrix_fit=bool(impute_kwargs.get("allow_full_matrix_fit")),
+            caller="to_arrow",
+        )
+
+    def _export_groups(
+        self,
+        grouped: "GroupedQueries",
+        connection: Any,
+        export: Any,
+    ) -> None:
+        """Call ``export(exporter, conn, gid, sql)`` for every group, on one connection.
+
+        Each group is exported before the next one runs, so a caller that writes
+        a group out and drops it holds one group at a time.
+        """
+        from .arrow import ArrowExporter
 
         # Grouped queries + any TEMP-table materialization preamble (issue #7).
         # The single-group short-circuit + oversized warning live in _grouped().
-        grouped = self._grouped()
         preamble = (
             grouped.materialization.ddl if grouped.materialization is not None else []
         )
@@ -973,13 +1015,10 @@ class Featurizer:
         own_connection = connection is None
         conn = connection if connection is not None else exporter.open_connection()
         try:
-            from collections import OrderedDict as _OrderedDict
-
             # Run the CREATE TEMP TABLE preamble first, on the *same* connection,
             # so the group queries' shard references resolve. The connection is
             # non-autocommit (default_connection / the harness), so ON COMMIT DROP
             # shards live for the whole transaction and drop when it closes.
-            tables: "OrderedDict[str, Any]" = _OrderedDict()
             # jit off from the preamble on (issue #53); a caller's value is put
             # back before their transaction goes on.
             with jit_disabled(conn):
@@ -992,13 +1031,7 @@ class Featurizer:
                     apply_planner_tuning(conn)
 
                 for gid, sql in grouped.queries.items():
-                    table = exporter.to_arrow(
-                        sql, connection=conn, numeric_as_float=numeric_as_float
-                    )
-                    if impute:
-                        table = self._impute_group(table, **impute_kwargs)
-                    tables[gid] = table
-            return tables
+                    export(exporter, conn, gid, sql)
         finally:
             if own_connection:
                 conn.close()
@@ -1006,7 +1039,7 @@ class Featurizer:
     def _impute_group(self, table: Any, **impute_kwargs: Any) -> Any:
         """Apply the Arrow imputation pass to one group's table.
 
-        The leakage gate is already checked in :meth:`_arrow_groups`; strip the
+        The leakage gate is already checked by :meth:`_guard_arrow_impute`; strip the
         consumed ``allow_full_matrix_fit`` flag so ``impute_arrow`` does not see
         an unexpected keyword.
         """
