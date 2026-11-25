@@ -14,8 +14,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from loguru import logger
 
 from featurizer import Featurizer
+from featurizer.arrow import ArrowExporter
 
 from ._harness import create_temp_table, run_featurizer
 
@@ -199,3 +201,133 @@ def test_arrow_mean_strategy_gated(pg_conn):
     d = table.to_pydict()
     row2 = d["customer_id"].index(2)
     assert d["MEAN(orders.amount)"][row2] is not None
+
+
+# ------------------------------------------------------------------ #
+# #95: one execution, bounded batches, output independent of batch size.
+# ------------------------------------------------------------------ #
+
+#: Every OID the exporter maps, NULLs in most columns, one numeric that fits
+#: decimal128(38, 9) and one that does not, and one unmapped OID (interval).
+_TYPES_QUERY = """
+select current_date + (g % 3) as as_of_date, g::int8 as entity_id,
+  case when g % 3 = 0 then null else g::int4 end as i4,
+  (g % 100)::int2 as i2,
+  case when g % 5 = 0 then null else (g / 7.0)::float4 end as f4,
+  case when g % 6 = 0 then null else g / 3.0::float8 end as f8,
+  case when g % 4 = 0 then null else (g * 1.5)::numeric end as num_fits,
+  case when g % 4 = 0 then null else g::numeric / 3 end as num_overflows,
+  case when g % 2 = 0 then null else 'é' || g end as txt,
+  ('c' || (g % 9))::char(3) as bp,
+  ('v' || g)::varchar as vc,
+  g % 2 = 0 as b,
+  '2020-01-01'::timestamp + g * interval '1 hour' as ts,
+  '2020-01-01 00:00+00'::timestamptz + g * interval '1 minute' as tstz,
+  case when g % 10 = 0 then null else md5(g::text)::uuid end as u,
+  case when g % 7 = 0 then null else g * interval '1 day' end as iv,
+  null::int8 as all_null
+from generate_series(1, 50) as g
+"""
+
+
+def test_the_query_runs_once(pg_conn, tmp_path: Path):
+    """Column names and types come from a describe: COPY is the only execution."""
+    with pg_conn.cursor() as cur:
+        cur.execute("create temp sequence executions")
+    query = (
+        "select current_date as as_of_date, nextval('executions') as entity_id "
+        "from generate_series(1, 10)"
+    )
+    ArrowExporter().to_arrow(query, connection=pg_conn)
+    ArrowExporter().write_parquet(
+        query, str(tmp_path / "m.parquet"), connection=pg_conn
+    )
+
+    with pg_conn.cursor() as cur:
+        cur.execute("select last_value from executions")
+        (calls,) = cur.fetchone()
+    assert calls == 20, "10 rows x 2 exports; 40 means each export ran twice"
+
+
+@pytest.mark.parametrize("numeric_as_float", [True, False])
+def test_batch_size_changes_chunking_only(pg_conn, tmp_path: Path, numeric_as_float):
+    """One row per batch and one batch for everything build the same table and file."""
+    kwargs = {"connection": pg_conn, "numeric_as_float": numeric_as_float}
+    per_row = ArrowExporter(batch_values=1).to_arrow(_TYPES_QUERY, **kwargs)
+    whole = ArrowExporter(batch_values=10**9).to_arrow(_TYPES_QUERY, **kwargs)
+
+    assert per_row.column("i4").num_chunks == 50
+    assert whole.column("i4").num_chunks == 1
+    assert per_row.schema.equals(whole.schema)
+    assert per_row.equals(whole)
+
+    for batch_values in (1, 10**9):
+        out = tmp_path / f"m{batch_values}.parquet"
+        ArrowExporter(batch_values=batch_values).write_parquet(
+            _TYPES_QUERY, str(out), **kwargs
+        )
+        assert pq.read_table(out).equals(whole)
+
+
+def test_types_and_nulls_of_the_batched_decode(pg_conn):
+    """OID-derived types, Arrow nulls (never NaN), uuid as its string."""
+    table = ArrowExporter(batch_values=7).to_arrow(_TYPES_QUERY, connection=pg_conn)
+    types = {f.name: f.type for f in table.schema}
+
+    assert types["as_of_date"] == pa.date32()
+    assert types["entity_id"] == pa.int64()
+    assert types["i4"] == pa.int32() and types["i2"] == pa.int16()
+    assert types["f4"] == pa.float32() and types["f8"] == pa.float64()
+    assert types["num_fits"] == pa.float64() and types["num_overflows"] == pa.float64()
+    assert types["txt"] == types["bp"] == types["vc"] == types["u"] == pa.string()
+    assert types["b"] == pa.bool_()
+    assert types["ts"] == pa.timestamp("us")
+    assert types["tstz"] == pa.timestamp("us", tz="UTC")
+    assert types["all_null"] == pa.int64()
+    assert pa.types.is_interval(types["iv"]) or pa.types.is_duration(types["iv"])
+
+    d = table.to_pydict()
+    assert table.column("f8").null_count == 50 // 6
+    assert d["f8"][5] is None  # g = 6, not NaN
+    assert table.column("all_null").null_count == 50
+    with pg_conn.cursor() as cur:
+        cur.execute("select md5('1')::uuid::text")
+        (first_uuid,) = cur.fetchone()
+    assert d["u"][0] == first_uuid
+
+
+def test_exact_numeric_keeps_decimal_or_warns_to_string(pg_conn):
+    """numeric_as_float=False: decimal128 where every value fits, else string + warning."""
+    messages: list[str] = []
+    sink = logger.add(lambda m: messages.append(str(m)), level="WARNING")
+    try:
+        table = ArrowExporter(batch_values=7).to_arrow(
+            _TYPES_QUERY, connection=pg_conn, numeric_as_float=False
+        )
+    finally:
+        logger.remove(sink)
+
+    assert table.schema.field("num_fits").type == pa.decimal128(38, 9)
+    assert table.column("num_fits").to_pylist()[0] == Decimal("1.5")
+    assert table.schema.field("num_overflows").type == pa.string()
+    with pg_conn.cursor() as cur:
+        cur.execute("select (1::numeric / 3)::text")
+        (one_third,) = cur.fetchone()
+    assert table.column("num_overflows").to_pylist()[0] == one_third
+    assert table.column("num_overflows").null_count == 50 // 4
+    fallbacks = [m for m in messages if "falling back to string" in m]
+    assert len(fallbacks) == 1 and "'num_overflows'" in fallbacks[0]
+
+
+def test_a_failed_streaming_write_leaves_no_file(pg_conn, tmp_path: Path):
+    """A query that fails mid-COPY leaves neither the target nor a partial file."""
+    out = tmp_path / "m.parquet"
+    failing = (
+        "select current_date as as_of_date, g as entity_id, 1 / (g - 40) as boom "
+        "from generate_series(1, 50) as g"
+    )
+    with pytest.raises(RuntimeError, match="division by zero"):
+        ArrowExporter(batch_values=3).write_parquet(
+            failing, str(out), connection=pg_conn
+        )
+    assert list(tmp_path.iterdir()) == []

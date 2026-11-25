@@ -135,6 +135,50 @@ the rollback undoes `SET LOCAL` by itself. Callers who execute `query` or
 
 Every wall-clock on this page was taken before that change, with `jit = on`.
 
+## The Arrow path's memory
+
+`to_arrow` and `to_parquet` read the result with binary `COPY`. The column
+names and type OIDs come from a Parse and Describe of the statement, which
+plans and runs nothing, so the query executes once. psycopg decodes each value
+into a Python object of about 30 to 40 bytes. The exporter decodes at most
+`batch_values` values (rows × columns, 4,000,000 by default) and turns them into
+Arrow arrays before it reads the next batch.
+
+Peak memory is therefore:
+
+- for `to_arrow`, the Arrow table plus one batch (about 160 MB of Python
+  objects at the default);
+- for `to_parquet` without `impute`, one batch plus one 128 MB row group,
+  whatever the size of the matrix: each column group is streamed to disk;
+- for `to_parquet` with `impute`, one column group's Arrow table plus its
+  imputed and `__missing` columns. A `__missing` column exists only for a
+  feature that has a NULL somewhere in the matrix, so the file's columns are
+  unknown until its last row is read, and the group is imputed whole before
+  it is written.
+
+Two kinds of column are held as Python objects until the last row, because
+their Arrow type depends on the values: `numeric` with `numeric_as_float=False`
+(it becomes `decimal128(38, 9)`, or a string column with a warning when a value
+does not fit), and a column whose type OID the exporter does not map.
+
+The knob is `featurizer.arrow.ArrowExporter(batch_values=...)`; the
+`Featurizer` methods keep the default. Before issue #95 the exporter ran the
+query twice and held every decoded value, plus a transposed copy, until the
+end. A 2.75 M-row × 630-feature training matrix in a triage-pg run then took
+4 h 37 min on a 128 GB machine, and the next, larger matrix exhausted swap.
+The repro script from the issue (`random()::float8` columns from
+`generate_series`, the PostgreSQL 16 test container, measured 2026-11-25)
+gives:
+
+| Rows × columns | Arrow size | Peak RSS, 1.5.0 | Peak RSS, batched | Seconds, 1.5.0 | Seconds, batched |
+|---|---|---|---|---|---|
+| 200,000 × 602 | 0.96 GB | 11.54 GB | 1.36 GB | 25.1 | 9.9 |
+| 400,000 × 602 | 1.92 GB | 20.07 GB | 2.42 GB | 60.0 | 19.5 |
+| 800,000 × 602 | 3.85 GB | not run | 4.55 GB | not run | 38.4 |
+
+`ArrowExporter.write_parquet` on the same queries peaked at 0.55 GB for
+200,000 rows and 0.56 GB for 800,000.
+
 ## Staying under PostgreSQL's limits
 
 PostgreSQL caps a target list at **1664 entries**, and its planner has a

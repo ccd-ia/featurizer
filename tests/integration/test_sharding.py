@@ -437,6 +437,21 @@ def test_to_parquet_writes_single_file_for_narrow_config(pg_conn, tmp_path: Path
     assert pq.read_table(out).num_rows == 2
 
 
+@pytest.mark.parametrize("impute", [False, True])
+def test_to_parquet_groups_equal_to_arrow_groups(pg_conn, tmp_path: Path, impute):
+    """#95: each group file holds exactly its to_arrow table. Without impute the
+    file is streamed batch by batch; with it the group is imputed whole first."""
+    _seed(pg_conn, n_vars=12)
+    f = _featurizer(_wide_light_config())
+    tables = f.to_arrow(connection=pg_conn, impute=impute)
+    out_dir = tmp_path / "matrix"
+    f.to_parquet(str(out_dir), connection=pg_conn, impute=impute)
+
+    assert sorted(p.stem for p in out_dir.glob("group_*.parquet")) == list(tables)
+    for gid, table in tables.items():
+        assert pq.read_table(out_dir / f"{gid}.parquet").equals(table), gid
+
+
 # ------------------------------------------------------------------ #
 # Temp-table materialization of an oversized non-target child chain (issue #7).
 # Forced on a small depth-3 config via ``materialize_threshold=1`` so the whole
