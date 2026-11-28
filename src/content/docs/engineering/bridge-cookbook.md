@@ -34,12 +34,12 @@ never the silent default.
 ```python
 from featurizer.bridge import SentimentBridge
 
-bridge = SentimentBridge(pk_col="doc_id", text_col="body")   # language="es"
+bridge = SentimentBridge(pk_col="doc_id", text_col="body")  # language="es"
 bridge.materialize(
     conn,
     source_table="complaints",
     pk="doc_id",
-    carry_cols=["facility_id", "filed_at"],   # FK + temporal_ix pass through
+    carry_cols=["facility_id", "filed_at"],  # FK + temporal_ix pass through
     content_cols=["body"],
     output_table="bridge_sentiment",
 )
@@ -65,9 +65,10 @@ cutoff) and call `assert_model_vintage(as_of)` in strict backtests.
 from featurizer.bridge import NERCountsBridge
 
 bridge = NERCountsBridge(
-    pk_col="doc_id", text_col="body",
-    language="es",                      # default "xx" = multilingual model
-    model_vintage=date(2023, 4, 1),     # pin what the model could have known
+    pk_col="doc_id",
+    text_col="body",
+    language="es",  # default "xx" = multilingual model
+    model_vintage=date(2023, 4, 1),  # pin what the model could have known
 )
 ```
 
@@ -97,7 +98,7 @@ bridge.materialize_snapshots(
     conn,
     source_table="contact_edges",
     output_table="bridge_centrality",
-    as_of_dates=cohort_dates,           # one pre-t₀ rebuild per window
+    as_of_dates=cohort_dates,  # one pre-t₀ rebuild per window
     causal_col="contacted_at",
     content_cols=["src", "dst"],
     entity_col="node_id",
@@ -105,9 +106,11 @@ bridge.materialize_snapshots(
 )
 fragment = bridge.emit_yaml(
     output_table="bridge_centrality",
-    pk="node_id", parent_alias="facilities",
-    parent_key="facility_id", fk="node_id",
-    temporal_ix="as_of_date",           # the snapshot stream is an event stream
+    pk="node_id",
+    parent_alias="facilities",
+    parent_key="facility_id",
+    fk="node_id",
+    temporal_ix="as_of_date",  # the snapshot stream is an event stream
 )
 ```
 
@@ -215,16 +218,14 @@ INSERT, YAML fragment, snapshot loop) is inherited.
 ```python
 from featurizer.bridge import MultiColumnBridge
 
+
 class UrgencyBridge(MultiColumnBridge):
     def __init__(self, *, pk_col, text_col):
         super().__init__(name="urgency", value_cols=["urgency", "hedging"])
         self.pk_col, self.text_col = pk_col, text_col
 
     def compute(self, rows, *, fit_rows):
-        return {
-            r[self.pk_col]: {"urgency": ..., "hedging": ...}
-            for r in rows
-        }
+        return {r[self.pk_col]: {"urgency": ..., "hedging": ...} for r in rows}
 ```
 
 Rules of the road:

@@ -211,8 +211,10 @@ feature tables.
 ```python
 f = Featurizer("config.yaml")
 
-f.columns_matching("*(inspections.kw_*")   # -> ["…kw_rod~978dcf98", …] physical names
-f.manifest_matching("*(inspections.kw_*")  # -> full ManifestEntry rows (label, lineage, interval)
+f.columns_matching("*(inspections.kw_*")  # -> ["…kw_rod~978dcf98", …] physical names
+f.manifest_matching(
+    "*(inspections.kw_*"
+)  # -> full ManifestEntry rows (label, lineage, interval)
 ```
 
 Matching is case-sensitive `fnmatch`, against `label`, in output order. A

@@ -188,8 +188,8 @@ relationships:
    as `"<schema>"."<stem>_manifest"`), and since 1.1.0 the selection helpers
    glob that label for you:
    ```python
-   cols = f.columns_matching("*frecuencia_cardiaca*")   # physical names, output order
-   rows = f.manifest_matching("*(inspections.kw_*")     # full ManifestEntry rows
+   cols = f.columns_matching("*frecuencia_cardiaca*")  # physical names, output order
+   rows = f.manifest_matching("*(inspections.kw_*")  # full ManifestEntry rows
    ```
    Zero matches **raise `LookupError`** with near-miss suggestions (a silently
    empty feature group is the failure this exists to prevent); pass
@@ -267,11 +267,11 @@ uv run python -m featurizer list-primitives --type all --category   # add -s for
 from featurizer import Featurizer
 
 f = Featurizer("config.yaml")
-print(f.query)                    # the pure-SQL feature query
-df = f.to_dataframe()             # execute against the live DB → pandas matrix
+print(f.query)  # the pure-SQL feature query
+df = f.to_dataframe()  # execute against the live DB → pandas matrix
 tbl = f.to_arrow(connection=conn, impute=True)  # binary COPY → pyarrow, no pandas hop
-f.to_parquet("out.parquet", connection=conn)    # Arrow path written to Parquet
-f.to_tables("features")           # persist triage-style feature-group tables
+f.to_parquet("out.parquet", connection=conn)  # Arrow path written to Parquet
+f.to_tables("features")  # persist triage-style feature-group tables
 
 # select features by their full label, never by physical (possibly truncated) name
 cardiac = f.columns_matching("*frecuencia_cardiaca*")
