@@ -119,7 +119,7 @@ or in Python:
 from featurizer import Featurizer
 
 f = Featurizer("examples/01-basic-aggregations/config.yaml")
-print(f.query)          # a single PostgreSQL query — inspect before you run
+print(f.query)  # a single PostgreSQL query — inspect before you run
 ```
 
 For this config that is one 56-line, ~19&nbsp;KB query. Its skeleton is worth
@@ -170,7 +170,7 @@ In Python, materialization is one call:
 
 ```python
 df = f.to_dataframe()
-df.shape        # (1200, 105) — 100 customers × 12 as-of dates, 105 features
+df.shape  # (1200, 105) — 100 customers × 12 as-of dates, 105 features
 ```
 
 The frame is indexed by `(as_of_date, customer_id)`: the same customer appears
@@ -286,7 +286,7 @@ from featurizer import FeaturizerViz
 
 viz = FeaturizerViz.from_featurizer(f, df=df)
 viz.plot_feature_distributions(kind="violin")
-viz.plot_missing_heatmap()          # NULL-as-signal, made visible
+viz.plot_missing_heatmap()  # NULL-as-signal, made visible
 ```
 
 Real output from a live 177k-row × 272-feature matrix:

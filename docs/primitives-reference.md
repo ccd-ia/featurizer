@@ -344,13 +344,15 @@ A `mean_shift_ratio` near 1.0 indicates stability; values significantly above or
 from featurizer.primitives.aggregations import Aggregator
 from featurizer.primitives.utils import register_aggregation
 
+
 class MedianAbsoluteDeviation(Aggregator):
     def __init__(self):
-        super().__init__(name='mad')
+        super().__init__(name="mad")
 
     def _build_aggregate_expression(self, feature, interval):
         # Custom SQL expression
         return f"PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS({feature.name} - (SELECT AVG({feature.name}) FROM ...)))"
+
 
 mad = MedianAbsoluteDeviation()
 register_aggregation("mad", mad)
@@ -363,20 +365,22 @@ from featurizer.primitives.transformations import Transformer
 from featurizer.primitives.abstractions import Feature
 from featurizer.primitives.utils import register_transformer
 
+
 class Normalize(Transformer):
     def __init__(self):
-        super().__init__(name='normalize', input_types=['numeric'])
+        super().__init__(name="normalize", input_types=["numeric"])
 
     def __call__(self, parent, feature):
         if feature.type not in self.input_types:
             return feature
         return Feature(
             name=f'"NORMALIZE({feature.entity.alias}.{feature.name})"',
-            type='numeric',
+            type="numeric",
             definition=f"({feature.name} - MIN({feature.name}) OVER ()) / NULLIF(MAX({feature.name}) OVER () - MIN({feature.name}) OVER (), 0)",
             entity=parent,
             stack_depth=feature.stack_depth + 1,
         )
+
 
 normalize = Normalize()
 register_transformer("normalize", normalize)
