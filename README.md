@@ -110,9 +110,10 @@ It is an optional extra&#x2014;install with `uv sync --extra parquet` (pyarrow):
     table = f.to_arrow()                 # pyarrow.Table
     f.to_parquet("features.parquet")     # writes Parquet directly
 
-These stream the result out of PostgreSQL with binary `COPY` and decode it
-column-by-column into Arrow, so the full matrix never round-trips through pandas
-and two properties hold that `to_dataframe` does not give cheaply:
+These run the query once, stream the result out of PostgreSQL with binary
+`COPY` and decode it into Arrow in bounded batches of rows, so the full matrix
+never round-trips through pandas and two properties hold that `to_dataframe`
+does not give cheaply:
 
 -   **NULL fidelity.** A SQL `NULL` (no qualifying events in the window) stays an
     Arrow null, never an `NaN`. pandas coerces integer/boolean columns with nulls
@@ -711,7 +712,7 @@ resolves to the most recent version, so it does not go stale:
 ```
 
 If your results depend on a specific version, cite that version's own DOI
-instead — v1.5.0 is [10.5281/zenodo.23984112](https://doi.org/10.5281/zenodo.23984112),
+instead — v1.6.0 is [10.5281/zenodo.24525068](https://doi.org/10.5281/zenodo.24525068),
 v1.1.1 is [10.5281/zenodo.22287186](https://doi.org/10.5281/zenodo.22287186),
 and each release page links its own. `CITATION.cff` carries the same metadata
 in machine-readable form; GitHub's **Cite this repository** button reads it.
